@@ -23,6 +23,12 @@
 
 export * from './interfaces.js';
 export { SQLiteStoreFactory } from './sqlite.js';
+export {
+  InMemoryRunStore,
+  InMemoryTenantStore,
+  InMemoryUserStore,
+  InMemoryMembershipStore,
+} from './inmemory.js';
 
 import type { StoreFactory, StorageConfig } from './interfaces.js';
 import { getStorageConfig } from './interfaces.js';
