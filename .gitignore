@@ -6,6 +6,12 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Internal package build artifacts (hooks are built at runtime)
+internal/*/*.js
+internal/*/*.js.map
+internal/*/*.d.ts
+internal/*/*.d.ts.map
+
 # IDE
 .vscode/
 .idea/
