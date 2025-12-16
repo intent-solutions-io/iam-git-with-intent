@@ -38,11 +38,16 @@
     "claude:after-message": "npx tsx scripts/claude-after-message.ts"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.10.0",
     "agentfs-sdk": "^0.2.3",
+    "better-sqlite3": "^12.5.0",
     "husky": "^9.0.0",
     "prettier": "^3.2.0",
     "turbo": "^2.3.0",
     "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.6.0"
   }
 }

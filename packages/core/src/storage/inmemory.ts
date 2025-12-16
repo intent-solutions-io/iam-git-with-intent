@@ -18,7 +18,6 @@ import type {
   RunStore,
   Tenant,
   TenantRepo,
-  TenantSettings,
   TenantStore,
   SaaSRun,
   User,

@@ -4,6 +4,9 @@
  * Multi-tenant API for the Git With Intent platform.
  * Designed to run on Cloud Run with Firebase Auth integration (future).
  *
+ * Phase 7: Now uses Firestore-backed TenantStore for persistent storage.
+ * Set GWI_STORE_BACKEND=firestore and GCP_PROJECT_ID to enable Firestore.
+ *
  * Endpoints:
  * - GET /health - Health check
  * - GET /me - Current user info (requires auth)
@@ -24,6 +27,7 @@ import helmet from 'helmet';
 import { z } from 'zod';
 import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
+import { getTenantStore, getStoreBackend, type TenantStore } from '@gwi/core';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -36,6 +40,7 @@ const config = {
   appName: process.env.APP_NAME || 'gwi-api',
   appVersion: process.env.APP_VERSION || '0.1.0',
   env: process.env.DEPLOYMENT_ENV || 'dev',
+  storeBackend: getStoreBackend(),
 };
 
 // =============================================================================
@@ -122,16 +127,24 @@ function tenantAuthMiddleware(req: express.Request, res: express.Response, next:
 }
 
 // =============================================================================
-// Engine Instance
+// Engine and Store Instances
 // =============================================================================
 
 let engine: Engine | null = null;
+let tenantStore: TenantStore | null = null;
 
 async function getEngine(): Promise<Engine> {
   if (!engine) {
     engine = await createEngine({ debug: config.env === 'dev' });
   }
   return engine;
+}
+
+function getStore(): TenantStore {
+  if (!tenantStore) {
+    tenantStore = getTenantStore();
+  }
+  return tenantStore;
 }
 
 // =============================================================================
@@ -179,6 +192,7 @@ app.get('/health', (_req, res) => {
     app: config.appName,
     version: config.appVersion,
     env: config.env,
+    storeBackend: config.storeBackend,
     timestamp: new Date().toISOString(),
   });
 });
@@ -218,15 +232,28 @@ app.get('/tenants', authMiddleware, (_req, res) => {
 /**
  * GET /tenants/:tenantId - Get tenant details
  */
-app.get('/tenants/:tenantId', authMiddleware, tenantAuthMiddleware, (req, res) => {
+app.get('/tenants/:tenantId', authMiddleware, tenantAuthMiddleware, async (req, res) => {
   const { tenantId } = req.params;
 
-  // TODO: Fetch tenant from TenantStore
-  res.status(501).json({
-    error: 'Not implemented',
-    tenantId,
-    message: 'Tenant details will be fetched from Firestore in a later phase',
-  });
+  try {
+    const store = getStore();
+    const tenant = await store.getTenant(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({
+        error: 'Tenant not found',
+        tenantId,
+      });
+    }
+
+    res.json(tenant);
+  } catch (error) {
+    console.error('Failed to get tenant:', error);
+    res.status(500).json({
+      error: 'Failed to get tenant',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 // =============================================================================
@@ -236,21 +263,27 @@ app.get('/tenants/:tenantId', authMiddleware, tenantAuthMiddleware, (req, res) =
 /**
  * GET /tenants/:tenantId/repos - List connected repos
  */
-app.get('/tenants/:tenantId/repos', authMiddleware, tenantAuthMiddleware, (req, res) => {
+app.get('/tenants/:tenantId/repos', authMiddleware, tenantAuthMiddleware, async (req, res) => {
   const { tenantId } = req.params;
+  const enabled = req.query.enabled === 'true' ? true : req.query.enabled === 'false' ? false : undefined;
 
-  // TODO: Fetch repos from TenantStore
-  res.status(501).json({
-    error: 'Not implemented',
-    tenantId,
-    message: 'Repo listing will be implemented with Firestore in a later phase',
-  });
+  try {
+    const store = getStore();
+    const repos = await store.listRepos(tenantId, { enabled });
+    res.json({ repos });
+  } catch (error) {
+    console.error('Failed to list repos:', error);
+    res.status(500).json({
+      error: 'Failed to list repos',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 /**
  * POST /tenants/:tenantId/repos:connect - Connect a repo
  */
-app.post('/tenants/:tenantId/repos:connect', authMiddleware, tenantAuthMiddleware, (req, res) => {
+app.post('/tenants/:tenantId/repos:connect', authMiddleware, tenantAuthMiddleware, async (req, res) => {
   const { tenantId } = req.params;
 
   const parseResult = ConnectRepoSchema.safeParse(req.body);
@@ -261,13 +294,48 @@ app.post('/tenants/:tenantId/repos:connect', authMiddleware, tenantAuthMiddlewar
     });
   }
 
-  // TODO: Add repo to TenantStore
-  res.status(501).json({
-    error: 'Not implemented',
-    tenantId,
-    input: parseResult.data,
-    message: 'Repo connection will be implemented with Firestore in a later phase',
-  });
+  const input = parseResult.data;
+
+  try {
+    const store = getStore();
+
+    // Generate repo ID from URL
+    const repoUrlParts = input.repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    if (!repoUrlParts) {
+      return res.status(400).json({
+        error: 'Invalid GitHub URL',
+        message: 'Expected format: https://github.com/owner/repo',
+      });
+    }
+
+    const [, owner, repoName] = repoUrlParts;
+    const repoId = `gh-repo-${owner}-${repoName}`.toLowerCase();
+
+    const repo = await store.addRepo(tenantId, {
+      id: repoId,
+      tenantId,
+      githubRepoId: 0, // Will be populated from GitHub API in later phase
+      githubFullName: `${owner}/${repoName}`,
+      displayName: input.displayName || repoName,
+      enabled: true,
+      settings: {
+        autoTriage: input.settings?.autoTriage ?? true,
+        autoReview: input.settings?.autoReview ?? false,
+        autoResolve: input.settings?.autoResolve ?? false,
+      },
+      totalRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+    });
+
+    res.status(201).json(repo);
+  } catch (error) {
+    console.error('Failed to connect repo:', error);
+    res.status(500).json({
+      error: 'Failed to connect repo',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 // =============================================================================
@@ -395,7 +463,7 @@ app.get('/tenants/:tenantId/runs/:runId', authMiddleware, tenantAuthMiddleware, 
 /**
  * POST /tenants/:tenantId/settings - Update tenant settings
  */
-app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, (req, res) => {
+app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, async (req, res) => {
   const { tenantId } = req.params;
 
   // Check role (only owner/admin can update settings)
@@ -414,13 +482,37 @@ app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, (r
     });
   }
 
-  // TODO: Update settings in TenantStore
-  res.status(501).json({
-    error: 'Not implemented',
-    tenantId,
-    input: parseResult.data,
-    message: 'Settings update will be implemented with Firestore in a later phase',
-  });
+  try {
+    const store = getStore();
+    const existing = await store.getTenant(tenantId);
+
+    if (!existing) {
+      return res.status(404).json({
+        error: 'Tenant not found',
+        tenantId,
+      });
+    }
+
+    const input = parseResult.data;
+    const updatedSettings = {
+      ...existing.settings,
+      ...(input.defaultRiskMode && { defaultRiskMode: input.defaultRiskMode }),
+      ...(input.defaultTriageModel && { defaultTriageModel: input.defaultTriageModel }),
+      ...(input.defaultCodeModel && { defaultCodeModel: input.defaultCodeModel }),
+      ...(input.complexityThreshold !== undefined && { complexityThreshold: input.complexityThreshold }),
+      ...(input.autoRunOnConflict !== undefined && { autoRunOnConflict: input.autoRunOnConflict }),
+      ...(input.autoRunOnPrOpen !== undefined && { autoRunOnPrOpen: input.autoRunOnPrOpen }),
+    };
+
+    const updated = await store.updateTenant(tenantId, { settings: updatedSettings });
+    res.json(updated);
+  } catch (error) {
+    console.error('Failed to update settings:', error);
+    res.status(500).json({
+      error: 'Failed to update settings',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 // =============================================================================
@@ -445,6 +537,7 @@ app.listen(PORT, () => {
     app: config.appName,
     version: config.appVersion,
     env: config.env,
+    storeBackend: config.storeBackend,
     port: PORT,
     timestamp: new Date().toISOString(),
   }));

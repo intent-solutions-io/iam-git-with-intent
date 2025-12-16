@@ -5,11 +5,10 @@
  * This engine orchestrates multi-agent runs for PR resolution,
  * code review, and issue-to-code workflows.
  *
- * For Phase 5, this is a placeholder implementation that:
- * - Generates run IDs
- * - Stores runs in memory (or via provided stores)
- * - Integrates with the hook system
- * - Returns stub results
+ * Phase 7 updates:
+ * - Uses TenantStore from @gwi/core for persistent storage
+ * - Supports Firestore backend via GWI_STORE_BACKEND=firestore
+ * - Falls back to in-memory storage for development
  *
  * Real agent orchestration and Vertex AI Agent Engine integration
  * will be added in subsequent phases.
@@ -28,6 +27,8 @@ import type {
 } from './types.js';
 import { buildDefaultHookRunner } from '../hooks/config.js';
 import type { AgentHookRunner, AgentRunContext } from '../hooks/types.js';
+import type { TenantStore, SaaSRun } from '@gwi/core';
+import { getTenantStore, getStoreBackend } from '@gwi/core';
 
 // =============================================================================
 // Default Configuration
@@ -40,12 +41,12 @@ const DEFAULT_ENGINE_CONFIG: Required<EngineConfig> = {
 };
 
 // =============================================================================
-// In-Memory Run Storage (Temporary)
+// In-Memory Run Storage (Fallback)
 // =============================================================================
 
 /**
- * TEMPORARY: In-memory storage for runs
- * Will be replaced with Firestore-backed TenantStore in a later phase.
+ * In-memory fallback storage for runs when TenantStore operations fail.
+ * Primary storage is TenantStore (Firestore or in-memory based on env).
  */
 interface InMemoryRun {
   request: ValidatedRunRequest;
@@ -53,7 +54,7 @@ interface InMemoryRun {
   createdAt: Date;
 }
 
-const inMemoryRuns = new Map<string, InMemoryRun>();
+const fallbackRuns = new Map<string, InMemoryRun>();
 
 // =============================================================================
 // Helper Functions
@@ -131,6 +132,15 @@ export async function createEngine(
 ): Promise<Engine> {
   const cfg = { ...DEFAULT_ENGINE_CONFIG, ...config };
 
+  // Get store backend info for logging
+  const storeBackend = getStoreBackend();
+  if (cfg.debug) {
+    console.log(`[Engine] Using ${storeBackend} store backend`);
+  }
+
+  // Get TenantStore from deps or environment-based singleton
+  const tenantStore: TenantStore = deps?.tenantStore ?? getTenantStore();
+
   // Build hook runner (will load AgentFS/Beads hooks if enabled)
   let hookRunner: AgentHookRunner | null = null;
   try {
@@ -176,6 +186,26 @@ export async function createEngine(
     }
   }
 
+  /**
+   * Convert SaaSRun to RunResult
+   */
+  function saasRunToResult(run: SaaSRun): RunResult {
+    return {
+      runId: run.id,
+      status: run.status as EngineRunStatus,
+      summary: run.result && typeof run.result === 'object' && 'summary' in run.result
+        ? (run.result as { summary?: string }).summary
+        : undefined,
+      currentStep: run.currentStep,
+      completedSteps: run.steps.filter(s => s.status === 'completed').length,
+      totalSteps: run.steps.length || getExpectedSteps(run.type.toUpperCase()),
+      error: run.error,
+      startedAt: run.createdAt.toISOString(),
+      completedAt: run.completedAt?.toISOString(),
+      durationMs: run.durationMs,
+    };
+  }
+
   return {
     async startRun(request: RunRequest): Promise<RunResult> {
       // Validate request
@@ -196,12 +226,38 @@ export async function createEngine(
         startedAt: new Date().toISOString(),
       };
 
-      // Store in memory (TEMPORARY: will use TenantStore later)
-      inMemoryRuns.set(`${tenantId}:${runId}`, {
-        request: validatedRequest,
-        result,
-        createdAt: new Date(),
-      });
+      // Store run via TenantStore
+      try {
+        const saasRun: Omit<SaaSRun, 'id' | 'createdAt' | 'updatedAt'> = {
+          tenantId,
+          repoId: `repo-${repo.fullName.replace('/', '-')}`,
+          prId: request.prNumber ? `pr-${request.prNumber}` : `issue-${request.issueNumber || 'none'}`,
+          prUrl: `${request.repoUrl}/pull/${request.prNumber || 0}`,
+          type: runType.toLowerCase() as SaaSRun['type'],
+          status: 'running',
+          currentStep: 'initializing',
+          steps: [],
+          trigger: {
+            source: request.trigger === 'api' ? 'ui' : request.trigger,
+            commandText: request.metadata?.commandText as string | undefined,
+          },
+          a2aCorrelationId: runId,
+        };
+
+        await tenantStore.createRun(tenantId, saasRun);
+
+        if (cfg.debug) {
+          console.log(`[Engine] Run ${runId} stored in ${storeBackend}`);
+        }
+      } catch (error) {
+        // Fall back to in-memory storage if TenantStore fails
+        console.warn(`[Engine] TenantStore.createRun failed, using fallback:`, error);
+        fallbackRuns.set(`${tenantId}:${runId}`, {
+          request: validatedRequest,
+          result,
+          createdAt: new Date(),
+        });
+      }
 
       // Log to hooks
       await logToHooks(validatedRequest, 'started');
@@ -215,14 +271,49 @@ export async function createEngine(
     },
 
     async getRun(tenantId: string, runId: string): Promise<RunResult | null> {
+      // Try TenantStore first
+      try {
+        const saasRun = await tenantStore.getRun(tenantId, runId);
+        if (saasRun) {
+          return saasRunToResult(saasRun);
+        }
+      } catch (error) {
+        if (cfg.debug) {
+          console.warn(`[Engine] TenantStore.getRun failed:`, error);
+        }
+      }
+
+      // Fall back to in-memory storage
       const key = `${tenantId}:${runId}`;
-      const stored = inMemoryRuns.get(key);
+      const stored = fallbackRuns.get(key);
       return stored?.result ?? null;
     },
 
     async cancelRun(tenantId: string, runId: string): Promise<boolean> {
+      // Try TenantStore first
+      try {
+        const saasRun = await tenantStore.getRun(tenantId, runId);
+        if (saasRun) {
+          if (['completed', 'failed', 'cancelled'].includes(saasRun.status)) {
+            return false;
+          }
+
+          await tenantStore.updateRun(tenantId, runId, { status: 'cancelled' });
+
+          if (cfg.debug) {
+            console.log(`[Engine] Cancelled run ${runId} in ${storeBackend}`);
+          }
+          return true;
+        }
+      } catch (error) {
+        if (cfg.debug) {
+          console.warn(`[Engine] TenantStore.cancelRun failed:`, error);
+        }
+      }
+
+      // Fall back to in-memory storage
       const key = `${tenantId}:${runId}`;
-      const stored = inMemoryRuns.get(key);
+      const stored = fallbackRuns.get(key);
 
       if (!stored) {
         return false;
@@ -236,16 +327,29 @@ export async function createEngine(
       stored.result.completedAt = new Date().toISOString();
 
       if (cfg.debug) {
-        console.log(`[Engine] Cancelled run ${runId}`);
+        console.log(`[Engine] Cancelled run ${runId} in fallback storage`);
       }
 
       return true;
     },
 
     async listRuns(tenantId: string, limit = 20): Promise<RunResult[]> {
+      // Try TenantStore first
+      try {
+        const saasRuns = await tenantStore.listRuns(tenantId, { limit });
+        if (saasRuns.length > 0) {
+          return saasRuns.map(saasRunToResult);
+        }
+      } catch (error) {
+        if (cfg.debug) {
+          console.warn(`[Engine] TenantStore.listRuns failed:`, error);
+        }
+      }
+
+      // Fall back to in-memory storage
       const results: RunResult[] = [];
 
-      for (const [key, stored] of inMemoryRuns) {
+      for (const [key, stored] of fallbackRuns) {
         if (key.startsWith(`${tenantId}:`)) {
           results.push(stored.result);
         }

@@ -143,6 +143,34 @@ export class SQLiteStore implements PRStore, RunStore, SettingsStore { ... }
 
 **Selection:** Set via `GWI_STORAGE=sqlite|postgres|firestore|agentfs`
 
+### Production Storage (Phase 7)
+
+For SaaS multi-tenant operations, use Firestore:
+
+```bash
+# Enable Firestore storage
+export GWI_STORE_BACKEND=firestore
+export GCP_PROJECT_ID=your-gcp-project
+
+# Use in-memory for development (default)
+export GWI_STORE_BACKEND=memory
+# or unset GWI_STORE_BACKEND
+```
+
+```typescript
+// Get stores based on environment
+import { getTenantStore, getRunStore, getStoreBackend } from '@gwi/core';
+
+const backend = getStoreBackend();  // 'memory' or 'firestore'
+const tenantStore = getTenantStore();  // Singleton
+const runStore = getRunStore();  // Singleton
+```
+
+**Collection Structure:**
+- `gwi_tenants/{tenantId}` - Tenant configurations
+  - `repos/{repoId}` - Connected repositories
+- `gwi_runs/{runId}` - Run history and status
+
 ---
 
 ## File Structure
