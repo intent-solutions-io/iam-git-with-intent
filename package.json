@@ -25,7 +25,8 @@
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "claude:after-message": "npx ts-node --esm scripts/claude-after-message.ts"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

@@ -339,6 +339,115 @@ This repository follows **docs-filing v4** for all documentation:
 
 ---
 
+## Claude Internal Hook Protocol (Post-Message Audit)
+
+**This section defines a behavioral contract for Claude when working on git-with-intent.**
+
+When you (Claude) work in this repository, you must consider running a post-message audit after completing meaningful work. This audit logs your activity to AgentFS (audit trail) and Beads (task tracking).
+
+### When to Run the Audit
+
+**After EVERY message where:**
+
+1. You changed files in git-with-intent (created, modified, deleted)
+2. You completed a clearly defined phase or sub-phase task
+3. You introduced new TODOs or follow-up work
+4. You performed multi-step or non-trivial work (architecture, refactor, multi-file changes)
+
+### Mental Checklist (Required)
+
+Before ending a message, ask yourself:
+
+- [ ] Did I perform non-trivial work (architecture, refactor, new files)?
+- [ ] Is there follow-up work that won't be completed in this message?
+- [ ] Would future-me benefit from an AgentFS audit record (who/what/why)?
+- [ ] Would a Beads task help track longer-lived or blocked work?
+
+**If YES to any of the above**, run the post-message script.
+
+### How to Run the Audit
+
+```bash
+npm run claude:after-message -- '{
+  "runType": "PLAN",
+  "agentRole": "FOREMAN",
+  "inputSummary": "What you were asked to do or analyze",
+  "outputSummary": "What you produced or changed",
+  "metadata": { "phase": "4", "subPhase": "4.1", "filesChanged": 3 }
+}'
+```
+
+### Run Type Guidelines
+
+| Work Type | runType | agentRole | Example |
+|-----------|---------|-----------|---------|
+| Architecture/docs | `PLAN` | `FOREMAN` | Designing a new system, writing ADRs |
+| Code changes | `RESOLVE` | `CODER` | Implementing features, fixing bugs |
+| Full phase work | `AUTOPILOT` | `FOREMAN` | Completing an entire phase end-to-end |
+| Classification | `TRIAGE` | `TRIAGE` | Analyzing issues, categorizing work |
+| Code review | `REVIEW` | `REVIEWER` | Reviewing PR, suggesting changes |
+
+### Example Invocations
+
+**After completing Phase 4 design work:**
+```bash
+npm run claude:after-message -- '{
+  "runType": "PLAN",
+  "agentRole": "FOREMAN",
+  "inputSummary": "Phase 4: Claude Internal Hook Protocol design",
+  "outputSummary": "Created ADR 016, updated CLAUDE.md with protocol, implemented claude-after-message script",
+  "metadata": { "phase": "4", "filesCreated": 3, "filesModified": 2 }
+}'
+```
+
+**After fixing a bug:**
+```bash
+npm run claude:after-message -- '{
+  "runType": "RESOLVE",
+  "agentRole": "CODER",
+  "inputSummary": "Fix hook runner timeout issue",
+  "outputSummary": "Updated runner.ts to handle Promise.race correctly",
+  "metadata": { "bugFix": true, "files": ["packages/engine/src/hooks/runner.ts"] }
+}'
+```
+
+### Even If You Don't Actually Run It
+
+Even if you cannot execute the script in this environment, you should **behave as if this step exists**. This means:
+
+1. Document your work clearly in commit messages
+2. Note any follow-up work explicitly
+3. Consider what audit trail would be useful for debugging
+
+### Every Session Checklist
+
+When starting or resuming work on git-with-intent:
+
+- [ ] Is AgentFS configured? (`GWI_AGENTFS_ENABLED=true`, `GWI_AGENTFS_ID=gwi-internal`)
+- [ ] Is Beads configured? (`GWI_BEADS_ENABLED=true`)
+- [ ] Will I run Post-Message Audit for non-trivial work?
+
+### Initializing AgentFS and Beads
+
+For local development with audit trails:
+
+```bash
+# AgentFS initialization
+cd git-with-intent
+agentfs init gwi-internal  # Creates .agentfs/ directory
+
+# Beads initialization
+bd init  # Creates .beads/ directory
+
+# Set environment variables
+export GWI_AGENTFS_ENABLED=true
+export GWI_AGENTFS_ID=gwi-internal
+export GWI_BEADS_ENABLED=true
+export GWI_HOOK_DEBUG=true
+```
+
+---
+
 ## Agent Hook System (Internal)
 
 The agent execution engine includes a hook system that runs after each agent step, message, or run.
@@ -390,6 +499,7 @@ See `000-docs/014-DR-ADRC-agent-hook-system-policy.md` for the full policy.
 - **Architecture Decision (Runtime vs DevTools):** `000-docs/004-DR-ADRC-runtime-vs-devtools.md`
 - **AgentFS/Beads Policy:** `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
 - **Agent Hook System Policy:** `000-docs/014-DR-ADRC-agent-hook-system-policy.md`
+- **Claude Internal Hook Protocol:** `000-docs/016-DR-ADRC-claude-internal-hook-protocol.md`
 - **Directory Structure:** `000-docs/007-DR-ADRC-directory-structure.md`
 - **DevOps Playbook (Internal):** `000-docs/003-AA-AUDT-appaudit-devops-playbook.md`
 - **Filing Standard:** `000-docs/6767-a-DR-STND-document-filing-system-standard-v4.md`

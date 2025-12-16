@@ -118,6 +118,13 @@ export class AgentHookRunner {
   }
 
   /**
+   * Get all registered hooks
+   */
+  getHooks(): AgentHook[] {
+    return [...this.hooks];
+  }
+
+  /**
    * Execute all hooks after a step completes
    *
    * This method will:
