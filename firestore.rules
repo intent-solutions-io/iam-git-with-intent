@@ -1,0 +1,142 @@
+rules_version = '2';
+
+// Git With Intent - Firestore Security Rules
+// Phase 9: Staging deployment
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =================================================================
+    // Helper Functions
+    // =================================================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user has a specific tenant membership
+    function hasTenantAccess(tenantId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/gwi_memberships/$(request.auth.uid + '_' + tenantId));
+    }
+
+    // Check if user is tenant owner or admin
+    function isTenantAdmin(tenantId) {
+      let membership = get(/databases/$(database)/documents/gwi_memberships/$(request.auth.uid + '_' + tenantId));
+      return membership != null &&
+        membership.data.role in ['owner', 'admin'] &&
+        membership.data.status == 'active';
+    }
+
+    // Check if user is tenant owner
+    function isTenantOwner(tenantId) {
+      let membership = get(/databases/$(database)/documents/gwi_memberships/$(request.auth.uid + '_' + tenantId));
+      return membership != null &&
+        membership.data.role == 'owner' &&
+        membership.data.status == 'active';
+    }
+
+    // Check if request is from service account (Cloud Run)
+    function isServiceAccount() {
+      return request.auth.token.firebase.sign_in_provider == 'custom' ||
+        (request.auth.token.email != null &&
+         request.auth.token.email.matches('.*@.*\\.iam\\.gserviceaccount\\.com'));
+    }
+
+    // =================================================================
+    // Tenant Collection
+    // =================================================================
+
+    match /gwi_tenants/{tenantId} {
+      // Anyone can read tenant basic info (for UI)
+      allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+
+      // Only service accounts can create tenants (via installation webhook)
+      allow create: if isServiceAccount();
+
+      // Admins can update, owners can delete
+      allow update: if isTenantAdmin(tenantId) || isServiceAccount();
+      allow delete: if isTenantOwner(tenantId) || isServiceAccount();
+
+      // Repos subcollection
+      match /repos/{repoId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow write: if isTenantAdmin(tenantId) || isServiceAccount();
+      }
+    }
+
+    // =================================================================
+    // Runs Collection
+    // =================================================================
+
+    match /gwi_runs/{runId} {
+      // Members can read runs for their tenant
+      allow read: if hasTenantAccess(resource.data.tenantId) || isServiceAccount();
+
+      // Only service accounts can create/update runs (from webhook/engine)
+      allow create, update: if isServiceAccount();
+
+      // Admins can delete runs
+      allow delete: if isTenantAdmin(resource.data.tenantId) || isServiceAccount();
+
+      // Steps subcollection
+      match /steps/{stepId} {
+        allow read: if hasTenantAccess(get(/databases/$(database)/documents/gwi_runs/$(runId)).data.tenantId) ||
+                       isServiceAccount();
+        allow write: if isServiceAccount();
+      }
+    }
+
+    // =================================================================
+    // Users Collection
+    // =================================================================
+
+    match /gwi_users/{userId} {
+      // Users can read their own profile
+      allow read: if request.auth.uid == userId || isServiceAccount();
+
+      // Users can update their own profile (except role fields)
+      allow update: if request.auth.uid == userId &&
+        !('role' in request.resource.data) ||
+        isServiceAccount();
+
+      // Service accounts handle creation/deletion
+      allow create, delete: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Memberships Collection
+    // =================================================================
+
+    match /gwi_memberships/{membershipId} {
+      // Users can read their own memberships
+      allow read: if request.auth.uid == resource.data.userId ||
+                     isTenantAdmin(resource.data.tenantId) ||
+                     isServiceAccount();
+
+      // Admins can manage memberships
+      allow create: if isTenantAdmin(request.resource.data.tenantId) || isServiceAccount();
+      allow update: if isTenantAdmin(resource.data.tenantId) || isServiceAccount();
+      allow delete: if isTenantOwner(resource.data.tenantId) || isServiceAccount();
+    }
+
+    // =================================================================
+    // Installations Index (for webhook lookup)
+    // =================================================================
+
+    match /gwi_installations/{installationId} {
+      // Only service accounts can access
+      allow read, write: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Default Deny
+    // =================================================================
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

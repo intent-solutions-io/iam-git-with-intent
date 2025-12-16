@@ -35,7 +35,10 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "prepare": "husky",
     "agentfs:init": "npx tsx scripts/agentfs-init.ts",
-    "claude:after-message": "npx tsx scripts/claude-after-message.ts"
+    "claude:after-message": "npx tsx scripts/claude-after-message.ts",
+    "smoke:staging": "npx tsx scripts/cloud-smoke-test.ts --env=staging",
+    "smoke:production": "npx tsx scripts/cloud-smoke-test.ts --env=production",
+    "deploy:staging": "./scripts/deploy-staging.sh"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
