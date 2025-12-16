@@ -1,0 +1,62 @@
+/**
+ * Agent Hook System
+ *
+ * This module provides a hook system for the Git With Intent agent pipeline.
+ * Hooks can be registered to run after each agent step, enabling:
+ * - Audit logging (AgentFS)
+ * - Task tracking (Beads)
+ * - Custom telemetry
+ * - Extensible behavior
+ *
+ * @module @gwi/engine/hooks
+ *
+ * @example
+ * ```typescript
+ * import { buildDefaultHookRunner, AgentRunContext } from '@gwi/engine/hooks';
+ *
+ * // Build runner with configured hooks (from env vars)
+ * const runner = await buildDefaultHookRunner();
+ *
+ * // After each agent step:
+ * const ctx: AgentRunContext = {
+ *   runId: 'run-123',
+ *   runType: 'RESOLVE',
+ *   stepId: 'step-456',
+ *   agentRole: 'CODER',
+ *   stepStatus: 'completed',
+ *   timestamp: new Date().toISOString(),
+ * };
+ *
+ * await runner.afterStep(ctx);
+ * ```
+ */
+
+// Types
+export type {
+  AgentRole,
+  AgentRunContext,
+  AgentRunContextWithPR,
+  AgentHook,
+  HookConfig,
+  BeadsHookConfig,
+} from './types.js';
+
+export {
+  DEFAULT_HOOK_CONFIG,
+  DEFAULT_BEADS_HOOK_CONFIG,
+} from './types.js';
+
+// Runner
+export { AgentHookRunner } from './runner.js';
+export type { HookRunResult } from './runner.js';
+
+// Configuration
+export {
+  readHookConfigFromEnv,
+  readBeadsConfigFromEnv,
+  readAgentFSConfigFromEnv,
+  buildDefaultHookRunner,
+  buildHookRunner,
+  getInternalHookStatus,
+} from './config.js';
+export type { AgentFSConfig } from './config.js';

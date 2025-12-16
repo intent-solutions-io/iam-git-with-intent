@@ -9,41 +9,58 @@ Beads provides:
 - Issue/bead linkage for agent workflows
 - Dependency tracking between tasks
 
+Reference: https://github.com/steveyegge/beads
+
 ## Files
 
 - `beads-task-tracker.ts` - Implements `TaskTracker` interface using Beads
-- `session-tasks.ts` - Manages tasks for the current session
+- `beads-hook.ts` - Agent lifecycle hook for task tracking via Beads
 
-## Usage
+## Beads Hook
 
-```typescript
-// INTERNAL ONLY - Do not use in packages/core or apps/cli runtime
-import { BeadsTaskTracker } from '@internal/beads-tools';
+The `BeadsHook` creates/updates Beads issues based on agent activity:
 
-const tracker = new BeadsTaskTracker();
-await tracker.createTask({ title: 'Fix merge conflict', type: 'task' });
-```
+- **Issue creation**: For complex runs (AUTOPILOT, RESOLVE with high complexity)
+- **Status updates**: Track progress through agent steps
+- **Issue closure**: When runs complete successfully
 
-## Commands
+### Smart Heuristics
+
+The hook avoids spam by only creating issues when:
+- Run type is AUTOPILOT or RESOLVE
+- Complexity >= 3
+- Step failed or partial success
+- Deferred work detected
+
+## CLI Commands Used
 
 ```bash
-# List ready tasks
-bd list --ready
+# Create issue (types: epic, task, bug, feature, chore, research)
+bd create "GWI: RESOLVE run" -t task -p 1
 
-# Create a new task
-bd create "Task title" --type task
+# Update status (statuses: open, in_progress, closed, blocked)
+bd update bd-xxxx --status in_progress
 
-# Mark task complete
-bd done <task-id>
+# Close issue
+bd close bd-xxxx --reason "Run completed successfully"
+
+# List ready issues (no blockers)
+bd ready
 ```
-
-## Policy
-
-This code is for internal development only. External users of Git With Intent
-do not need Beads installed. See `000-docs/006-DR-ADRC-agentfs-beads-policy.md`.
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `GWI_USE_BEADS` | Set to `true` to enable Beads integration (internal only) |
+| `GWI_BEADS_ENABLED` | Set to `true` to enable Beads hook |
+| `GWI_BEADS_DEBUG` | Enable debug logging for Beads decisions |
+
+Legacy (deprecated):
+| `GWI_USE_BEADS` | Alias for GWI_BEADS_ENABLED |
+
+## Policy
+
+This code is for internal development only. External users of Git With Intent
+do not need Beads installed. See:
+- `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
+- `000-docs/014-DR-ADRC-agent-hook-system-policy.md`

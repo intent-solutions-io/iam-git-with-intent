@@ -159,6 +159,9 @@ git-with-intent/
 │   │   │   ├── github/   # GitHub API client
 │   │   │   ├── models/   # LLM client abstraction
 │   │   │   └── types.ts  # Shared types
+│   ├── engine/           # Agent execution engine with hooks
+│   │   ├── src/
+│   │   │   └── hooks/    # Hook system (AgentHook, AgentHookRunner)
 │   ├── agents/           # Agent implementations
 │   │   ├── src/
 │   │   │   ├── triage/
@@ -168,6 +171,8 @@ git-with-intent/
 │   │   │   └── reviewer/
 │   └── integrations/     # GitHub, future: GitLab
 ├── internal/             # Dev tools (AgentFS, Beads wrappers) - NOT for users
+│   ├── agentfs-tools/    # AgentFS adapters and hooks
+│   └── beads-tools/      # Beads adapters and hooks
 ├── infra/                # Terraform, Docker
 ├── docs/                 # Documentation
 └── 000-docs/             # Project docs (6767 standard)
@@ -222,6 +227,13 @@ LOG_LEVEL=info                  # Logging level
 ### Internal/Dev Only
 
 ```bash
+# Hook system (enables internal auditing)
+GWI_AGENTFS_ENABLED=true        # Enable AgentFS audit hook
+GWI_AGENTFS_ID=gwi-agent        # AgentFS agent identifier
+GWI_BEADS_ENABLED=true          # Enable Beads task tracking hook
+GWI_HOOK_DEBUG=true             # Debug logging for hooks
+
+# Legacy (deprecated, use above)
 GWI_USE_AGENTFS=true            # Enable AgentFS (internal)
 GWI_USE_BEADS=true              # Enable Beads (internal)
 HARD_MODE=true                  # Enable strict CI checks (internal)
@@ -327,10 +339,57 @@ This repository follows **docs-filing v4** for all documentation:
 
 ---
 
+## Agent Hook System (Internal)
+
+The agent execution engine includes a hook system that runs after each agent step, message, or run.
+
+### Hook Architecture
+
+```
+Agent Step → [AgentHookRunner] → [AgentFSHook (audit)] → AgentFS
+                              → [BeadsHook (tasks)]  → Beads
+```
+
+### Configuration
+
+```typescript
+// packages/engine/src/hooks/config.ts
+const runner = await buildDefaultHookRunner();
+
+// After each agent step:
+await runner.afterStep({
+  runId: 'run-123',
+  runType: 'RESOLVE',
+  stepId: 'step-456',
+  agentRole: 'CODER',
+  stepStatus: 'completed',
+  timestamp: new Date().toISOString(),
+});
+```
+
+### Rules for Hook Usage
+
+1. **Hooks are internal-only** - External runtime does not require hooks
+2. **Hooks never crash the pipeline** - Errors are logged, not thrown
+3. **Hooks are configurable** - Enabled via environment variables
+4. **New sub-agents should use the existing hook pipeline** - Don't invent custom logging
+
+### Available Hooks
+
+| Hook | Purpose | Environment Variable |
+|------|---------|---------------------|
+| `AgentFSHook` | Audit tool calls to AgentFS | `GWI_AGENTFS_ENABLED=true` |
+| `BeadsHook` | Create/update Beads issues | `GWI_BEADS_ENABLED=true` |
+
+See `000-docs/014-DR-ADRC-agent-hook-system-policy.md` for the full policy.
+
+---
+
 ## References
 
 - **Architecture Decision (Runtime vs DevTools):** `000-docs/004-DR-ADRC-runtime-vs-devtools.md`
 - **AgentFS/Beads Policy:** `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
+- **Agent Hook System Policy:** `000-docs/014-DR-ADRC-agent-hook-system-policy.md`
 - **Directory Structure:** `000-docs/007-DR-ADRC-directory-structure.md`
 - **DevOps Playbook (Internal):** `000-docs/003-AA-AUDT-appaudit-devops-playbook.md`
 - **Filing Standard:** `000-docs/6767-a-DR-STND-document-filing-system-standard-v4.md`
