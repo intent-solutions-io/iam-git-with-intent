@@ -10,6 +10,8 @@
  * - Handles escalations and failures
  * - Monitors agent health
  *
+ * Phase 13: Wired to execute REAL agent workflows.
+ *
  * Uses Gemini Flash for fast routing decisions.
  *
  * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
@@ -17,6 +19,10 @@
 
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
 import { type TaskRequestPayload, MODELS } from '@gwi/core';
+import { TriageAgent } from '../triage/index.js';
+import { ResolverAgent } from '../resolver/index.js';
+import { ReviewerAgent } from '../reviewer/index.js';
+import { CoderAgent } from '../coder/index.js';
 
 /**
  * Workflow types supported by the orchestrator
@@ -101,13 +107,15 @@ const ORCHESTRATOR_CONFIG: AgentConfig = {
 
 /**
  * Workflow definitions - what agents to call in what order
+ *
+ * Phase 13: Updated to use real agent names
  */
 const WORKFLOW_DEFINITIONS: Record<WorkflowType, string[]> = {
   'pr-resolve': ['triage', 'resolver', 'reviewer'],
-  'issue-to-code': ['triage', 'coder', 'reviewer', 'test'],
-  'pr-review': ['reviewer'],
-  'test-gen': ['test'],
-  'docs-update': ['docs'],
+  'issue-to-code': ['triage', 'coder', 'reviewer'],
+  'pr-review': ['triage', 'reviewer'],
+  'test-gen': ['triage', 'coder'],
+  'docs-update': ['coder'],
 };
 
 /**
@@ -161,18 +169,22 @@ export class OrchestratorAgent extends BaseAgent {
       }
     }
 
-    // Register known agents
+    // Register known agents (Phase 13: Added coder)
     this.registerAgent('triage', ['complexity-analysis', 'routing']);
     this.registerAgent('resolver', ['conflict-resolution', 'code-merge']);
     this.registerAgent('reviewer', ['code-review', 'security-scan']);
+    this.registerAgent('coder', ['code-generation', 'test-generation', 'file-creation']);
   }
 
   /**
-   * Shutdown - persist state
+   * Shutdown - persist state and cleanup agents
    */
   protected async onShutdown(): Promise<void> {
     await this.saveState('active_workflows', Array.from(this.workflows.values()));
     await this.saveState('agent_registry', Array.from(this.agents.values()));
+
+    // Phase 13: Properly shutdown all agent instances
+    await this.shutdownAgents();
   }
 
   /**
@@ -251,8 +263,8 @@ export class OrchestratorAgent extends BaseAgent {
       workflow.updatedAt = Date.now();
 
       try {
-        // Route to agent (in real implementation, this would send A2A message)
-        const result = await this.routeToAgent(step.agent, lastResult, workflow.type);
+        // Route to agent with original input for context
+        const result = await this.routeToAgent(step.agent, lastResult, workflow.type, workflow.input);
 
         step.status = 'completed';
         step.completedAt = Date.now();
@@ -318,52 +330,207 @@ export class OrchestratorAgent extends BaseAgent {
   }
 
   /**
-   * Route work to a specific agent
+   * Agent instances (lazy initialized)
    */
-  private async routeToAgent(agentName: string, _input: unknown, _workflowType: WorkflowType): Promise<unknown> {
-    // In real implementation, this would:
-    // 1. Create A2A message
-    // 2. Send to agent's message queue
-    // 3. Wait for response
-    // 4. Return result
+  private agentInstances: Map<string, BaseAgent> = new Map();
 
-    // For now, return mock result indicating routing happened
-    const mockResults: Record<string, unknown> = {
-      triage: {
-        overallComplexity: 5,
-        riskLevel: 'medium',
-        routeDecision: 'agent-resolve',
-        estimatedTimeSec: 120,
-        explanation: 'Moderate complexity conflict requiring agent resolution',
-        fileComplexities: [],
-      },
-      resolver: {
-        resolution: {
-          file: 'example.ts',
-          resolvedContent: '// Resolved content',
-          explanation: 'Merged both changes',
-          confidence: 85,
-          strategy: 'merge-both',
-        },
-        tokensUsed: { input: 1000, output: 500 },
-      },
-      reviewer: {
-        review: {
-          approved: true,
-          syntaxValid: true,
-          codeLossDetected: false,
-          securityIssues: [],
-          suggestions: [],
-          confidence: 90,
-        },
-        shouldEscalate: false,
+  /**
+   * Get or create an agent instance
+   */
+  private async getAgentInstance(agentName: string): Promise<BaseAgent> {
+    // Check cache first
+    let agent = this.agentInstances.get(agentName);
+    if (agent) {
+      return agent;
+    }
+
+    // Create new agent instance
+    switch (agentName) {
+      case 'triage':
+        agent = new TriageAgent();
+        break;
+      case 'resolver':
+        agent = new ResolverAgent();
+        break;
+      case 'reviewer':
+        agent = new ReviewerAgent();
+        break;
+      case 'coder':
+        agent = new CoderAgent();
+        break;
+      default:
+        throw new Error(`Unknown agent: ${agentName}`);
+    }
+
+    // Initialize the agent
+    await agent.initialize();
+    this.agentInstances.set(agentName, agent);
+
+    return agent;
+  }
+
+  /**
+   * Route work to a specific agent
+   *
+   * Phase 13: Now calls REAL agent implementations
+   * Phase 2: Added input adapters for issue-to-code workflow
+   */
+  private async routeToAgent(
+    agentName: string,
+    input: unknown,
+    workflowType: WorkflowType,
+    originalInput?: unknown
+  ): Promise<unknown> {
+    const agent = await this.getAgentInstance(agentName);
+
+    // Map workflow context to agent-specific task types
+    const taskType = this.mapToTaskType(agentName, workflowType);
+
+    // Adapt input for the specific agent and workflow
+    const adaptedInput = this.adaptInputForAgent(agentName, input, workflowType, originalInput);
+
+    // Build the task payload
+    const payload: TaskRequestPayload = {
+      taskType,
+      input: adaptedInput,
+      context: {
+        workflowType,
+        timestamp: Date.now(),
       },
     };
 
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Create A2A message and handle via the agent
+    const message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      from: this.agentId,
+      to: agent.agentId,
+      type: 'task_request' as const,
+      payload,
+      timestamp: Date.now(),
+      priority: 'normal' as const,
+    };
 
-    return mockResults[agentName] || { status: 'completed' };
+    // Execute the task via agent's message handler
+    const response = await agent.handleMessage(message);
+
+    if (!response.payload.success) {
+      throw new Error(response.payload.error || `Agent ${agentName} failed`);
+    }
+
+    return response.payload.output;
+  }
+
+  /**
+   * Adapt input for specific agent based on workflow type
+   *
+   * This transforms data between agents to match their expected interfaces.
+   */
+  private adaptInputForAgent(
+    agentName: string,
+    input: unknown,
+    workflowType: WorkflowType,
+    originalInput?: unknown
+  ): unknown {
+    const typedInput = input as Record<string, unknown>;
+    const typedOriginal = (originalInput || input) as Record<string, unknown>;
+
+    // For issue-to-code workflow
+    if (workflowType === 'issue-to-code') {
+      switch (agentName) {
+        case 'triage':
+          // Triage expects { issue } for issue-to-code
+          if ('issue' in typedInput) {
+            return { issue: typedInput.issue, repoContext: typedInput.repoContext };
+          }
+          // Raw issue passed
+          if ('title' in typedInput && 'number' in typedInput) {
+            return { issue: typedInput };
+          }
+          return input;
+
+        case 'coder':
+          // Coder expects { issue, complexity, repoContext, preferences }
+          // Input here is triage output, original has the issue
+          const triageResult = typedInput as { overallComplexity?: number };
+          const issueData = typedOriginal.issue || typedOriginal;
+          return {
+            issue: issueData,
+            complexity: triageResult.overallComplexity || 5,
+            repoContext: typedOriginal.repoContext,
+            preferences: typedOriginal.preferences,
+          };
+
+        case 'reviewer':
+          // Reviewer expects code generation result for issue-to-code
+          // Input here is coder output { code, tokensUsed }
+          const coderResult = typedInput as { code?: unknown };
+          return {
+            codeResult: coderResult.code || coderResult,
+            issue: typedOriginal.issue || typedOriginal,
+            workflowType: 'issue-to-code',
+          };
+      }
+    }
+
+    // For pr-resolve workflow
+    if (workflowType === 'pr-resolve') {
+      switch (agentName) {
+        case 'triage':
+          // Triage expects { prMetadata, conflicts }
+          return input;
+
+        case 'resolver':
+          // Resolver expects triage output plus original PR data
+          return {
+            ...typedInput,
+            pr: typedOriginal.pr || typedOriginal.prMetadata,
+            conflicts: typedOriginal.conflicts,
+          };
+
+        case 'reviewer':
+          // Reviewer expects resolution result
+          return {
+            resolution: typedInput,
+            originalConflict: (typedOriginal.conflicts as unknown[])?.[0],
+          };
+      }
+    }
+
+    // Default: pass through unchanged
+    return input;
+  }
+
+  /**
+   * Map agent name and workflow type to task type
+   */
+  private mapToTaskType(agentName: string, workflowType: WorkflowType): string {
+    // Agent-specific task types based on workflow context
+    switch (agentName) {
+      case 'triage':
+        return 'triage';
+      case 'resolver':
+        return 'resolve';
+      case 'reviewer':
+        return 'review';
+      case 'coder':
+        return workflowType === 'test-gen' ? 'test' : 'code';
+      default:
+        return agentName;
+    }
+  }
+
+  /**
+   * Shutdown all agent instances
+   */
+  async shutdownAgents(): Promise<void> {
+    for (const [name, agent] of this.agentInstances) {
+      try {
+        await agent.shutdown();
+      } catch (err) {
+        console.warn(`Failed to shutdown agent ${name}:`, err);
+      }
+    }
+    this.agentInstances.clear();
   }
 
   /**
