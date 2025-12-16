@@ -48,3 +48,6 @@ Thumbs.db
 # Test artifacts
 __snapshots__/
 *.snap
+
+# Sandbox workspace (ephemeral, generated code artifacts)
+workspace/

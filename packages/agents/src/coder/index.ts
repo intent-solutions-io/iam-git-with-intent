@@ -1,7 +1,7 @@
 /**
  * Coder Agent for Git With Intent
  *
- * Phase 13: Code generation agent for Issue-to-Code workflow.
+ * Phase 4/13: Code generation agent for Issue-to-Code workflow.
  *
  * Generates code from issue descriptions:
  * - Analyzes issue requirements
@@ -9,12 +9,14 @@
  * - Generates implementation code
  * - Creates/modifies files as needed
  * - Optionally generates tests
+ * - Writes artifacts to sandboxed workspace (Phase 4)
  *
  * Uses Claude Sonnet for standard tasks, Opus for complex implementations.
  *
  * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
  */
 
+import { mkdir, writeFile } from 'fs/promises';
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
 import {
   type TaskRequestPayload,
@@ -22,6 +24,10 @@ import {
   type IssueMetadata,
   type CodeGenerationResult,
   type ComplexityScore,
+  getRunWorkspaceDir,
+  getRunArtifactPaths,
+  getPatchFilePath,
+  type RunArtifacts,
 } from '@gwi/core';
 
 /**
@@ -55,6 +61,30 @@ export interface CoderOutput {
   code: CodeGenerationResult;
   /** Tokens used */
   tokensUsed: { input: number; output: number };
+}
+
+/**
+ * Extended coder input with runId for workspace file I/O
+ */
+export interface CoderRunInput extends CoderInput {
+  /** Unique run identifier for workspace path */
+  runId: string;
+  /** Repository reference */
+  repoRef?: {
+    owner: string;
+    name: string;
+    branch?: string;
+  };
+  /** Summary from triage agent */
+  triageSummary?: string;
+}
+
+/**
+ * Extended coder output with workspace artifact paths
+ */
+export interface CoderRunOutput extends CoderOutput {
+  /** Workspace artifacts */
+  artifacts: RunArtifacts;
 }
 
 /**
@@ -228,6 +258,101 @@ export class CoderAgent extends BaseAgent {
       code: result,
       tokensUsed: { input: 0, output: 0 }, // TODO: Track from response
     };
+  }
+
+  /**
+   * Generate code and write artifacts to workspace (Phase 4)
+   *
+   * This is the main entry point for the issue-to-code workflow.
+   * It generates code via LLM and writes all artifacts to the sandbox.
+   *
+   * @param input - Extended input with runId for workspace path
+   * @returns Extended output with artifact paths
+   */
+  async generateCodeWithArtifacts(input: CoderRunInput): Promise<CoderRunOutput> {
+    const { runId, triageSummary } = input;
+
+    // Generate code using the base method
+    const output = await this.generateCode(input);
+
+    // Create workspace directory
+    const runDir = getRunWorkspaceDir(runId);
+    await mkdir(runDir, { recursive: true });
+
+    // Write plan.md
+    const { planPath } = getRunArtifactPaths(runId);
+    const planContent = this.formatPlan(output.code, triageSummary);
+    await writeFile(planPath, planContent, 'utf-8');
+
+    // Write patch files for each generated file
+    const patchPaths: string[] = [];
+    for (let i = 0; i < output.code.files.length; i++) {
+      const file = output.code.files[i];
+      const patchPath = getPatchFilePath(runId, i + 1);
+      const patchContent = this.formatPatch(file);
+      await writeFile(patchPath, patchContent, 'utf-8');
+      patchPaths.push(patchPath);
+    }
+
+    return {
+      ...output,
+      artifacts: {
+        planPath,
+        patchPaths,
+        notes: `Generated ${output.code.files.length} file(s) with ${output.code.confidence}% confidence`,
+      },
+    };
+  }
+
+  /**
+   * Format the plan.md content
+   */
+  private formatPlan(code: CodeGenerationResult, triageSummary?: string): string {
+    const lines: string[] = [
+      '# Code Generation Plan',
+      '',
+      `**Generated:** ${new Date().toISOString()}`,
+      `**Confidence:** ${code.confidence}%`,
+      `**Estimated Complexity:** ${code.estimatedComplexity}/10`,
+      `**Tests Included:** ${code.testsIncluded ? 'Yes' : 'No'}`,
+      '',
+    ];
+
+    if (triageSummary) {
+      lines.push('## Triage Summary', '', triageSummary, '');
+    }
+
+    lines.push('## Summary', '', code.summary, '');
+
+    lines.push('## Files to Generate', '');
+    for (const file of code.files) {
+      lines.push(`### ${file.path}`);
+      lines.push(`- **Action:** ${file.action}`);
+      lines.push(`- **Explanation:** ${file.explanation}`);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Format a patch file content
+   */
+  private formatPatch(file: CodeGenerationResult['files'][0]): string {
+    const lines: string[] = [
+      `# Patch for: ${file.path}`,
+      `# Action: ${file.action}`,
+      `# Explanation: ${file.explanation}`,
+      '',
+      '--- /dev/null' + (file.action === 'create' ? '' : ` (${file.action})`),
+      `+++ ${file.path}`,
+      '',
+      '```',
+      file.content,
+      '```',
+    ];
+
+    return lines.join('\n');
   }
 
   /**

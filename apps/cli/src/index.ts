@@ -38,6 +38,7 @@ import { reviewCommand } from './commands/review.js';
 import { autopilotCommand } from './commands/autopilot.js';
 import { statusCommand } from './commands/status.js';
 import { initCommand } from './commands/init.js';
+import { issueToCodeCommand } from './commands/issue-to-code.js';
 import {
   workflowStartCommand,
   workflowListCommand,
@@ -143,6 +144,24 @@ program
   .action(async (prUrl, options) => {
     try {
       await autopilotCommand(prUrl, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Issue-to-code command - generate code from GitHub issue
+program
+  .command('issue-to-code <issue-url>')
+  .description('Generate code from a GitHub issue (Phase 4)')
+  .option('-d, --dry-run', 'Run without calling LLMs (creates mock artifacts)')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .option('--skip-triage', 'Skip triage step')
+  .option('--complexity <n>', 'Use specific complexity (1-10, requires --skip-triage)', parseInt)
+  .action(async (issueUrl, options) => {
+    try {
+      await issueToCodeCommand(issueUrl, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -392,9 +411,18 @@ program.addHelpText('after', `
 Examples:
   $ gwi init                                        # Initialize in repo
   $ gwi triage https://github.com/owner/repo/pull/123
-  $ gwi workflow start issue-to-code --issue-url <url>
+  $ gwi issue-to-code https://github.com/owner/repo/issues/123
+  $ gwi issue-to-code owner/repo#123 --dry-run
   $ gwi workflow list
   $ gwi config show
+
+Issue-to-Code Workflow:
+  gwi issue-to-code <issue-url>          Generate code from GitHub issue
+  gwi issue-to-code <url> --dry-run      Run without LLM calls (testing)
+
+  Output: Artifacts written to workspace/runs/<run-id>/
+    - plan.md:        Change plan from LLM
+    - patch-*.txt:    Proposed code changes
 
 PR Resolution Workflow:
   1. gwi triage   - Analyze complexity (optional, autopilot includes this)

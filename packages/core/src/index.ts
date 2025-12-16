@@ -43,6 +43,9 @@ export * from './plugins/index.js';
 // Billing exports (Phase 15: Launch Prep)
 export * from './billing/index.js';
 
+// Workspace exports (Phase 4: Sandboxed workspace for code generation)
+export * from './workspace.js';
+
 // Optional internal tools (require GWI_USE_AGENTFS=true or GWI_USE_BEADS=true)
 export * from './agentfs/index.js';
 export * from './beads/index.js';
