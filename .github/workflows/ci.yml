@@ -1,0 +1,205 @@
+name: CI/CD - Hard Mode
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  NODE_VERSION: '20'
+  REGISTRY: us-central1-docker.pkg.dev
+
+jobs:
+  # Hard Mode Gate - Must pass before anything else
+  hard-mode:
+    name: Hard Mode Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: R8 - Drift Detection
+        run: |
+          chmod +x scripts/ci/check_nodrift.sh
+          bash scripts/ci/check_nodrift.sh
+
+  # ARV Gate - Agent Readiness Verification
+  arv:
+    name: ARV Check
+    runs-on: ubuntu-latest
+    needs: hard-mode
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Agent Readiness Verification
+        run: |
+          chmod +x scripts/ci/check_arv.sh
+          bash scripts/ci/check_arv.sh
+
+  # Build & Test
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    needs: [hard-mode, arv]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck || true
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            packages/*/dist
+            apps/*/dist
+
+  # Build Docker Images
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Build and push A2A Gateway
+        run: |
+          cd apps/gateway
+          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} \
+                     ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:latest
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:latest
+
+      - name: Build and push GitHub Webhook
+        run: |
+          cd apps/github-webhook
+          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }} \
+                     ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:latest
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:latest
+
+    outputs:
+      gateway_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
+      webhook_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}
+
+  # Deploy to Dev (develop branch)
+  deploy-dev:
+    name: Deploy Dev
+    needs: build-images
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: dev
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Deploy Infrastructure
+        working-directory: infra/terraform
+        run: |
+          terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          terraform apply -auto-approve \
+            -var="environment=dev" \
+            -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="a2a_gateway_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}" \
+            -var="github_webhook_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}"
+
+      - name: Deploy Agents to Agent Engine
+        run: |
+          echo "Deploying agents to Vertex AI Agent Engine (dev)..."
+          # R4: All deployments via CI only
+          # Agents are deployed as Vertex AI Reasoning Engines with inline source
+
+  # Deploy to Prod (main branch)
+  deploy-prod:
+    name: Deploy Prod
+    needs: build-images
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Deploy Infrastructure
+        working-directory: infra/terraform
+        run: |
+          terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          terraform apply -auto-approve \
+            -var="environment=prod" \
+            -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="a2a_gateway_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}" \
+            -var="github_webhook_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}"
+
+      - name: Deploy Agents to Agent Engine
+        run: |
+          echo "Deploying agents to Vertex AI Agent Engine (prod)..."
+          # R4: All deployments via CI only

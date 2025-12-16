@@ -1,0 +1,38 @@
+{
+  "name": "@gwi/integrations",
+  "version": "0.1.0",
+  "description": "External integrations for Git With Intent: GitHub, GitLab, Slack",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./github": {
+      "types": "./dist/github/index.d.ts",
+      "import": "./dist/github/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@gwi/core": "*",
+    "octokit": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  }
+}

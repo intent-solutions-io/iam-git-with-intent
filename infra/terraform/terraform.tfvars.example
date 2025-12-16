@@ -1,0 +1,26 @@
+# Git With Intent - Terraform Configuration
+# Copy to terraform.tfvars and fill in values
+
+# Required
+project_id  = "your-gcp-project-id"
+environment = "dev"  # dev, staging, prod
+
+# Docker images (set by CI, or override for local testing)
+a2a_gateway_image    = "us-central1-docker.pkg.dev/PROJECT/gwi/gateway:latest"
+github_webhook_image = "us-central1-docker.pkg.dev/PROJECT/gwi/github-webhook:latest"
+
+# Optional - GitHub Integration
+github_app_id            = ""
+github_webhook_secret_id = "gwi-github-webhook-secret"
+
+# Optional - Networking
+allow_public_access = false
+
+# Optional - Scaling
+gateway_max_instances = 10
+
+# Optional - Labels
+labels = {
+  team        = "devops"
+  cost-center = "engineering"
+}

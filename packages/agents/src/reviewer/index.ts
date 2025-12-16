@@ -1,0 +1,506 @@
+/**
+ * Reviewer Agent for Git With Intent
+ *
+ * [Task: git-with-intent-7lx]
+ *
+ * Validates resolutions from Resolver Agent.
+ * Checks: syntax, code loss, security issues.
+ *
+ * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
+ */
+
+import { BaseAgent, type AgentConfig } from '../base/agent.js';
+import { type TaskRequestPayload, MODELS } from '@gwi/core';
+import type { ResolutionResult, ReviewResult, ConflictInfo } from '@gwi/core';
+
+/**
+ * Reviewer input
+ */
+export interface ReviewerInput {
+  resolution: ResolutionResult;
+  originalConflict: ConflictInfo;
+}
+
+/**
+ * Reviewer output
+ */
+export interface ReviewerOutput {
+  review: ReviewResult;
+  shouldEscalate: boolean;
+  escalationReason?: string;
+}
+
+/**
+ * Review history entry
+ */
+interface ReviewHistoryEntry {
+  file: string;
+  approved: boolean;
+  issues: string[];
+  timestamp: number;
+}
+
+/**
+ * Reviewer agent configuration
+ */
+const REVIEWER_CONFIG: AgentConfig = {
+  name: 'reviewer',
+  description: 'Validates merge conflict resolutions for correctness and security',
+  capabilities: ['syntax-check', 'code-loss-detection', 'security-scan', 'quality-review'],
+  defaultModel: {
+    provider: 'anthropic',
+    model: MODELS.anthropic.sonnet,
+    maxTokens: 4096,
+  },
+};
+
+/**
+ * System prompt for code review
+ */
+const REVIEWER_SYSTEM_PROMPT = `You are the Reviewer Agent for Git With Intent, an AI-powered DevOps automation platform.
+
+Your role is to validate merge conflict resolutions by checking:
+
+## 1. Syntax Validation
+- Does the resolved code have valid syntax?
+- Are all brackets, braces, parentheses matched?
+- Are all strings properly closed?
+- Are imports valid?
+
+## 2. Code Loss Detection
+- Compare resolved content against BOTH sides of the conflict
+- Flag if any non-conflicting code was lost
+- Flag if any function/class was completely removed
+- Verify all imports from both sides are preserved (unless truly conflicting)
+
+## 3. Security Scan
+- Check for hardcoded secrets/credentials
+- Check for SQL injection vulnerabilities
+- Check for XSS vulnerabilities
+- Check for unsafe eval/exec usage
+- Check for exposed sensitive data
+
+## 4. Logic Validation
+- Does the resolution make semantic sense?
+- Are there obvious logic errors?
+- Is the merged code coherent?
+
+## Output Format
+
+Respond with a JSON object:
+{
+  "approved": true/false,
+  "syntaxValid": true/false,
+  "codeLossDetected": true/false,
+  "securityIssues": ["issue1", "issue2"],
+  "suggestions": ["suggestion1"],
+  "confidence": 85,
+  "reasoning": "Explanation of the review decision"
+}
+
+## Critical Rules
+
+1. Be STRICT about code loss - this is the most critical check
+2. Be STRICT about syntax - invalid syntax = automatic rejection
+3. Security issues are warnings unless critical
+4. When in doubt, flag for human review (approved: false)
+5. Confidence < 70 should always set approved: false`;
+
+/**
+ * Reviewer Agent Implementation
+ */
+export class ReviewerAgent extends BaseAgent {
+  /** Review history */
+  private history: ReviewHistoryEntry[] = [];
+
+  /** Known security patterns */
+  private securityPatterns: RegExp[] = [
+    /password\s*=\s*['"][^'"]+['"]/i,
+    /api[_-]?key\s*=\s*['"][^'"]+['"]/i,
+    /secret\s*=\s*['"][^'"]+['"]/i,
+    /token\s*=\s*['"][^'"]+['"]/i,
+    /eval\s*\(/,
+    /exec\s*\(/,
+    /innerHTML\s*=/,
+    /document\.write\s*\(/,
+    /\$\{.*\}.*sql/i,
+  ];
+
+  constructor() {
+    super(REVIEWER_CONFIG);
+  }
+
+  /**
+   * Initialize - load history from AgentFS
+   */
+  protected async onInitialize(): Promise<void> {
+    const history = await this.loadState<ReviewHistoryEntry[]>('review_history');
+    if (history) {
+      this.history = history;
+    }
+  }
+
+  /**
+   * Shutdown - persist state
+   */
+  protected async onShutdown(): Promise<void> {
+    await this.saveState('review_history', this.history);
+  }
+
+  /**
+   * Process a review request
+   */
+  protected async processTask(payload: TaskRequestPayload): Promise<ReviewerOutput> {
+    if (payload.taskType !== 'review') {
+      throw new Error(`Unsupported task type: ${payload.taskType}`);
+    }
+
+    const input = payload.input as ReviewerInput;
+    return this.review(input.resolution, input.originalConflict);
+  }
+
+  /**
+   * Review a resolution
+   */
+  async review(
+    resolution: ResolutionResult,
+    originalConflict: ConflictInfo
+  ): Promise<ReviewerOutput> {
+    // Quick checks first (no LLM needed)
+    const quickChecks = this.performQuickChecks(resolution, originalConflict);
+
+    // If quick checks fail badly, don't even call LLM
+    if (!quickChecks.syntaxValid || quickChecks.criticalSecurityIssue) {
+      const review: ReviewResult = {
+        approved: false,
+        syntaxValid: quickChecks.syntaxValid,
+        codeLossDetected: quickChecks.codeLossDetected,
+        securityIssues: quickChecks.securityIssues,
+        suggestions: quickChecks.suggestions,
+        confidence: 95,
+      };
+
+      this.recordReview(resolution.file, review);
+
+      return {
+        review,
+        shouldEscalate: true,
+        escalationReason: quickChecks.syntaxValid
+          ? 'Critical security issue detected'
+          : 'Syntax validation failed',
+      };
+    }
+
+    // Deep review with LLM
+    const context = this.buildContext(resolution, originalConflict);
+
+    const response = await this.chat({
+      model: this.config.defaultModel,
+      messages: [
+        { role: 'system', content: REVIEWER_SYSTEM_PROMPT },
+        { role: 'user', content: context },
+      ],
+      temperature: 0.2, // Very low for consistent reviews
+    });
+
+    const review = this.parseResponse(response, quickChecks);
+
+    // Record in history
+    this.recordReview(resolution.file, review);
+
+    // Determine escalation
+    const shouldEscalate =
+      !review.approved ||
+      review.confidence < 70 ||
+      review.securityIssues.length > 0 ||
+      review.codeLossDetected;
+
+    return {
+      review,
+      shouldEscalate,
+      escalationReason: shouldEscalate ? this.getEscalationReason(review) : undefined,
+    };
+  }
+
+  /**
+   * Perform quick checks without LLM
+   */
+  private performQuickChecks(
+    resolution: ResolutionResult,
+    originalConflict: ConflictInfo
+  ): {
+    syntaxValid: boolean;
+    codeLossDetected: boolean;
+    securityIssues: string[];
+    suggestions: string[];
+    criticalSecurityIssue: boolean;
+  } {
+    const securityIssues: string[] = [];
+    const suggestions: string[] = [];
+    let criticalSecurityIssue = false;
+
+    // Basic syntax check (bracket matching)
+    const syntaxValid = this.checkBasicSyntax(resolution.resolvedContent);
+
+    // Code loss detection
+    const codeLossDetected = this.detectCodeLoss(
+      resolution.resolvedContent,
+      originalConflict
+    );
+
+    if (codeLossDetected) {
+      suggestions.push('Potential code loss detected - verify all changes are preserved');
+    }
+
+    // Security pattern check
+    for (const pattern of this.securityPatterns) {
+      if (pattern.test(resolution.resolvedContent)) {
+        const issue = `Security pattern detected: ${pattern.source}`;
+        securityIssues.push(issue);
+
+        // Hardcoded credentials are critical
+        if (/password|secret|api[_-]?key|token/i.test(pattern.source)) {
+          criticalSecurityIssue = true;
+        }
+      }
+    }
+
+    return {
+      syntaxValid,
+      codeLossDetected,
+      securityIssues,
+      suggestions,
+      criticalSecurityIssue,
+    };
+  }
+
+  /**
+   * Basic syntax validation (bracket matching)
+   */
+  private checkBasicSyntax(content: string): boolean {
+    const brackets: Record<string, string> = {
+      '(': ')',
+      '[': ']',
+      '{': '}',
+    };
+    const stack: string[] = [];
+    let inString = false;
+    let stringChar = '';
+
+    for (let i = 0; i < content.length; i++) {
+      const char = content[i];
+      const prevChar = i > 0 ? content[i - 1] : '';
+
+      // Handle string literals
+      if ((char === '"' || char === "'" || char === '`') && prevChar !== '\\') {
+        if (!inString) {
+          inString = true;
+          stringChar = char;
+        } else if (char === stringChar) {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (inString) continue;
+
+      // Handle brackets
+      if (brackets[char]) {
+        stack.push(brackets[char]);
+      } else if (Object.values(brackets).includes(char)) {
+        if (stack.pop() !== char) {
+          return false;
+        }
+      }
+    }
+
+    return stack.length === 0 && !inString;
+  }
+
+  /**
+   * Detect potential code loss
+   */
+  private detectCodeLoss(resolved: string, original: ConflictInfo): boolean {
+    // Extract significant tokens from both sides
+    const oursTokens = this.extractSignificantTokens(original.oursContent);
+    const theirsTokens = this.extractSignificantTokens(original.theirsContent);
+    const resolvedTokens = this.extractSignificantTokens(resolved);
+
+    // Check if significant tokens from either side are missing
+    const missingFromOurs = oursTokens.filter(
+      (t) => !resolvedTokens.includes(t) && !theirsTokens.includes(t)
+    );
+    const missingFromTheirs = theirsTokens.filter(
+      (t) => !resolvedTokens.includes(t) && !oursTokens.includes(t)
+    );
+
+    // If unique tokens from either side are missing, flag code loss
+    return missingFromOurs.length > 2 || missingFromTheirs.length > 2;
+  }
+
+  /**
+   * Extract significant tokens (function names, class names, etc.)
+   */
+  private extractSignificantTokens(content: string): string[] {
+    const tokens: string[] = [];
+
+    // Function declarations
+    const funcMatches = content.match(/function\s+(\w+)/g) || [];
+    tokens.push(...funcMatches.map((m) => m.replace('function ', '')));
+
+    // Class declarations
+    const classMatches = content.match(/class\s+(\w+)/g) || [];
+    tokens.push(...classMatches.map((m) => m.replace('class ', '')));
+
+    // Const/let/var declarations
+    const varMatches = content.match(/(?:const|let|var)\s+(\w+)/g) || [];
+    tokens.push(...varMatches.map((m) => m.split(/\s+/)[1]));
+
+    // Import names
+    const importMatches = content.match(/import\s+\{([^}]+)\}/g) || [];
+    for (const match of importMatches) {
+      const names = match.replace(/import\s+\{|\}/g, '').split(',');
+      tokens.push(...names.map((n) => n.trim()));
+    }
+
+    return [...new Set(tokens)];
+  }
+
+  /**
+   * Build context for LLM review
+   */
+  private buildContext(resolution: ResolutionResult, conflict: ConflictInfo): string {
+    return `## Code Review Request
+
+**File:** ${resolution.file}
+**Resolution Strategy:** ${resolution.strategy}
+**Resolver Confidence:** ${resolution.confidence}%
+
+### Original Conflict (Ours - HEAD)
+\`\`\`
+${conflict.oursContent.slice(0, 2000)}${conflict.oursContent.length > 2000 ? '\n...(truncated)' : ''}
+\`\`\`
+
+### Original Conflict (Theirs - Base)
+\`\`\`
+${conflict.theirsContent.slice(0, 2000)}${conflict.theirsContent.length > 2000 ? '\n...(truncated)' : ''}
+\`\`\`
+
+### Resolved Content
+\`\`\`
+${resolution.resolvedContent.slice(0, 3000)}${resolution.resolvedContent.length > 3000 ? '\n...(truncated)' : ''}
+\`\`\`
+
+### Resolver's Explanation
+${resolution.explanation}
+
+Please review this resolution and provide your assessment as a JSON object.`;
+  }
+
+  /**
+   * Parse LLM response
+   */
+  private parseResponse(
+    response: string,
+    quickChecks: ReturnType<typeof this.performQuickChecks>
+  ): ReviewResult {
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Merge with quick checks (quick checks are authoritative for security)
+      return {
+        approved: parsed.approved && quickChecks.syntaxValid && !quickChecks.criticalSecurityIssue,
+        syntaxValid: quickChecks.syntaxValid && (parsed.syntaxValid !== false),
+        codeLossDetected: quickChecks.codeLossDetected || parsed.codeLossDetected,
+        securityIssues: [
+          ...quickChecks.securityIssues,
+          ...(parsed.securityIssues || []),
+        ],
+        suggestions: [
+          ...quickChecks.suggestions,
+          ...(parsed.suggestions || []),
+        ],
+        confidence: Math.min(parsed.confidence || 50, quickChecks.syntaxValid ? 100 : 20),
+      };
+    } catch {
+      // Fallback - conservative review
+      return {
+        approved: false,
+        syntaxValid: quickChecks.syntaxValid,
+        codeLossDetected: quickChecks.codeLossDetected,
+        securityIssues: quickChecks.securityIssues,
+        suggestions: ['LLM review failed - manual review required'],
+        confidence: 30,
+      };
+    }
+  }
+
+  /**
+   * Get escalation reason
+   */
+  private getEscalationReason(review: ReviewResult): string {
+    if (!review.syntaxValid) return 'Syntax validation failed';
+    if (review.codeLossDetected) return 'Potential code loss detected';
+    if (review.securityIssues.length > 0) return `Security issues: ${review.securityIssues.join(', ')}`;
+    if (review.confidence < 70) return `Low confidence (${review.confidence}%)`;
+    if (!review.approved) return 'Review not approved';
+    return 'Unknown reason';
+  }
+
+  /**
+   * Record review in history
+   */
+  private recordReview(file: string, review: ReviewResult): void {
+    this.history.push({
+      file,
+      approved: review.approved,
+      issues: [...review.securityIssues, ...(review.codeLossDetected ? ['code_loss'] : [])],
+      timestamp: Date.now(),
+    });
+
+    // Keep bounded
+    if (this.history.length > 500) {
+      this.history = this.history.slice(-500);
+    }
+
+    // Persist
+    this.saveState('review_history', this.history);
+  }
+
+  /**
+   * Get review statistics
+   */
+  async getStats(): Promise<{
+    total: number;
+    approved: number;
+    rejected: number;
+    commonIssues: Record<string, number>;
+  }> {
+    const commonIssues: Record<string, number> = {};
+
+    for (const entry of this.history) {
+      for (const issue of entry.issues) {
+        commonIssues[issue] = (commonIssues[issue] || 0) + 1;
+      }
+    }
+
+    return {
+      total: this.history.length,
+      approved: this.history.filter((e) => e.approved).length,
+      rejected: this.history.filter((e) => !e.approved).length,
+      commonIssues,
+    };
+  }
+}
+
+/**
+ * Create a Reviewer Agent instance
+ */
+export function createReviewerAgent(): ReviewerAgent {
+  return new ReviewerAgent();
+}

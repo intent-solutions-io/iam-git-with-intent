@@ -1,0 +1,34 @@
+{
+  "$schema": "https://a2a.dev/schemas/agent-card-v1.json",
+  "id": "spiffe://intent.solutions/agent/gwi/triage",
+  "name": "GWI Triage Agent",
+  "description": "Fast complexity analysis and routing. Uses Gemini Flash for quick classification of PRs, issues, and conflicts.",
+  "version": "0.1.0",
+  "capabilities": [
+    "complexity-analysis",
+    "routing-decision",
+    "risk-assessment",
+    "time-estimation"
+  ],
+  "endpoints": {
+    "a2a": "/a2a/triage",
+    "health": "/health"
+  },
+  "models": {
+    "default": "gemini-2.0-flash"
+  },
+  "inputs": {
+    "pr": "PRMetadata - Pull request with conflicts",
+    "issue": "GitHubIssue - Issue to analyze"
+  },
+  "outputs": {
+    "complexity": "1-10 score",
+    "riskLevel": "low|medium|high",
+    "routeDecision": "auto-resolve|agent-resolve|human-required",
+    "estimatedTimeSec": "number"
+  },
+  "metadata": {
+    "owner": "Intent Solutions",
+    "contact": "jeremy@intentsolutions.io"
+  }
+}

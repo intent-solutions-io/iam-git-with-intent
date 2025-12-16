@@ -1,0 +1,59 @@
+{
+  "name": "@gwi/core",
+  "version": "0.1.0",
+  "description": "Core utilities for Git With Intent: AgentFS, Beads, A2A, Models",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./agentfs": {
+      "types": "./dist/agentfs/index.d.ts",
+      "import": "./dist/agentfs/index.js"
+    },
+    "./beads": {
+      "types": "./dist/beads/index.d.ts",
+      "import": "./dist/beads/index.js"
+    },
+    "./a2a": {
+      "types": "./dist/a2a/index.d.ts",
+      "import": "./dist/a2a/index.js"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "import": "./dist/models/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@google/generative-ai": "^0.21.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  },
+  "peerDependencies": {
+    "agentfs-sdk": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "agentfs-sdk": {
+      "optional": true
+    }
+  }
+}
