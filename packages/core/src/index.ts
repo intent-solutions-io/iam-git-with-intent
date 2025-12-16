@@ -31,6 +31,18 @@ export type {
   ReviewResult,
 } from './types.js';
 
+// Security exports (Phase 11: Production-ready RBAC and plan enforcement)
+export * from './security/index.js';
+
+// Workflow exports (Phase 13: Multi-agent workflow definitions)
+export * from './workflows/index.js';
+
+// Plugin system exports (Phase 14: Extensibility)
+export * from './plugins/index.js';
+
+// Billing exports (Phase 15: Launch Prep)
+export * from './billing/index.js';
+
 // Optional internal tools (require GWI_USE_AGENTFS=true or GWI_USE_BEADS=true)
 export * from './agentfs/index.js';
 export * from './beads/index.js';

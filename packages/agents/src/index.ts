@@ -10,3 +10,4 @@ export * from './orchestrator/index.js';
 export * from './triage/index.js';
 export * from './resolver/index.js';
 export * from './reviewer/index.js';
+export * from './coder/index.js';

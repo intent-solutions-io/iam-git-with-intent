@@ -44,6 +44,8 @@ export {
 } from './firestore-client.js';
 export { FirestoreTenantStore } from './firestore-tenant.js';
 export { FirestoreRunStore } from './firestore-run.js';
+export { FirestoreMembershipStore, getMembershipStore } from './firestore-membership.js';
+export { FirestoreUserStore, getUserStore } from './firestore-user.js';
 
 import type { StoreFactory, StorageConfig, TenantStore, RunStore } from './interfaces.js';
 import { getStorageConfig } from './interfaces.js';

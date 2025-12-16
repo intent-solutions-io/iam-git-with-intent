@@ -12,7 +12,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { createGitHubClient } from '@gwi/integrations';
 import { createTriageAgent } from '@gwi/agents';
-import { getDefaultStoreFactory } from '@gwi/core/storage';
+import { getDefaultStoreFactory } from '@gwi/core';
 import type { PRMetadata, ConflictInfo } from '@gwi/core';
 
 export interface TriageOptions {
@@ -121,7 +121,7 @@ export async function triageCommand(
       prId: pr.id,
       prNumber: pr.number,
       title: pr.title,
-      repository: pr.repository,
+      repository: `${pr.owner}/${pr.repo}`,
       overallComplexity,
       riskLevel,
       routeDecision,
@@ -134,14 +134,10 @@ export async function triageCommand(
     if (options.save !== false) {
       const factory = getDefaultStoreFactory();
       const prStore = factory.createPRStore();
-      await prStore.savePR({
-        ...pr,
-        status: 'triaged',
-        metadata: {
-          triageResult: result,
-          triagedAt: Date.now(),
-        },
-      });
+      // Save the PR metadata (without custom fields)
+      await prStore.savePR(pr);
+      // Save conflicts separately
+      await prStore.saveConflicts(pr.id, pr.conflicts);
     }
 
     // Output results

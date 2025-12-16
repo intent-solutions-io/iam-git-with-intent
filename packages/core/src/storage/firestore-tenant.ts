@@ -42,6 +42,7 @@ interface TenantDoc {
   installationId: number;
   installedAt: Timestamp;
   installedBy: string;
+  status: string;  // Phase 11: tenant status
   plan: string;
   planLimits: {
     runsPerMonth: number;
@@ -142,6 +143,7 @@ function tenantDocToModel(doc: TenantDoc): Tenant {
     installationId: doc.installationId,
     installedAt: timestampToDate(doc.installedAt)!,
     installedBy: doc.installedBy,
+    status: (doc.status || 'active') as Tenant['status'],  // Phase 11: default to active for backward compatibility
     plan: doc.plan as Tenant['plan'],
     planLimits: doc.planLimits,
     settings: doc.settings as Tenant['settings'],
@@ -161,6 +163,7 @@ function tenantModelToDoc(tenant: Tenant): TenantDoc {
     installationId: tenant.installationId,
     installedAt: dateToTimestamp(tenant.installedAt)!,
     installedBy: tenant.installedBy,
+    status: tenant.status,  // Phase 11: tenant status
     plan: tenant.plan,
     planLimits: tenant.planLimits,
     settings: tenant.settings,

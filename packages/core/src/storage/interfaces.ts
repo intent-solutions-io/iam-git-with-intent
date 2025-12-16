@@ -148,6 +148,11 @@ export type PlanTier = 'free' | 'team' | 'pro' | 'enterprise';
 export type RiskMode = 'comment_only' | 'suggest_patch' | 'auto_patch' | 'auto_push';
 
 /**
+ * Tenant status
+ */
+export type TenantStatus = 'active' | 'suspended' | 'deactivated';
+
+/**
  * Tenant (GitHub org installation)
  */
 export interface Tenant {
@@ -160,6 +165,9 @@ export interface Tenant {
   installationId: number;
   installedAt: Date;
   installedBy: string;           // userId
+
+  // Status (Phase 11: for suspension/deactivation)
+  status: TenantStatus;
 
   // Plan
   plan: PlanTier;
@@ -465,6 +473,7 @@ export interface UserStore {
   createUser(user: Omit<User, 'createdAt' | 'updatedAt'>): Promise<User>;
   getUser(userId: string): Promise<User | null>;
   getUserByGitHubId(githubUserId: number): Promise<User | null>;
+  getUserByEmail(email: string): Promise<User | null>;
   updateUser(userId: string, update: Partial<User>): Promise<User>;
   deleteUser(userId: string): Promise<void>;
 }

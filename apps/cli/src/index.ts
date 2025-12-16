@@ -7,6 +7,7 @@
  * Handles PRs, merge conflicts, and issue-to-PR workflows.
  *
  * Commands:
+ *   gwi init               Initialize GWI in a repository
  *   gwi triage [pr-url]    Analyze PR complexity and routing
  *   gwi plan [pr-url]      Generate resolution plan
  *   gwi resolve <pr-url>   Full conflict resolution workflow
@@ -15,6 +16,11 @@
  *   gwi diff [pr-url]      Analyze PR conflicts with AI
  *   gwi apply [pr-url]     Apply AI-generated resolutions
  *   gwi status             Show agent status
+ *   gwi workflow <cmd>     Manage multi-agent workflows
+ *   gwi config <cmd>       Manage CLI configuration
+ *
+ * Phase 14: Enhanced CLI with workflow management, configuration,
+ * and improved developer experience.
  *
  * IMPORTANT: This CLI works without AgentFS or Beads.
  * It uses pluggable storage (SQLite by default).
@@ -31,6 +37,21 @@ import { resolveCommand } from './commands/resolve.js';
 import { reviewCommand } from './commands/review.js';
 import { autopilotCommand } from './commands/autopilot.js';
 import { statusCommand } from './commands/status.js';
+import { initCommand } from './commands/init.js';
+import {
+  workflowStartCommand,
+  workflowListCommand,
+  workflowStatusCommand,
+  workflowApproveCommand,
+  workflowRejectCommand,
+} from './commands/workflow.js';
+import {
+  configShowCommand,
+  configSetCommand,
+  configGetCommand,
+  configResetCommand,
+  configListCommand,
+} from './commands/config.js';
 
 const program = new Command();
 
@@ -129,6 +150,188 @@ program
   });
 
 // =============================================================================
+// Project Setup Commands
+// =============================================================================
+
+// Init command - initialize GWI in a repository
+program
+  .command('init')
+  .description('Initialize Git With Intent in the current repository')
+  .option('-f, --force', 'Reinitialize even if already initialized')
+  .option('--minimal', 'Create minimal configuration')
+  .option('--tenant <id>', 'Set tenant ID')
+  .option('--workflow <type>', 'Enable specific workflow (issue-to-code, pr-resolve, pr-review, all)')
+  .action(async (options) => {
+    try {
+      await initCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Workflow Commands
+// =============================================================================
+
+const workflowCmd = program
+  .command('workflow')
+  .description('Manage multi-agent workflows');
+
+workflowCmd
+  .command('start <type>')
+  .description('Start a new workflow (issue-to-code, pr-resolve, pr-review, test-gen, docs-update)')
+  .option('--issue-url <url>', 'GitHub issue URL (for issue-to-code)')
+  .option('--pr-url <url>', 'GitHub PR URL (for pr-resolve, pr-review)')
+  .option('--branch <name>', 'Target branch')
+  .option('--auto-merge', 'Auto-merge on success')
+  .option('--wait', 'Wait for workflow completion')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (type, options) => {
+    try {
+      await workflowStartCommand(type, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCmd
+  .command('list')
+  .description('List recent workflows')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (options) => {
+    try {
+      await workflowListCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCmd
+  .command('status <workflow-id>')
+  .description('Get workflow status and details')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (workflowId, options) => {
+    try {
+      await workflowStatusCommand(workflowId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCmd
+  .command('approve <workflow-id>')
+  .description('Approve a workflow waiting for approval')
+  .option('--comment <text>', 'Approval comment')
+  .option('--json', 'Output as JSON')
+  .action(async (workflowId, options) => {
+    try {
+      await workflowApproveCommand(workflowId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+workflowCmd
+  .command('reject <workflow-id>')
+  .description('Reject a workflow waiting for approval')
+  .option('--reason <text>', 'Rejection reason')
+  .option('--json', 'Output as JSON')
+  .action(async (workflowId, options) => {
+    try {
+      await workflowRejectCommand(workflowId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Configuration Commands
+// =============================================================================
+
+const configCmd = program
+  .command('config')
+  .description('Manage CLI configuration');
+
+configCmd
+  .command('show')
+  .description('Show current configuration')
+  .option('-g, --global', 'Use global configuration')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await configShowCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('set <key> <value>')
+  .description('Set a configuration value')
+  .option('-g, --global', 'Use global configuration')
+  .action(async (key, value, options) => {
+    try {
+      await configSetCommand(key, value, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('get <key>')
+  .description('Get a configuration value')
+  .option('-g, --global', 'Use global configuration')
+  .option('--json', 'Output as JSON')
+  .action(async (key, options) => {
+    try {
+      await configGetCommand(key, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('reset')
+  .description('Reset configuration to defaults')
+  .option('-g, --global', 'Use global configuration')
+  .action(async (options) => {
+    try {
+      await configResetCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+configCmd
+  .command('list')
+  .description('List all configuration keys')
+  .option('-g, --global', 'Use global configuration')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await configListCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
 // Utility Commands
 // =============================================================================
 
@@ -187,14 +390,13 @@ program
 
 program.addHelpText('after', `
 Examples:
+  $ gwi init                                        # Initialize in repo
   $ gwi triage https://github.com/owner/repo/pull/123
-  $ gwi plan --verbose
-  $ gwi autopilot --dry-run
-  $ gwi resolve https://github.com/owner/repo/pull/123
-  $ gwi review --approve
-  $ gwi status
+  $ gwi workflow start issue-to-code --issue-url <url>
+  $ gwi workflow list
+  $ gwi config show
 
-Workflow:
+PR Resolution Workflow:
   1. gwi triage   - Analyze complexity (optional, autopilot includes this)
   2. gwi plan     - See what will happen (optional)
   3. gwi autopilot - Run full pipeline, or
@@ -202,9 +404,26 @@ Workflow:
   4. gwi review   - Review results (included in autopilot)
   5. gwi apply    - Apply resolutions to repo
 
+Multi-Agent Workflows:
+  gwi workflow start <type>     Start a workflow
+  gwi workflow list             List workflows
+  gwi workflow status <id>      Get workflow status
+  gwi workflow approve <id>     Approve pending workflow
+  gwi workflow reject <id>      Reject pending workflow
+
+  Workflow types: issue-to-code, pr-resolve, pr-review, test-gen, docs-update
+
+Configuration:
+  gwi config show               Show current config
+  gwi config set <key> <value>  Set a config value
+  gwi config get <key>          Get a config value
+  gwi config list               List all keys
+  gwi config reset              Reset to defaults
+
 Environment:
   GWI_STORAGE    Storage backend (sqlite, turso, postgres, firestore, memory)
   GWI_DATA_DIR   Data directory (default: ~/.gwi)
+  GWI_TENANT_ID  Default tenant ID for SaaS mode
   GITHUB_TOKEN   GitHub API token (or use gh auth)
 `);
 

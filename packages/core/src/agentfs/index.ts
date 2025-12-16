@@ -151,18 +151,30 @@ export class AuditLogger {
 /**
  * Open an AgentFS instance
  *
- * This is a wrapper that will use the real SDK when available,
- * or fall back to a mock implementation for testing
+ * Uses the real agentfs-sdk for persistence when available,
+ * falls back to mock implementation for testing or when SDK fails
  */
 export async function openAgentFS(options: AgentFSOptions): Promise<AgentFSInstance> {
-  // For now, use the mock implementation
-  // When agentfs-sdk is installed, this can be updated to use the real SDK:
-  //   const { AgentFS } = await import('agentfs-sdk');
-  //   return await AgentFS.open(options);
-  console.warn(
-    `[AgentFS] Using in-memory mock for agent: ${options.id} (install agentfs-sdk for persistence)`
-  );
-  return createMockAgentFS(options.id);
+  // Check if we should use mock (for testing)
+  if (process.env.GWI_AGENTFS_MOCK === 'true') {
+    console.log(`[AgentFS] Using mock implementation for agent: ${options.id}`);
+    return createMockAgentFS(options.id);
+  }
+
+  try {
+    // Use the real AgentFS SDK
+    const { AgentFS } = await import('agentfs-sdk');
+    const agent = await AgentFS.open({ id: options.id });
+    console.log(`[AgentFS] Opened persistent store for agent: ${options.id}`);
+    return agent as unknown as AgentFSInstance;
+  } catch (error) {
+    // Fall back to mock if SDK isn't available or fails
+    console.warn(
+      `[AgentFS] Failed to open SDK, using mock for agent: ${options.id}`,
+      error instanceof Error ? error.message : error
+    );
+    return createMockAgentFS(options.id);
+  }
 }
 
 /**

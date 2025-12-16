@@ -175,6 +175,7 @@ export async function handleInstallationCreated(
     installationId: installation.id,
     installedAt: new Date(installation.created_at),
     installedBy: sender.login,
+    status: 'active',  // Phase 11: new tenants start as active
     plan: 'free',
     planLimits: {
       runsPerMonth: 100,

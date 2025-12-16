@@ -331,6 +331,7 @@ export class InMemoryTenantStore implements TenantStore {
 export class InMemoryUserStore implements UserStore {
   private users = new Map<string, User>();
   private byGitHubId = new Map<number, string>();
+  private byEmail = new Map<string, string>();
 
   async createUser(user: Omit<User, 'createdAt' | 'updatedAt'>): Promise<User> {
     const fullUser: User = {
@@ -341,6 +342,7 @@ export class InMemoryUserStore implements UserStore {
     };
     this.users.set(user.id, fullUser);
     this.byGitHubId.set(user.githubUserId, user.id);
+    this.byEmail.set(user.email, user.id);
     return fullUser;
   }
 
@@ -350,6 +352,11 @@ export class InMemoryUserStore implements UserStore {
 
   async getUserByGitHubId(githubUserId: number): Promise<User | null> {
     const userId = this.byGitHubId.get(githubUserId);
+    return userId ? this.users.get(userId) ?? null : null;
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    const userId = this.byEmail.get(email);
     return userId ? this.users.get(userId) ?? null : null;
   }
 
@@ -367,6 +374,7 @@ export class InMemoryUserStore implements UserStore {
     const user = this.users.get(userId);
     if (user) {
       this.byGitHubId.delete(user.githubUserId);
+      this.byEmail.delete(user.email);
       this.users.delete(userId);
     }
   }

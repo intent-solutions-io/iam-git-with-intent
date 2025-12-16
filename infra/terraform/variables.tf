@@ -162,3 +162,31 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+# ============================================================================
+# Phase 11: SaaS API and Firestore Configuration
+# ============================================================================
+
+variable "gwi_api_image" {
+  description = "Docker image for GWI SaaS API"
+  type        = string
+  default     = ""
+}
+
+variable "gwi_api_max_instances" {
+  description = "Max Cloud Run instances for API"
+  type        = number
+  default     = 10
+}
+
+variable "enable_firestore" {
+  description = "Enable Firestore configuration"
+  type        = bool
+  default     = true
+}
+
+variable "firestore_location" {
+  description = "Firestore database location"
+  type        = string
+  default     = "us-central1"
+}

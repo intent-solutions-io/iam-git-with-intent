@@ -3,10 +3,11 @@
  *
  * R3: Cloud Run as gateway only (proxy to Agent Engine via REST)
  *
- * Phase 5: Added local engine integration alongside Agent Engine proxy.
+ * Phase 11: Added tenant verification for foreman endpoint.
  * The gateway can now:
  * 1. Route to Vertex AI Agent Engine (production)
  * 2. Call the local engine directly (development/testing)
+ * 3. Verify tenant exists before processing runs
  *
  * Endpoints:
  * - GET /health - Health check
@@ -21,6 +22,7 @@ import helmet from 'helmet';
 import { z } from 'zod';
 import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
+import { getTenantStore } from '@gwi/core';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -151,6 +153,8 @@ app.get('/.well-known/agent.json', (_req, res) => {
  * This is the primary A2A entrypoint for starting runs.
  * In development (no Agent Engine IDs), uses local engine.
  * In production, routes to Vertex AI Agent Engine.
+ *
+ * Phase 11: Verifies tenant exists and is active before processing.
  */
 app.post('/a2a/foreman', async (req, res) => {
   const startTime = Date.now();
@@ -166,6 +170,38 @@ app.post('/a2a/foreman', async (req, res) => {
     }
 
     const input = parseResult.data;
+
+    // Phase 11: Verify tenant exists and is active
+    const tenantStore = getTenantStore();
+    const tenant = await tenantStore.getTenant(input.tenantId);
+
+    if (!tenant) {
+      console.log(JSON.stringify({
+        type: 'foreman_rejected',
+        reason: 'TENANT_NOT_FOUND',
+        tenantId: input.tenantId,
+        durationMs: Date.now() - startTime,
+      }));
+      return res.status(404).json({
+        error: 'Tenant not found',
+        tenantId: input.tenantId,
+      });
+    }
+
+    if (tenant.status !== 'active') {
+      console.log(JSON.stringify({
+        type: 'foreman_rejected',
+        reason: 'TENANT_SUSPENDED',
+        tenantId: input.tenantId,
+        status: tenant.status,
+        durationMs: Date.now() - startTime,
+      }));
+      return res.status(403).json({
+        error: 'Tenant is not active',
+        tenantId: input.tenantId,
+        status: tenant.status,
+      });
+    }
 
     // Decide whether to use local engine or Agent Engine
     if (shouldUseLocalEngine()) {
