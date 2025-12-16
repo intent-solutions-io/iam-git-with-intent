@@ -115,7 +115,7 @@ export class BeadsClient {
     try {
       const { stdout } = await execAsync('bd ready --json', { cwd: this.cwd });
       return JSON.parse(stdout);
-    } catch (error) {
+    } catch {
       // Empty result or bd not initialized
       return [];
     }

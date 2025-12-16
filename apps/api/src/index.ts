@@ -24,6 +24,7 @@
 
 import express from 'express';
 import helmet from 'helmet';
+import cors from 'cors';
 import { z } from 'zod';
 import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
@@ -33,11 +34,7 @@ import {
   getMembershipStore,
   getUserStore,
   type TenantStore,
-  type MembershipStore,
-  type UserStore,
   type TenantRole,
-  type Tenant,
-  type User,
   // Security utilities
   canPerform,
   checkRunLimit,
@@ -63,12 +60,213 @@ const config = {
 };
 
 // =============================================================================
+// Environment Validation
+// =============================================================================
+
+/**
+ * Validates required environment variables based on deployment environment.
+ * Production requires strict configuration; dev allows more flexibility.
+ */
+function validateEnvironment(): void {
+  const isProd = config.env === 'prod';
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Production requirements
+  if (isProd) {
+    if (config.storeBackend !== 'firestore') {
+      errors.push('GWI_STORE_BACKEND must be "firestore" in production');
+    }
+    if (!process.env.GCP_PROJECT_ID) {
+      errors.push('GCP_PROJECT_ID is required in production');
+    }
+    if (!process.env.CORS_ALLOWED_ORIGINS) {
+      warnings.push('CORS_ALLOWED_ORIGINS not set - using restrictive defaults');
+    }
+  }
+
+  // Log warnings
+  for (const warning of warnings) {
+    console.warn(JSON.stringify({
+      severity: 'WARNING',
+      type: 'env_validation',
+      message: warning,
+      env: config.env,
+    }));
+  }
+
+  // Fail on errors
+  if (errors.length > 0) {
+    console.error(JSON.stringify({
+      severity: 'CRITICAL',
+      type: 'env_validation_failed',
+      errors,
+      env: config.env,
+    }));
+    process.exit(1);
+  }
+}
+
+validateEnvironment();
+
+// =============================================================================
 // Middleware
 // =============================================================================
 
 // Security middleware
 app.use(helmet());
+
+// CORS configuration - allow configured origins
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : ['http://localhost:3000', 'http://localhost:5173']; // Dev defaults
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Debug-User'],
+}));
+
 app.use(express.json({ limit: '1mb' }));
+
+// =============================================================================
+// Rate Limiting (P3: Production Security)
+// =============================================================================
+
+/**
+ * Simple in-memory rate limiter using token bucket algorithm.
+ * For production scale, consider Redis-based rate limiting.
+ */
+interface RateLimitEntry {
+  tokens: number;
+  lastRefill: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
+
+// Rate limit configuration
+const RATE_LIMIT_CONFIG = {
+  // Global limits (per IP)
+  global: {
+    maxTokens: 100,        // Max burst
+    refillRate: 10,        // Tokens per second
+    refillInterval: 1000,  // Refill every second
+  },
+  // Authenticated user limits (more generous)
+  authenticated: {
+    maxTokens: 200,
+    refillRate: 20,
+    refillInterval: 1000,
+  },
+  // Strict limits for expensive operations
+  expensive: {
+    maxTokens: 10,
+    refillRate: 1,
+    refillInterval: 1000,
+  },
+};
+
+/**
+ * Get rate limit key for request
+ */
+function getRateLimitKey(req: express.Request, prefix: string = 'global'): string {
+  const userId = req.context?.userId;
+  const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+  return userId ? `${prefix}:user:${userId}` : `${prefix}:ip:${ip}`;
+}
+
+/**
+ * Check and consume rate limit token
+ */
+function checkRateLimit(key: string, config: typeof RATE_LIMIT_CONFIG.global): { allowed: boolean; remaining: number; retryAfter?: number } {
+  const now = Date.now();
+  let entry = rateLimitStore.get(key);
+
+  if (!entry) {
+    entry = { tokens: config.maxTokens, lastRefill: now };
+    rateLimitStore.set(key, entry);
+  }
+
+  // Refill tokens based on time elapsed
+  const elapsed = now - entry.lastRefill;
+  const tokensToAdd = Math.floor(elapsed / config.refillInterval) * config.refillRate;
+
+  if (tokensToAdd > 0) {
+    entry.tokens = Math.min(config.maxTokens, entry.tokens + tokensToAdd);
+    entry.lastRefill = now;
+  }
+
+  // Check if we have tokens
+  if (entry.tokens > 0) {
+    entry.tokens--;
+    return { allowed: true, remaining: entry.tokens };
+  }
+
+  // Calculate retry-after
+  const retryAfter = Math.ceil((config.refillInterval - (now - entry.lastRefill)) / 1000);
+  return { allowed: false, remaining: 0, retryAfter: Math.max(1, retryAfter) };
+}
+
+/**
+ * Rate limiting middleware
+ */
+function rateLimitMiddleware(configType: 'global' | 'authenticated' | 'expensive' = 'global') {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Skip rate limiting for health checks
+    if (req.path === '/health' || req.path === '/metrics') {
+      return next();
+    }
+
+    const config = RATE_LIMIT_CONFIG[configType];
+    const key = getRateLimitKey(req, configType);
+    const result = checkRateLimit(key, config);
+
+    // Set rate limit headers
+    res.setHeader('X-RateLimit-Limit', config.maxTokens);
+    res.setHeader('X-RateLimit-Remaining', result.remaining);
+
+    if (!result.allowed) {
+      res.setHeader('Retry-After', result.retryAfter || 1);
+      console.log(JSON.stringify({
+        severity: 'WARNING',
+        type: 'rate_limit_exceeded',
+        key,
+        configType,
+        retryAfter: result.retryAfter,
+        timestamp: new Date().toISOString(),
+      }));
+      return res.status(429).json({
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Please slow down.',
+        retryAfter: result.retryAfter,
+      });
+    }
+
+    next();
+  };
+}
+
+// Apply global rate limiting to all requests
+app.use(rateLimitMiddleware('global'));
+
+// Cleanup stale rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  const staleThreshold = 5 * 60 * 1000; // 5 minutes
+  for (const [key, entry] of rateLimitStore) {
+    if (now - entry.lastRefill > staleThreshold) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // =============================================================================
 // Phase 11: Observability - Request Logging and Metrics
@@ -375,7 +573,7 @@ const InviteMemberSchema = z.object({
   role: z.enum(['admin', 'member']).default('member'),
 });
 
-const AcceptInviteSchema = z.object({
+const _AcceptInviteSchema = z.object({
   inviteToken: z.string().min(1),
 });
 
@@ -491,7 +689,7 @@ app.get('/me', authMiddleware, async (req, res) => {
  * Phase 12: Self-serve signup flow
  * Creates a user profile and optionally a personal tenant.
  */
-app.post('/signup', async (req, res) => {
+app.post('/signup', rateLimitMiddleware('expensive'), async (req, res) => {
   const parseResult = SignupSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({
@@ -950,7 +1148,7 @@ app.post('/invites/:inviteToken/accept', authMiddleware, async (req, res) => {
 
     // Get all memberships and find the one with matching ID
     // Note: In production, use a dedicated invites collection for O(1) lookup
-    const snapshot = await membershipStore.getMembership(`pending_${inviteToken.split('_')[1] || ''}`, '');
+    const _snapshot = await membershipStore.getMembership(`pending_${inviteToken.split('_')[1] || ''}`, '');
 
     // For now, we'll need to search - this is a simplification
     // The membership ID format is `pending_inv-xxx`
@@ -1002,7 +1200,7 @@ app.delete('/tenants/:tenantId/invites/:inviteId', authMiddleware, tenantAuthMid
     const membershipStore = getMembershipStore();
 
     // Verify the invite belongs to this tenant
-    const membership = await membershipStore.getMembership(inviteId.split('_')[1] || '', tenantId);
+    const _membership = await membershipStore.getMembership(inviteId.split('_')[1] || '', tenantId);
 
     // Delete the pending membership
     await membershipStore.deleteMembership(inviteId);
@@ -1181,7 +1379,7 @@ app.get('/tenants/:tenantId/runs', authMiddleware, tenantAuthMiddleware, require
  * This is the main entrypoint for starting agent workflows.
  * Phase 11: Plan limits are checked before creating the run.
  */
-app.post('/tenants/:tenantId/runs', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/tenants/:tenantId/runs', rateLimitMiddleware('expensive'), authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
   const { tenantId } = req.params;
   const startTime = Date.now();
 
@@ -1390,7 +1588,7 @@ const StartWorkflowSchema = z.object({
  *
  * Phase 13: Direct workflow execution endpoint
  */
-app.post('/tenants/:tenantId/workflows', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/tenants/:tenantId/workflows', rateLimitMiddleware('expensive'), authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
   const { tenantId } = req.params;
   const startTime = Date.now();
 
@@ -1749,7 +1947,7 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
   try {
     const { createStripeProvider, getBillingStore } = await import('@gwi/core');
     const stripe = createStripeProvider();
-    const billingStore = getBillingStore();
+    const _billingStore = getBillingStore();
 
     // Verify signature
     if (!stripe.verifyWebhookSignature(req.body.toString(), signature)) {

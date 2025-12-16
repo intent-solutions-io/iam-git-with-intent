@@ -382,7 +382,7 @@ async function addReposToTenant(
  */
 export async function getTenantByInstallationId(
   installationId: number,
-  store?: TenantStore
+  _store?: TenantStore
 ): Promise<Tenant | null> {
   // Note: This is a simple implementation that would benefit from
   // an index on installationId in production. For now we use

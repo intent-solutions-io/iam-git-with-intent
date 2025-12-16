@@ -43,6 +43,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.50.0",
+    "@typescript-eslint/parser": "^8.50.0",
     "agentfs-sdk": "^0.2.3",
     "better-sqlite3": "^12.5.0",
     "husky": "^9.0.0",

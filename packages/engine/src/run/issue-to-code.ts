@@ -24,6 +24,7 @@ import {
   type ComplexityScore,
   getRunWorkspaceDir,
 } from '@gwi/core';
+import { createGitHubClient } from '@gwi/integrations';
 
 // =============================================================================
 // Types
@@ -228,9 +229,9 @@ export async function runIssueToCodeFromGithubUrl(
     if (options.dryRun) {
       issue = createMockIssue(parsed);
     } else {
-      // TODO: Use @gwi/integrations to fetch real issue
-      // For now, use mock in all cases
-      issue = createMockIssue(parsed);
+      // Fetch real issue from GitHub API
+      const github = createGitHubClient();
+      issue = await github.getIssue(url);
     }
 
     // Run triage (or use provided complexity)

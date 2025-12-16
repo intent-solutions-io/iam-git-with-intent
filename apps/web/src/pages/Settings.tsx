@@ -40,7 +40,7 @@ export function Settings() {
       // TODO: Implement settings save
       await new Promise((resolve) => setTimeout(resolve, 500));
       setMessage('Settings saved successfully');
-    } catch (error) {
+    } catch {
       setMessage('Failed to save settings');
     } finally {
       setSaving(false);

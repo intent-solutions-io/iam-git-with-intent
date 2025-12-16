@@ -486,7 +486,7 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
         estimatedTimeSec: parsed.estimatedTimeSec ?? 60,
         explanation: parsed.explanation ?? 'No explanation provided',
       };
-    } catch (error) {
+    } catch {
       // Fallback to heuristic-based assessment
       return this.heuristicTriage(pr, conflicts);
     }

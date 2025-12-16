@@ -19,6 +19,7 @@
 
 import express from 'express';
 import helmet from 'helmet';
+import cors from 'cors';
 import { z } from 'zod';
 import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
@@ -29,6 +30,25 @@ const PORT = process.env.PORT || 8080;
 
 // Security middleware
 app.use(helmet());
+
+// CORS configuration
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+}));
+
 app.use(express.json({ limit: '1mb' }));
 
 // Environment

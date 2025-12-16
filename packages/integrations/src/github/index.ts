@@ -6,7 +6,7 @@
  */
 
 import { Octokit } from 'octokit';
-import type { PRMetadata, ConflictInfo, ComplexityScore } from '@gwi/core';
+import type { PRMetadata, ConflictInfo, ComplexityScore, IssueMetadata } from '@gwi/core';
 
 /**
  * Extended PR info with fetched conflicts
@@ -44,6 +44,16 @@ export interface ParsedPRUrl {
   owner: string;
   repo: string;
   number: number;
+}
+
+/**
+ * Parsed Issue URL
+ */
+export interface ParsedIssueUrl {
+  owner: string;
+  repo: string;
+  number: number;
+  fullName: string;
 }
 
 /**
@@ -99,6 +109,38 @@ export class GitHubClient {
     }
 
     throw new Error(`Invalid PR URL: ${url}`);
+  }
+
+  /**
+   * Parse a GitHub Issue URL
+   * Supports:
+   * - https://github.com/owner/repo/issues/123
+   * - github.com/owner/repo/issues/123
+   * - owner/repo#123
+   */
+  static parseIssueUrl(url: string): ParsedIssueUrl {
+    const patterns = [
+      // https://github.com/owner/repo/issues/123
+      /github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/,
+      // owner/repo#123
+      /^([^/]+)\/([^#]+)#(\d+)$/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) {
+        const owner = match[1];
+        const repo = match[2];
+        return {
+          owner,
+          repo,
+          number: parseInt(match[3], 10),
+          fullName: `${owner}/${repo}`,
+        };
+      }
+    }
+
+    throw new Error(`Invalid Issue URL: ${url}`);
   }
 
   /**
@@ -363,6 +405,51 @@ export class GitHubClient {
       body,
       event,
     });
+  }
+
+  /**
+   * Get GitHub Issue metadata
+   *
+   * Fetches issue details from GitHub API and returns IssueMetadata.
+   * Supports full URLs (https://github.com/owner/repo/issues/123)
+   * and shorthand format (owner/repo#123).
+   */
+  async getIssue(url: string): Promise<IssueMetadata> {
+    const { owner, repo, number, fullName } = GitHubClient.parseIssueUrl(url);
+
+    const { data: issue } = await this.octokit.rest.issues.get({
+      owner,
+      repo,
+      issue_number: number,
+    });
+
+    // Extract labels as strings
+    const labels = issue.labels
+      .map((label) => (typeof label === 'string' ? label : label.name))
+      .filter((name): name is string => !!name);
+
+    // Extract assignee logins
+    const assignees = (issue.assignees ?? [])
+      .map((a) => a?.login)
+      .filter((login): login is string => !!login);
+
+    return {
+      url: issue.html_url,
+      number: issue.number,
+      title: issue.title,
+      body: issue.body ?? '',
+      author: issue.user?.login ?? 'unknown',
+      labels,
+      assignees,
+      milestone: issue.milestone?.title,
+      repo: {
+        owner,
+        name: repo,
+        fullName,
+      },
+      createdAt: new Date(issue.created_at),
+      updatedAt: new Date(issue.updated_at),
+    };
   }
 }
 

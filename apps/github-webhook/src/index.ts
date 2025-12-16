@@ -35,6 +35,26 @@ const config = {
   location: 'us-central1',
 };
 
+// Security validation: Require webhook secret in production
+if (config.env === 'prod' && !config.webhookSecret) {
+  console.error(JSON.stringify({
+    severity: 'CRITICAL',
+    type: 'startup_security_error',
+    error: 'GITHUB_WEBHOOK_SECRET is required in production',
+    hint: 'Set GITHUB_WEBHOOK_SECRET environment variable',
+  }));
+  process.exit(1);
+}
+
+if (!config.webhookSecret) {
+  console.warn(JSON.stringify({
+    severity: 'WARNING',
+    type: 'startup_warning',
+    message: 'GITHUB_WEBHOOK_SECRET not set - webhook signature validation DISABLED',
+    env: config.env,
+  }));
+}
+
 // Security middleware
 app.use(helmet());
 app.use(express.json({
@@ -70,14 +90,26 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
   const signature = req.headers['x-hub-signature-256'] as string;
 
   try {
-    // Validate webhook signature
-    if (config.webhookSecret && !verifySignature(req.rawBody || '', signature)) {
-      console.log(JSON.stringify({
-        type: 'webhook_invalid_signature',
-        delivery,
-        event,
-      }));
-      return res.status(401).json({ error: 'Invalid signature' });
+    // Validate webhook signature (required in production)
+    if (config.webhookSecret) {
+      if (!signature) {
+        console.log(JSON.stringify({
+          severity: 'WARNING',
+          type: 'webhook_missing_signature',
+          delivery,
+          event,
+        }));
+        return res.status(401).json({ error: 'Missing signature header' });
+      }
+      if (!verifySignature(req.rawBody || '', signature)) {
+        console.log(JSON.stringify({
+          severity: 'WARNING',
+          type: 'webhook_invalid_signature',
+          delivery,
+          event,
+        }));
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
     }
 
     // Route based on event type
@@ -432,27 +464,29 @@ async function handleIssueCommentEvent(
         };
       }
 
-      const resolveRun = await tenantLinker.createRun(
-        tenantCtx,
-        'resolve',
-        webhookCtx,
-        { number: issue.number as number, url: issue.html_url as string }
-      );
+      {
+        const resolveRun = await tenantLinker.createRun(
+          tenantCtx,
+          'resolve',
+          webhookCtx,
+          { number: issue.number as number, url: issue.html_url as string }
+        );
 
-      const workflowId = await triggerWorkflow('pr-resolve', {
-        tenantId: tenantCtx.tenant.id,
-        repoId: tenantCtx.repo?.id,
-        runId: resolveRun.id,
-        pr: { number: issue.number, url: issue.html_url },
-        delivery,
-        triggeredBy: (comment.user as Record<string, unknown>).login,
-      });
+        const workflowId = await triggerWorkflow('pr-resolve', {
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          runId: resolveRun.id,
+          pr: { number: issue.number, url: issue.html_url },
+          delivery,
+          triggeredBy: (comment.user as Record<string, unknown>).login,
+        });
 
-      return {
-        status: 'triggered',
-        workflowId,
-        tenantId: tenantCtx.tenant.id,
-      };
+        return {
+          status: 'triggered',
+          workflowId,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
 
     case 'review':
       if (!isPR) {
@@ -464,27 +498,29 @@ async function handleIssueCommentEvent(
         };
       }
 
-      const reviewRun = await tenantLinker.createRun(
-        tenantCtx,
-        'review',
-        webhookCtx,
-        { number: issue.number as number, url: issue.html_url as string }
-      );
+      {
+        const reviewRun = await tenantLinker.createRun(
+          tenantCtx,
+          'review',
+          webhookCtx,
+          { number: issue.number as number, url: issue.html_url as string }
+        );
 
-      const reviewId = await triggerWorkflow('pr-review', {
-        tenantId: tenantCtx.tenant.id,
-        repoId: tenantCtx.repo?.id,
-        runId: reviewRun.id,
-        pr: { number: issue.number, url: issue.html_url },
-        delivery,
-        triggeredBy: (comment.user as Record<string, unknown>).login,
-      });
+        const reviewId = await triggerWorkflow('pr-review', {
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          runId: reviewRun.id,
+          pr: { number: issue.number, url: issue.html_url },
+          delivery,
+          triggeredBy: (comment.user as Record<string, unknown>).login,
+        });
 
-      return {
-        status: 'triggered',
-        workflowId: reviewId,
-        tenantId: tenantCtx.tenant.id,
-      };
+        return {
+          status: 'triggered',
+          workflowId: reviewId,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
 
     case 'triage':
       if (!isPR) {
@@ -496,27 +532,29 @@ async function handleIssueCommentEvent(
         };
       }
 
-      const triageRun = await tenantLinker.createRun(
-        tenantCtx,
-        'triage',
-        webhookCtx,
-        { number: issue.number as number, url: issue.html_url as string }
-      );
+      {
+        const triageRun = await tenantLinker.createRun(
+          tenantCtx,
+          'triage',
+          webhookCtx,
+          { number: issue.number as number, url: issue.html_url as string }
+        );
 
-      const triageId = await triggerWorkflow('pr-triage', {
-        tenantId: tenantCtx.tenant.id,
-        repoId: tenantCtx.repo?.id,
-        runId: triageRun.id,
-        pr: { number: issue.number, url: issue.html_url },
-        delivery,
-        triggeredBy: (comment.user as Record<string, unknown>).login,
-      });
+        const triageId = await triggerWorkflow('pr-triage', {
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          runId: triageRun.id,
+          pr: { number: issue.number, url: issue.html_url },
+          delivery,
+          triggeredBy: (comment.user as Record<string, unknown>).login,
+        });
 
-      return {
-        status: 'triggered',
-        workflowId: triageId,
-        tenantId: tenantCtx.tenant.id,
-      };
+        return {
+          status: 'triggered',
+          workflowId: triageId,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
 
     default:
       return {
