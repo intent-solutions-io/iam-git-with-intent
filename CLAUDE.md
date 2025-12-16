@@ -427,23 +427,43 @@ When starting or resuming work on git-with-intent:
 - [ ] Is Beads configured? (`GWI_BEADS_ENABLED=true`)
 - [ ] Will I run Post-Message Audit for non-trivial work?
 
-### Initializing AgentFS and Beads
+### AgentFS and Beads Are LIVE (Phase 6)
 
-For local development with audit trails:
+**As of Phase 6, AgentFS and Beads are initialized and live in this repo.**
+
+When working in git-with-intent, assume Beads and AgentFS are installed and initialized. Use `bd create`, `bd ready`, `bd update`, and `bd dep add` for task planning, and rely on AgentFS for per-run state and tool audit logs.
+
+When unsure, run `bd quickstart` inside the repo to refresh your mental model.
 
 ```bash
-# AgentFS initialization
-cd git-with-intent
-agentfs init gwi-internal  # Creates .agentfs/ directory
+# Verify both systems are working
+bd doctor                    # Check Beads health
+ls -la .agentfs/gwi.db*      # Check AgentFS database
 
-# Beads initialization
-bd init  # Creates .beads/ directory
+# Run hook smoke test
+export GWI_AGENTFS_ENABLED=true GWI_AGENTFS_ID=gwi GWI_BEADS_ENABLED=true
+npm run test:hooks:smoke
+
+# Verify Beads recorded the test task
+bd list --json | jq '.[0:3]'
+```
+
+### (Re-)Initializing AgentFS and Beads
+
+If starting fresh or on a new machine:
+
+```bash
+# AgentFS initialization (one-time)
+npm run agentfs:init         # Creates .agentfs/gwi.db
+
+# Beads initialization (one-time, likely already done)
+bd init                      # Creates .beads/ directory
 
 # Set environment variables
 export GWI_AGENTFS_ENABLED=true
-export GWI_AGENTFS_ID=gwi-internal
+export GWI_AGENTFS_ID=gwi
 export GWI_BEADS_ENABLED=true
-export GWI_HOOK_DEBUG=true
+export GWI_HOOK_DEBUG=true   # Optional: verbose logging
 ```
 
 ---

@@ -1,0 +1,9 @@
+# AgentFS database files (local only)
+*.db
+*.db-wal
+*.db-shm
+snapshots/
+
+# Keep config
+!config.json
+!.gitignore

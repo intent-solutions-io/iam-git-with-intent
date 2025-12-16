@@ -11,6 +11,22 @@ AgentFS provides:
 
 Reference: https://github.com/tursodatabase/agentfs
 
+## Prerequisites (One-Time Setup)
+
+Before using AgentFS hooks in this repo:
+
+```bash
+# 1. Initialize AgentFS for this repo
+npx tsx scripts/agentfs-init.ts
+
+# 2. Verify the database was created
+ls -la .agentfs/
+
+# 3. Set environment variables
+export GWI_AGENTFS_ENABLED=true
+export GWI_AGENTFS_ID=gwi
+```
+
 ## Files
 
 - `agentfs-run-store.ts` - Implements `RunStore` interface using AgentFS
@@ -42,12 +58,30 @@ await agent.kv.set('runs:run-123:meta', { ... });
 | Variable | Description |
 |----------|-------------|
 | `GWI_AGENTFS_ENABLED` | Set to `true` to enable AgentFS hook |
-| `GWI_AGENTFS_ID` | Agent ID for AgentFS namespace |
-| `TURSO_URL` | Turso database URL (for AgentFS backend) |
-| `TURSO_AUTH_TOKEN` | Turso auth token |
+| `GWI_AGENTFS_ID` | Agent ID for AgentFS namespace (default: `gwi`) |
+| `TURSO_URL` | Turso database URL (for cloud sync, optional) |
+| `TURSO_AUTH_TOKEN` | Turso auth token (for cloud sync, optional) |
 
-Legacy (deprecated):
-| `GWI_USE_AGENTFS` | Alias for GWI_AGENTFS_ENABLED |
+## Verifying AgentFS is Working
+
+After running a hook smoke test:
+
+```bash
+# Check the database file exists and has data
+ls -la .agentfs/gwi.db*
+
+# Use SQLite to inspect (if sqlite3 is installed)
+sqlite3 .agentfs/gwi.db "SELECT * FROM tool_calls ORDER BY ended_at DESC LIMIT 5;"
+sqlite3 .agentfs/gwi.db "SELECT key, value FROM kv_store WHERE key LIKE 'runs:%' LIMIT 5;"
+```
+
+## Database Location
+
+AgentFS stores data in `.agentfs/gwi.db` at the repo root. This includes:
+- `tool_calls` table: All recorded tool/step invocations
+- `kv_store` table: Key-value metadata
+
+The database files are gitignored (local only). The config.json is tracked.
 
 ## Policy
 

@@ -9,16 +9,23 @@
  * - Updates issues on partial success or deferral
  * - Links related issues for dependency tracking
  *
- * Implements smart heuristics to avoid spamming issues.
+ * Prerequisites (must be done once per repo):
+ *   bd init           # Initialize beads for this repo
+ *   bd doctor         # Verify health
+ *
+ * Environment Variables:
+ *   GWI_BEADS_ENABLED=true   # Enable this hook
+ *   GWI_BEADS_DEBUG=true     # Optional: enable debug logging
  *
  * Reference: https://github.com/steveyegge/beads
  *
  * Beads CLI Commands Used:
- * - bd create "title" -t <type> -p <priority>  # Create issue
- * - bd update <id> --status <status>           # Update status
- * - bd close <id> --reason "reason"            # Close issue
- * - bd ready                                    # List ready issues
- * - bd dep add <src> <tgt> --type <type>       # Add dependency
+ * - bd create "title" -t <type> -p <priority> --json  # Create issue
+ * - bd update <id> --status <status>                  # Update status
+ * - bd close <id> --reason "reason"                   # Close issue
+ * - bd list --json                                    # List issues
+ * - bd ready --json                                   # List ready issues
+ * - bd dep add <src> <tgt> --type <type>              # Add dependency
  *
  * Issue Types: epic, task, bug, feature, chore, research
  * Statuses: open, in_progress, closed, blocked
@@ -65,6 +72,9 @@ export class BeadsHook implements AgentHook {
 
   /**
    * Check if Beads is available and configured
+   *
+   * Performs a health check by running: bd list --json >/dev/null 2>&1
+   * This ensures the daemon + DB are reachable without breaking the main run.
    */
   async isEnabled(): Promise<boolean> {
     // Check environment variable
@@ -72,12 +82,20 @@ export class BeadsHook implements AgentHook {
       return false;
     }
 
-    // Check if bd CLI is available
+    // Check if bd CLI is available and .beads is initialized
     try {
-      execSync('which bd', { stdio: 'pipe' });
+      // Health check: verify daemon and DB are reachable
+      execSync('bd list --json >/dev/null 2>&1', { stdio: 'pipe', timeout: 3000 });
       return true;
     } catch {
-      return false;
+      // Fallback: check if bd command exists at all
+      try {
+        execSync('which bd', { stdio: 'pipe' });
+        console.warn('[BeadsHook] bd CLI found but "bd list" failed. Run "bd init" in repo root.');
+        return false;
+      } catch {
+        return false;
+      }
     }
   }
 
@@ -275,31 +293,48 @@ export class BeadsHook implements AgentHook {
   /**
    * Create a new Beads issue
    *
-   * Uses: bd create "title" -t <type> -p <priority>
+   * Uses: bd create "title" -t <type> -p <priority> --json
    *
    * Types: epic, task, bug, feature, chore, research
    * Priorities: 0 (critical) to 3 (low)
+   *
+   * JSON output format: {"id":"project-xxx","title":"...","status":"open",...}
    */
   private async createBead(ctx: AgentRunContext, isInitial = false): Promise<string | null> {
     const title = this.generateBeadTitle(ctx, isInitial);
 
-    // Use bd CLI to create issue
-    // bd create "title" -t task -p 1
+    // Use bd CLI to create issue with JSON output
+    // bd create "title" -t task -p 1 --json
     try {
       // Determine issue type based on context
       const issueType = this.determineIssueType(ctx);
       const priority = this.determinePriority(ctx);
 
-      const cmd = `bd create "${this.escapeShell(title)}" -t ${issueType} -p ${priority}`;
+      const cmd = `bd create "${this.escapeShell(title)}" -t ${issueType} -p ${priority} --json`;
       const output = execSync(cmd, { encoding: 'utf-8', timeout: 5000 });
 
-      // Parse bead ID from output (format varies, look for bd-xxxx pattern)
-      const match = output.match(/bd-[a-zA-Z0-9]+/);
-      if (match) {
-        console.log(`[BeadsHook] Created bead: ${match[0]} - ${title}`);
-        return match[0];
+      // Parse JSON output to extract bead ID
+      // Format: {"id":"git-with-intent-xxx","title":"...","status":"open",...}
+      try {
+        // bd may output warnings before JSON, so find the JSON line
+        const jsonLine = output.split('\n').find(line => line.trim().startsWith('{'));
+        if (jsonLine) {
+          const json = JSON.parse(jsonLine);
+          if (json.id) {
+            console.log(`[BeadsHook] Created bead: ${json.id} - ${title}`);
+            return json.id;
+          }
+        }
+      } catch {
+        // Fallback: look for project-xxx pattern in output
+        const match = output.match(/git-with-intent-[a-zA-Z0-9]+/);
+        if (match) {
+          console.log(`[BeadsHook] Created bead: ${match[0]} - ${title}`);
+          return match[0];
+        }
       }
 
+      console.warn(`[BeadsHook] Could not parse bead ID from output: ${output}`);
       return null;
     } catch (error) {
       console.warn(`[BeadsHook] Failed to create bead: ${error}`);

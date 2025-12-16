@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@gwi/core": "workspace:*"
+    "@gwi/core": "*"
   },
   "devDependencies": {
     "typescript": "^5.3.0"

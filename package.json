@@ -3,7 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "AI-powered DevOps automation platform for PRs, merge conflicts, and issue-to-PR workflows",
-  "keywords": ["ai", "devops", "git", "merge-conflicts", "agents", "automation"],
+  "keywords": [
+    "ai",
+    "devops",
+    "git",
+    "merge-conflicts",
+    "agents",
+    "automation"
+  ],
   "author": "Intent Solutions <jeremy@intentsolutions.io>",
   "license": "MIT",
   "engines": {
@@ -20,16 +27,19 @@
     "test": "turbo run test",
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration",
+    "test:hooks:smoke": "npx tsx scripts/test-hooks-smoke.ts",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "prepare": "husky",
-    "claude:after-message": "npx ts-node --esm scripts/claude-after-message.ts"
+    "agentfs:init": "npx tsx scripts/agentfs-init.ts",
+    "claude:after-message": "npx tsx scripts/claude-after-message.ts"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "agentfs-sdk": "^0.2.3",
     "husky": "^9.0.0",
     "prettier": "^3.2.0",
     "turbo": "^2.3.0",

@@ -1,0 +1,10 @@
+{
+  "agentId": "gwi",
+  "project": "git-with-intent",
+  "initialized": "2025-12-16T04:50:17.852Z",
+  "dbPath": ".agentfs/gwi.db",
+  "envVars": {
+    "GWI_AGENTFS_ENABLED": "true",
+    "GWI_AGENTFS_ID": "gwi"
+  }
+}

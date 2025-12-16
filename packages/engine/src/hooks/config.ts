@@ -124,7 +124,8 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
     if (agentfsConfig) {
       try {
         // Dynamic import to avoid hard dependency
-        const { AgentFSHook } = await import('../../../internal/agentfs-tools/agentfs-hook.js');
+        // Path: packages/engine/src/hooks -> internal/agentfs-tools
+        const { AgentFSHook } = await import('../../../../internal/agentfs-tools/agentfs-hook.js');
         const hook = new AgentFSHook(agentfsConfig);
         runner.register(hook);
       } catch (error) {
@@ -145,7 +146,8 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
   if (config.enableBeads) {
     try {
       // Dynamic import to avoid hard dependency
-      const { BeadsHook } = await import('../../../internal/beads-tools/beads-hook.js');
+      // Path: packages/engine/src/hooks -> internal/beads-tools
+      const { BeadsHook } = await import('../../../../internal/beads-tools/beads-hook.js');
       const beadsConfig = readBeadsConfigFromEnv();
       const hook = new BeadsHook(beadsConfig);
       runner.register(hook);

@@ -4,6 +4,9 @@
  * INTERNAL USE ONLY - This hook is for Intent Solutions' internal development.
  * External users of Git With Intent do not need this.
  *
+ * This project assumes AgentFS SDK (agentfs-sdk) is installed.
+ * Use `npx tsx scripts/agentfs-init.ts` at repo root to set up.
+ *
  * This hook audits agent activity to AgentFS, recording:
  * - Tool calls (each agent step) via agent.tools.record()
  * - State changes (run status) via agent.kv.set()
@@ -13,6 +16,13 @@
  * - Filesystem: POSIX-like file operations
  * - Key-Value: State and context storage
  * - Tool Calls: Auditing tool invocations
+ *
+ * Prerequisites (one-time setup):
+ *   npx tsx scripts/agentfs-init.ts   # Initialize AgentFS for this repo
+ *
+ * Environment Variables:
+ *   GWI_AGENTFS_ENABLED=true   # Enable this hook
+ *   GWI_AGENTFS_ID=gwi         # Agent ID (defaults to 'gwi')
  *
  * Reference: https://github.com/tursodatabase/agentfs
  *
@@ -71,6 +81,7 @@ export class AgentFSHook implements AgentHook {
   private agentfs: AgentFSInstance | null = null;
   private initialized = false;
   private useSdk = false;
+  private dbPath: string | null = null;
 
   constructor(config: AgentFSConfig) {
     this.config = config;

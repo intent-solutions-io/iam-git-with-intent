@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@google-cloud/aiplatform": "^3.10.0",
-    "@gwi/engine": "workspace:*",
+    "@gwi/engine": "*",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
     "zod": "^3.22.0"
