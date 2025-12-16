@@ -19,14 +19,36 @@
  * - firestore: Google Firestore
  * - memory: In-memory (for testing)
  * - agentfs: AgentFS (internal only)
+ *
+ * For Firestore, set:
+ * - GCP_PROJECT_ID: Google Cloud project ID
+ * - GOOGLE_APPLICATION_CREDENTIALS: Path to service account JSON (optional in GCP)
  */
 
 export * from './interfaces.js';
 export { SQLiteStoreFactory } from './sqlite.js';
+export {
+  InMemoryRunStore,
+  InMemoryTenantStore,
+  InMemoryUserStore,
+  InMemoryMembershipStore,
+} from './inmemory.js';
 
-import type { StoreFactory, StorageConfig } from './interfaces.js';
+// Firestore exports
+export {
+  getFirestoreClient,
+  closeFirestoreClient,
+  getFirestoreConfig,
+  COLLECTIONS,
+  type FirestoreConfig,
+} from './firestore-client.js';
+export { FirestoreTenantStore } from './firestore-tenant.js';
+export { FirestoreRunStore } from './firestore-run.js';
+
+import type { StoreFactory, StorageConfig, TenantStore, RunStore } from './interfaces.js';
 import { getStorageConfig } from './interfaces.js';
 import { SQLiteStoreFactory } from './sqlite.js';
+import { InMemoryTenantStore, InMemoryRunStore } from './inmemory.js';
 
 /**
  * Create a store factory based on configuration
@@ -98,4 +120,89 @@ export async function closeDefaultStoreFactory(): Promise<void> {
     await defaultFactory.close();
     defaultFactory = null;
   }
+}
+
+// =============================================================================
+// Direct Store Access (Environment-based)
+// =============================================================================
+
+/**
+ * Storage backend type from environment
+ */
+export type StoreBackend = 'memory' | 'firestore';
+
+/**
+ * Get the storage backend from environment
+ *
+ * Set GWI_STORE_BACKEND to 'firestore' for production.
+ * Defaults to 'memory' for development.
+ */
+export function getStoreBackend(): StoreBackend {
+  const backend = process.env.GWI_STORE_BACKEND?.toLowerCase();
+  if (backend === 'firestore') {
+    return 'firestore';
+  }
+  return 'memory';
+}
+
+// Singleton instances for direct store access
+let tenantStoreInstance: TenantStore | null = null;
+let runStoreInstance: RunStore | null = null;
+
+/**
+ * Get the TenantStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns TenantStore instance (singleton)
+ */
+export function getTenantStore(): TenantStore {
+  if (tenantStoreInstance) {
+    return tenantStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestoreTenantStore } = require('./firestore-tenant.js');
+    tenantStoreInstance = new FirestoreTenantStore() as TenantStore;
+  } else {
+    tenantStoreInstance = new InMemoryTenantStore();
+  }
+
+  return tenantStoreInstance!;
+}
+
+/**
+ * Get the RunStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns RunStore instance (singleton)
+ */
+export function getRunStore(): RunStore {
+  if (runStoreInstance) {
+    return runStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestoreRunStore } = require('./firestore-run.js');
+    runStoreInstance = new FirestoreRunStore() as RunStore;
+  } else {
+    runStoreInstance = new InMemoryRunStore();
+  }
+
+  return runStoreInstance!;
+}
+
+/**
+ * Reset store singletons (for testing)
+ */
+export function resetStores(): void {
+  tenantStoreInstance = null;
+  runStoreInstance = null;
 }

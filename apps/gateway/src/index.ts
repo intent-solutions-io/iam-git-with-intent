@@ -2,12 +2,25 @@
  * Git With Intent - A2A Gateway
  *
  * R3: Cloud Run as gateway only (proxy to Agent Engine via REST)
- * NO agent logic - pure proxy to Vertex AI Reasoning Engines
+ *
+ * Phase 5: Added local engine integration alongside Agent Engine proxy.
+ * The gateway can now:
+ * 1. Route to Vertex AI Agent Engine (production)
+ * 2. Call the local engine directly (development/testing)
+ *
+ * Endpoints:
+ * - GET /health - Health check
+ * - GET /.well-known/agent.json - AgentCard discovery
+ * - POST /a2a/:agent - Route to specific agent (Vertex AI)
+ * - POST /a2a/foreman - Main foreman endpoint (uses local engine in dev)
+ * - POST /api/workflows - Start workflow via orchestrator
  */
 
 import express from 'express';
 import helmet from 'helmet';
 import { z } from 'zod';
+import { createEngine } from '@gwi/engine';
+import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -50,6 +63,41 @@ const agentEngines: Record<string, string> = {
   resolver: config.resolverEngineId,
   reviewer: config.reviewerEngineId,
 };
+
+// =============================================================================
+// Local Engine (for development/testing)
+// =============================================================================
+
+let localEngine: Engine | null = null;
+
+async function getLocalEngine(): Promise<Engine> {
+  if (!localEngine) {
+    localEngine = await createEngine({ debug: config.env === 'dev' });
+  }
+  return localEngine;
+}
+
+/**
+ * Check if we should use local engine (no Agent Engine IDs configured)
+ */
+function shouldUseLocalEngine(): boolean {
+  return !config.orchestratorEngineId || config.orchestratorEngineId === '';
+}
+
+// =============================================================================
+// Foreman Request Schema (A2A-style)
+// =============================================================================
+
+const ForemanRequestSchema = z.object({
+  tenantId: z.string(),
+  runId: z.string().optional(),
+  runType: z.enum(['TRIAGE', 'PLAN', 'RESOLVE', 'REVIEW', 'AUTOPILOT']),
+  repoUrl: z.string().url(),
+  prNumber: z.number().optional(),
+  issueNumber: z.number().optional(),
+  trigger: z.enum(['webhook', 'api', 'cli', 'scheduled']).default('api'),
+  metadata: z.record(z.unknown()).optional(),
+});
 
 /**
  * Health check endpoint
@@ -95,6 +143,105 @@ app.get('/.well-known/agent.json', (_req, res) => {
       repository: 'https://github.com/intent-solutions-io/git-with-intent',
     },
   });
+});
+
+/**
+ * POST /a2a/foreman - Main foreman endpoint
+ *
+ * This is the primary A2A entrypoint for starting runs.
+ * In development (no Agent Engine IDs), uses local engine.
+ * In production, routes to Vertex AI Agent Engine.
+ */
+app.post('/a2a/foreman', async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    // Validate request
+    const parseResult = ForemanRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({
+        error: 'Invalid foreman request',
+        details: parseResult.error.errors,
+      });
+    }
+
+    const input = parseResult.data;
+
+    // Decide whether to use local engine or Agent Engine
+    if (shouldUseLocalEngine()) {
+      // Use local engine (development mode)
+      const engine = await getLocalEngine();
+
+      const runRequest: RunRequest = {
+        tenantId: input.tenantId,
+        repoUrl: input.repoUrl,
+        runType: input.runType as EngineRunType,
+        prNumber: input.prNumber,
+        issueNumber: input.issueNumber,
+        trigger: input.trigger,
+        metadata: input.metadata,
+      };
+
+      const result = await engine.startRun(runRequest);
+
+      console.log(JSON.stringify({
+        type: 'foreman_local',
+        tenantId: input.tenantId,
+        runId: result.runId,
+        runType: input.runType,
+        durationMs: Date.now() - startTime,
+      }));
+
+      return res.json({
+        runId: result.runId,
+        status: result.status,
+        message: 'Run started via local engine (development mode)',
+        mode: 'local',
+      });
+    }
+
+    // Production mode: Route to Agent Engine
+    const message: A2AMessage = {
+      id: `foreman-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      from: config.spiffeId,
+      to: `${config.spiffeId}/orchestrator`,
+      type: 'task',
+      payload: {
+        taskType: 'run',
+        ...input,
+      },
+      timestamp: Date.now(),
+    };
+
+    const response = await proxyToAgentEngine(
+      'orchestrator',
+      config.orchestratorEngineId,
+      message
+    );
+
+    console.log(JSON.stringify({
+      type: 'foreman_agent_engine',
+      tenantId: input.tenantId,
+      messageId: message.id,
+      durationMs: Date.now() - startTime,
+    }));
+
+    return res.json({
+      ...response as object,
+      mode: 'agent-engine',
+    });
+  } catch (error) {
+    console.error(JSON.stringify({
+      type: 'foreman_error',
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startTime,
+    }));
+
+    return res.status(500).json({
+      error: 'Foreman execution failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 /**

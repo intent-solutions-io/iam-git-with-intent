@@ -1,0 +1,42 @@
+{
+  "name": "@gwi/engine",
+  "version": "0.1.0",
+  "description": "Git With Intent - Agent execution engine with hook system",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./hooks": {
+      "import": "./dist/hooks/index.js",
+      "types": "./dist/hooks/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gwi/core": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "git",
+    "intent",
+    "ai",
+    "agent",
+    "engine",
+    "hooks"
+  ],
+  "author": "Intent Solutions <jeremy@intentsolutions.io>",
+  "license": "MIT"
+}

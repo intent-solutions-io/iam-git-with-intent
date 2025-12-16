@@ -1,7 +1,7 @@
 {
-  "name": "@gwi/gateway",
+  "name": "@gwi/api",
   "version": "0.1.0",
-  "description": "A2A Gateway for Git With Intent - R3 compliant proxy to Agent Engine",
+  "description": "Git With Intent - Multi-tenant SaaS API (Cloud Run ready)",
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@google-cloud/aiplatform": "^3.10.0",
+    "@gwi/core": "*",
     "@gwi/engine": "*",
     "express": "^4.18.2",
     "helmet": "^7.1.0",

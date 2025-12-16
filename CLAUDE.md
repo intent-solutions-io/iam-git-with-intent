@@ -143,6 +143,34 @@ export class SQLiteStore implements PRStore, RunStore, SettingsStore { ... }
 
 **Selection:** Set via `GWI_STORAGE=sqlite|postgres|firestore|agentfs`
 
+### Production Storage (Phase 7)
+
+For SaaS multi-tenant operations, use Firestore:
+
+```bash
+# Enable Firestore storage
+export GWI_STORE_BACKEND=firestore
+export GCP_PROJECT_ID=your-gcp-project
+
+# Use in-memory for development (default)
+export GWI_STORE_BACKEND=memory
+# or unset GWI_STORE_BACKEND
+```
+
+```typescript
+// Get stores based on environment
+import { getTenantStore, getRunStore, getStoreBackend } from '@gwi/core';
+
+const backend = getStoreBackend();  // 'memory' or 'firestore'
+const tenantStore = getTenantStore();  // Singleton
+const runStore = getRunStore();  // Singleton
+```
+
+**Collection Structure:**
+- `gwi_tenants/{tenantId}` - Tenant configurations
+  - `repos/{repoId}` - Connected repositories
+- `gwi_runs/{runId}` - Run history and status
+
 ---
 
 ## File Structure
@@ -159,6 +187,9 @@ git-with-intent/
 │   │   │   ├── github/   # GitHub API client
 │   │   │   ├── models/   # LLM client abstraction
 │   │   │   └── types.ts  # Shared types
+│   ├── engine/           # Agent execution engine with hooks
+│   │   ├── src/
+│   │   │   └── hooks/    # Hook system (AgentHook, AgentHookRunner)
 │   ├── agents/           # Agent implementations
 │   │   ├── src/
 │   │   │   ├── triage/
@@ -168,6 +199,8 @@ git-with-intent/
 │   │   │   └── reviewer/
 │   └── integrations/     # GitHub, future: GitLab
 ├── internal/             # Dev tools (AgentFS, Beads wrappers) - NOT for users
+│   ├── agentfs-tools/    # AgentFS adapters and hooks
+│   └── beads-tools/      # Beads adapters and hooks
 ├── infra/                # Terraform, Docker
 ├── docs/                 # Documentation
 └── 000-docs/             # Project docs (6767 standard)
@@ -222,6 +255,13 @@ LOG_LEVEL=info                  # Logging level
 ### Internal/Dev Only
 
 ```bash
+# Hook system (enables internal auditing)
+GWI_AGENTFS_ENABLED=true        # Enable AgentFS audit hook
+GWI_AGENTFS_ID=gwi-agent        # AgentFS agent identifier
+GWI_BEADS_ENABLED=true          # Enable Beads task tracking hook
+GWI_HOOK_DEBUG=true             # Debug logging for hooks
+
+# Legacy (deprecated, use above)
 GWI_USE_AGENTFS=true            # Enable AgentFS (internal)
 GWI_USE_BEADS=true              # Enable Beads (internal)
 HARD_MODE=true                  # Enable strict CI checks (internal)
@@ -327,10 +367,187 @@ This repository follows **docs-filing v4** for all documentation:
 
 ---
 
+## Claude Internal Hook Protocol (Post-Message Audit)
+
+**This section defines a behavioral contract for Claude when working on git-with-intent.**
+
+When you (Claude) work in this repository, you must consider running a post-message audit after completing meaningful work. This audit logs your activity to AgentFS (audit trail) and Beads (task tracking).
+
+### When to Run the Audit
+
+**After EVERY message where:**
+
+1. You changed files in git-with-intent (created, modified, deleted)
+2. You completed a clearly defined phase or sub-phase task
+3. You introduced new TODOs or follow-up work
+4. You performed multi-step or non-trivial work (architecture, refactor, multi-file changes)
+
+### Mental Checklist (Required)
+
+Before ending a message, ask yourself:
+
+- [ ] Did I perform non-trivial work (architecture, refactor, new files)?
+- [ ] Is there follow-up work that won't be completed in this message?
+- [ ] Would future-me benefit from an AgentFS audit record (who/what/why)?
+- [ ] Would a Beads task help track longer-lived or blocked work?
+
+**If YES to any of the above**, run the post-message script.
+
+### How to Run the Audit
+
+```bash
+npm run claude:after-message -- '{
+  "runType": "PLAN",
+  "agentRole": "FOREMAN",
+  "inputSummary": "What you were asked to do or analyze",
+  "outputSummary": "What you produced or changed",
+  "metadata": { "phase": "4", "subPhase": "4.1", "filesChanged": 3 }
+}'
+```
+
+### Run Type Guidelines
+
+| Work Type | runType | agentRole | Example |
+|-----------|---------|-----------|---------|
+| Architecture/docs | `PLAN` | `FOREMAN` | Designing a new system, writing ADRs |
+| Code changes | `RESOLVE` | `CODER` | Implementing features, fixing bugs |
+| Full phase work | `AUTOPILOT` | `FOREMAN` | Completing an entire phase end-to-end |
+| Classification | `TRIAGE` | `TRIAGE` | Analyzing issues, categorizing work |
+| Code review | `REVIEW` | `REVIEWER` | Reviewing PR, suggesting changes |
+
+### Example Invocations
+
+**After completing Phase 4 design work:**
+```bash
+npm run claude:after-message -- '{
+  "runType": "PLAN",
+  "agentRole": "FOREMAN",
+  "inputSummary": "Phase 4: Claude Internal Hook Protocol design",
+  "outputSummary": "Created ADR 016, updated CLAUDE.md with protocol, implemented claude-after-message script",
+  "metadata": { "phase": "4", "filesCreated": 3, "filesModified": 2 }
+}'
+```
+
+**After fixing a bug:**
+```bash
+npm run claude:after-message -- '{
+  "runType": "RESOLVE",
+  "agentRole": "CODER",
+  "inputSummary": "Fix hook runner timeout issue",
+  "outputSummary": "Updated runner.ts to handle Promise.race correctly",
+  "metadata": { "bugFix": true, "files": ["packages/engine/src/hooks/runner.ts"] }
+}'
+```
+
+### Even If You Don't Actually Run It
+
+Even if you cannot execute the script in this environment, you should **behave as if this step exists**. This means:
+
+1. Document your work clearly in commit messages
+2. Note any follow-up work explicitly
+3. Consider what audit trail would be useful for debugging
+
+### Every Session Checklist
+
+When starting or resuming work on git-with-intent:
+
+- [ ] Is AgentFS configured? (`GWI_AGENTFS_ENABLED=true`, `GWI_AGENTFS_ID=gwi-internal`)
+- [ ] Is Beads configured? (`GWI_BEADS_ENABLED=true`)
+- [ ] Will I run Post-Message Audit for non-trivial work?
+
+### AgentFS and Beads Are LIVE (Phase 6)
+
+**As of Phase 6, AgentFS and Beads are initialized and live in this repo.**
+
+When working in git-with-intent, assume Beads and AgentFS are installed and initialized. Use `bd create`, `bd ready`, `bd update`, and `bd dep add` for task planning, and rely on AgentFS for per-run state and tool audit logs.
+
+When unsure, run `bd quickstart` inside the repo to refresh your mental model.
+
+```bash
+# Verify both systems are working
+bd doctor                    # Check Beads health
+ls -la .agentfs/gwi.db*      # Check AgentFS database
+
+# Run hook smoke test
+export GWI_AGENTFS_ENABLED=true GWI_AGENTFS_ID=gwi GWI_BEADS_ENABLED=true
+npm run test:hooks:smoke
+
+# Verify Beads recorded the test task
+bd list --json | jq '.[0:3]'
+```
+
+### (Re-)Initializing AgentFS and Beads
+
+If starting fresh or on a new machine:
+
+```bash
+# AgentFS initialization (one-time)
+npm run agentfs:init         # Creates .agentfs/gwi.db
+
+# Beads initialization (one-time, likely already done)
+bd init                      # Creates .beads/ directory
+
+# Set environment variables
+export GWI_AGENTFS_ENABLED=true
+export GWI_AGENTFS_ID=gwi
+export GWI_BEADS_ENABLED=true
+export GWI_HOOK_DEBUG=true   # Optional: verbose logging
+```
+
+---
+
+## Agent Hook System (Internal)
+
+The agent execution engine includes a hook system that runs after each agent step, message, or run.
+
+### Hook Architecture
+
+```
+Agent Step → [AgentHookRunner] → [AgentFSHook (audit)] → AgentFS
+                              → [BeadsHook (tasks)]  → Beads
+```
+
+### Configuration
+
+```typescript
+// packages/engine/src/hooks/config.ts
+const runner = await buildDefaultHookRunner();
+
+// After each agent step:
+await runner.afterStep({
+  runId: 'run-123',
+  runType: 'RESOLVE',
+  stepId: 'step-456',
+  agentRole: 'CODER',
+  stepStatus: 'completed',
+  timestamp: new Date().toISOString(),
+});
+```
+
+### Rules for Hook Usage
+
+1. **Hooks are internal-only** - External runtime does not require hooks
+2. **Hooks never crash the pipeline** - Errors are logged, not thrown
+3. **Hooks are configurable** - Enabled via environment variables
+4. **New sub-agents should use the existing hook pipeline** - Don't invent custom logging
+
+### Available Hooks
+
+| Hook | Purpose | Environment Variable |
+|------|---------|---------------------|
+| `AgentFSHook` | Audit tool calls to AgentFS | `GWI_AGENTFS_ENABLED=true` |
+| `BeadsHook` | Create/update Beads issues | `GWI_BEADS_ENABLED=true` |
+
+See `000-docs/014-DR-ADRC-agent-hook-system-policy.md` for the full policy.
+
+---
+
 ## References
 
 - **Architecture Decision (Runtime vs DevTools):** `000-docs/004-DR-ADRC-runtime-vs-devtools.md`
 - **AgentFS/Beads Policy:** `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
+- **Agent Hook System Policy:** `000-docs/014-DR-ADRC-agent-hook-system-policy.md`
+- **Claude Internal Hook Protocol:** `000-docs/016-DR-ADRC-claude-internal-hook-protocol.md`
 - **Directory Structure:** `000-docs/007-DR-ADRC-directory-structure.md`
 - **DevOps Playbook (Internal):** `000-docs/003-AA-AUDT-appaudit-devops-playbook.md`
 - **Filing Standard:** `000-docs/6767-a-DR-STND-document-filing-system-standard-v4.md`
