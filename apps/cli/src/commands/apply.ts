@@ -51,9 +51,9 @@ export async function applyCommand(
 
     spinner.start('Fetching PR details...');
 
-    // Get PR metadata
+    // Get PR with inline conflicts (legacy format for CLI)
     const github = createGitHubClient();
-    const pr = await github.getPR(prUrl);
+    const pr = await github.getPRLegacy(prUrl);
 
     spinner.succeed(`Found PR #${pr.number}: ${pr.title}`);
 

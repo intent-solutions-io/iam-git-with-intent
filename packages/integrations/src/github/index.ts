@@ -9,6 +9,26 @@ import { Octokit } from 'octokit';
 import type { PRMetadata, ConflictInfo, ComplexityScore } from '@gwi/core';
 
 /**
+ * Extended PR info with fetched conflicts
+ * PRMetadata has hasConflicts: boolean, but conflicts are stored separately
+ * This type includes both for convenience when first fetching a PR
+ */
+export interface PRWithConflicts {
+  metadata: PRMetadata;
+  conflicts: ConflictInfo[];
+}
+
+/**
+ * @deprecated Legacy type for backward compatibility - use PRWithConflicts
+ *
+ * This extended metadata type includes inline conflicts for legacy CLI code.
+ * New code should use PRWithConflicts which separates metadata and conflicts.
+ */
+export interface LegacyPRMetadata extends PRMetadata {
+  conflicts: ConflictInfo[];
+}
+
+/**
  * GitHub client configuration
  */
 export interface GitHubClientConfig {
@@ -82,9 +102,12 @@ export class GitHubClient {
   }
 
   /**
-   * Get PR metadata
+   * Get PR metadata and conflicts
+   *
+   * Returns both the PRMetadata (for storage) and conflicts (for separate storage).
+   * Conflicts are NOT part of PRMetadata - they're stored via PRStore.saveConflicts().
    */
-  async getPR(url: string): Promise<PRMetadata> {
+  async getPR(url: string): Promise<PRWithConflicts> {
     const { owner, repo, number } = GitHubClient.parsePRUrl(url);
 
     const { data: pr } = await this.octokit.rest.pulls.get({
@@ -112,21 +135,58 @@ export class GitHubClient {
 
     // Get merge status to check for conflicts
     const conflicts = await this.getConflicts(owner, repo, number, mappedFiles);
+    const hasConflicts = conflicts.length > 0 || pr.mergeable === false || pr.mergeable_state === 'dirty';
 
-    return {
+    // Generate ID from URL
+    const id = `gh-${owner}-${repo}-${number}`;
+
+    const metadata: PRMetadata = {
+      id,
       url,
+      owner,
+      repo,
       number,
       title: pr.title,
+      body: pr.body ?? '',
       baseBranch: pr.base.ref,
       headBranch: pr.head.ref,
       author: pr.user?.login ?? 'unknown',
+      state: pr.state === 'open' ? 'open' : pr.merged ? 'merged' : 'closed',
+      mergeable: pr.mergeable,
+      mergeableState: pr.mergeable_state,
+      hasConflicts,
       filesChanged: mappedFiles.length,
       additions: mappedFiles.reduce((sum, f) => sum + f.additions, 0),
       deletions: mappedFiles.reduce((sum, f) => sum + f.deletions, 0),
-      conflicts,
       createdAt: new Date(pr.created_at),
       updatedAt: new Date(pr.updated_at),
+      fetchedAt: new Date(),
     };
+
+    return { metadata, conflicts };
+  }
+
+  /**
+   * Get just PR metadata (convenience wrapper for backward compatibility)
+   *
+   * Use getPR() to also get conflicts.
+   */
+  async getPRMetadata(url: string): Promise<PRMetadata> {
+    const { metadata } = await this.getPR(url);
+    return metadata;
+  }
+
+  /**
+   * @deprecated Get PR with inline conflicts (legacy format)
+   *
+   * This method returns the old format where conflicts are embedded in the PR object.
+   * New code should use getPR() which returns { metadata, conflicts } separately.
+   *
+   * This exists for backward compatibility with CLI commands.
+   */
+  async getPRLegacy(url: string): Promise<LegacyPRMetadata> {
+    const { metadata, conflicts } = await this.getPR(url);
+    return { ...metadata, conflicts };
   }
 
   /**

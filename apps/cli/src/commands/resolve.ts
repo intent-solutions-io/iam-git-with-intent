@@ -90,7 +90,7 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
   spinner.start('Fetching PR details...');
   let pr: PRMetadata;
   try {
-    pr = await github.getPR(prUrl);
+    pr = await github.getPRLegacy(prUrl);
     run.prId = pr.id;
     spinner.succeed(`Fetched PR #${pr.number}: ${pr.title}`);
   } catch (error) {

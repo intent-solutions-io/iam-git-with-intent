@@ -26,7 +26,8 @@ import type {
   EngineRunStatus,
 } from './types.js';
 import { buildDefaultHookRunner } from '../hooks/config.js';
-import type { AgentHookRunner, AgentRunContext } from '../hooks/types.js';
+import { AgentHookRunner } from '../hooks/runner.js';
+import type { AgentRunContext } from '../hooks/types.js';
 import type { TenantStore, SaaSRun } from '@gwi/core';
 import { getTenantStore, getStoreBackend } from '@gwi/core';
 

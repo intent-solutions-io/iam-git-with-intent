@@ -63,7 +63,7 @@ export async function planCommand(
 
     // Get PR metadata
     const github = createGitHubClient();
-    const pr = await github.getPR(prUrl);
+    const pr = await github.getPRLegacy(prUrl);
 
     spinner.succeed(`Found PR #${pr.number}: ${pr.title}`);
 

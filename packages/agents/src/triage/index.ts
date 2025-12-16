@@ -16,6 +16,8 @@ import type { PRMetadata, ConflictInfo, ComplexityScore, RouteDecision } from '@
  */
 export interface TriageInput {
   prMetadata: PRMetadata;
+  /** Conflicts for this PR (fetched separately via PRStore.getConflicts) */
+  conflicts?: ConflictInfo[];
 }
 
 /**
@@ -137,15 +139,15 @@ export class TriageAgent extends BaseAgent {
     }
 
     const input = payload.input as TriageInput;
-    return this.triage(input.prMetadata);
+    return this.triage(input.prMetadata, input.conflicts ?? []);
   }
 
   /**
    * Analyze a PR and return triage results
    */
-  async triage(pr: PRMetadata): Promise<TriageOutput> {
+  async triage(pr: PRMetadata, conflicts: ConflictInfo[] = []): Promise<TriageOutput> {
     // Build context for the LLM
-    const context = this.buildContext(pr);
+    const context = this.buildContext(pr, conflicts);
 
     // Call the model
     const response = await this.chat({
@@ -158,7 +160,7 @@ export class TriageAgent extends BaseAgent {
     });
 
     // Parse the response
-    const result = this.parseResponse(response, pr);
+    const result = this.parseResponse(response, pr, conflicts);
 
     // Record in history
     this.triageHistory.push(result);
@@ -177,8 +179,8 @@ export class TriageAgent extends BaseAgent {
   /**
    * Build context string for the LLM
    */
-  private buildContext(pr: PRMetadata): string {
-    const conflictDetails = pr.conflicts.map((c) => ({
+  private buildContext(pr: PRMetadata, conflicts: ConflictInfo[]): string {
+    const conflictDetails = conflicts.map((c) => ({
       file: c.file,
       complexity: c.complexity,
       hasMarkers: !!c.conflictMarkers,
@@ -198,11 +200,12 @@ export class TriageAgent extends BaseAgent {
 - Additions: ${pr.additions}
 - Deletions: ${pr.deletions}
 
-**Conflicts (${pr.conflicts.length} files):**
+**Has Conflicts:** ${pr.hasConflicts}
+**Conflicts (${conflicts.length} files):**
 ${JSON.stringify(conflictDetails, null, 2)}
 
 **Conflict Details:**
-${pr.conflicts.map((c) => `
+${conflicts.map((c) => `
 ### ${c.file}
 \`\`\`
 ${c.conflictMarkers.slice(0, 2000)}${c.conflictMarkers.length > 2000 ? '\n... (truncated)' : ''}
@@ -215,7 +218,7 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
   /**
    * Parse LLM response into TriageOutput
    */
-  private parseResponse(response: string, pr: PRMetadata): TriageOutput {
+  private parseResponse(response: string, pr: PRMetadata, conflicts: ConflictInfo[]): TriageOutput {
     try {
       // Extract JSON from response (may be wrapped in markdown)
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -228,7 +231,7 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
       // Validate and normalize the response
       return {
         overallComplexity: this.clampComplexity(parsed.overallComplexity ?? 5),
-        fileComplexities: parsed.fileComplexities ?? pr.conflicts.map((c) => ({
+        fileComplexities: parsed.fileComplexities ?? conflicts.map((c) => ({
           file: c.file,
           complexity: c.complexity,
           reason: 'Default assessment',
@@ -240,17 +243,17 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
       };
     } catch (error) {
       // Fallback to heuristic-based assessment
-      return this.heuristicTriage(pr);
+      return this.heuristicTriage(pr, conflicts);
     }
   }
 
   /**
    * Heuristic-based triage when LLM parsing fails
    */
-  private heuristicTriage(pr: PRMetadata): TriageOutput {
+  private heuristicTriage(_pr: PRMetadata, conflicts: ConflictInfo[]): TriageOutput {
     // Calculate complexity from conflict characteristics
     let totalComplexity = 0;
-    const fileComplexities = pr.conflicts.map((c) => {
+    const fileComplexities = conflicts.map((c) => {
       const complexity = this.calculateFileComplexity(c);
       totalComplexity += complexity;
       return {
@@ -261,7 +264,7 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
     });
 
     const overallComplexity = this.clampComplexity(
-      Math.ceil(totalComplexity / Math.max(pr.conflicts.length, 1))
+      Math.ceil(totalComplexity / Math.max(conflicts.length, 1))
     );
 
     // Determine route based on complexity
@@ -275,7 +278,7 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
     }
 
     // Estimate time
-    const estimatedTimeSec = overallComplexity * 30 + pr.conflicts.length * 10;
+    const estimatedTimeSec = overallComplexity * 30 + conflicts.length * 10;
 
     return {
       overallComplexity,
@@ -283,7 +286,7 @@ Please analyze this PR and provide your triage assessment as a JSON object.`;
       routeDecision,
       riskLevel: overallComplexity <= 3 ? 'low' : overallComplexity <= 6 ? 'medium' : 'high',
       estimatedTimeSec,
-      explanation: `Heuristic assessment based on ${pr.conflicts.length} conflicts with average complexity ${overallComplexity}`,
+      explanation: `Heuristic assessment based on ${conflicts.length} conflicts with average complexity ${overallComplexity}`,
     };
   }
 

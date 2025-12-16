@@ -118,21 +118,28 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
   const runner = new AgentHookRunner(config);
 
   // Register AgentFS hook if enabled
+  // Note: AgentFS and Beads hooks are internal tools in /internal/
+  // They are NOT compiled with the engine package and require separate setup
   if (config.enableAgentFs) {
     const agentfsConfig = readAgentFSConfigFromEnv();
 
     if (agentfsConfig) {
       try {
         // Dynamic import to avoid hard dependency
-        // Path: packages/engine/src/hooks -> internal/agentfs-tools
-        const { AgentFSHook } = await import('../../../../internal/agentfs-tools/agentfs-hook.js');
+        // The internal hooks must be compiled separately via scripts
+        // This import path assumes the hook is available at runtime
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { AgentFSHook } = require('@gwi/internal-agentfs-hook');
         const hook = new AgentFSHook(agentfsConfig);
         runner.register(hook);
-      } catch (error) {
-        console.warn(
-          `[HookConfig] Failed to load AgentFS hook: ${error}. ` +
-          `This is expected if AgentFS is not installed (internal tool only).`
-        );
+      } catch {
+        // Expected when internal tools are not installed
+        if (config.debug) {
+          console.log(
+            '[HookConfig] AgentFS hook not available (internal tool). ' +
+            'This is normal in production.'
+          );
+        }
       }
     } else {
       console.warn(
@@ -146,16 +153,20 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
   if (config.enableBeads) {
     try {
       // Dynamic import to avoid hard dependency
-      // Path: packages/engine/src/hooks -> internal/beads-tools
-      const { BeadsHook } = await import('../../../../internal/beads-tools/beads-hook.js');
+      // The internal hooks must be compiled separately via scripts
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { BeadsHook } = require('@gwi/internal-beads-hook');
       const beadsConfig = readBeadsConfigFromEnv();
       const hook = new BeadsHook(beadsConfig);
       runner.register(hook);
-    } catch (error) {
-      console.warn(
-        `[HookConfig] Failed to load Beads hook: ${error}. ` +
-        `This is expected if Beads is not installed (internal tool only).`
-      );
+    } catch {
+      // Expected when internal tools are not installed
+      if (config.debug) {
+        console.log(
+          '[HookConfig] Beads hook not available (internal tool). ' +
+          'This is normal in production.'
+        );
+      }
     }
   }
 

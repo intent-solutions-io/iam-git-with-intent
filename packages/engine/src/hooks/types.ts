@@ -11,7 +11,7 @@
  * @module @gwi/engine/hooks
  */
 
-import type { RunType, RunStatus, StepStatus } from '@gwi/core';
+import type { RunType, StepStatus } from '@gwi/core';
 
 // =============================================================================
 // Agent Role Types
@@ -277,9 +277,38 @@ export interface BeadsHookConfig {
  * Default Beads hook configuration
  */
 export const DEFAULT_BEADS_HOOK_CONFIG: BeadsHookConfig = {
-  createIssueForRunTypes: ['AUTOPILOT', 'RESOLVE'],
+  createIssueForRunTypes: ['autopilot', 'resolve'],
   minComplexityForIssue: 3,
   createOnPartialSuccess: true,
   createOnDeferral: true,
   updateExistingIssues: true,
 };
+
+// =============================================================================
+// Hook Runner Interface
+// =============================================================================
+
+/**
+ * Interface for the hook runner that manages multiple hooks
+ */
+export interface AgentHookRunner {
+  /**
+   * Register a hook with the runner
+   */
+  registerHook(hook: AgentHook): void;
+
+  /**
+   * Called after an agent step completes
+   */
+  afterStep(ctx: AgentRunContext): Promise<void>;
+
+  /**
+   * Called when a run starts
+   */
+  runStart?(ctx: AgentRunContext): Promise<void>;
+
+  /**
+   * Called when a run ends
+   */
+  runEnd?(ctx: AgentRunContext, success: boolean): Promise<void>;
+}
