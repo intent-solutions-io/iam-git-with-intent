@@ -1,4 +1,4 @@
-name: CI/CD - Hard Mode
+name: CI/CD
 
 on:
   push:
@@ -13,36 +13,57 @@ env:
   REGISTRY: us-central1-docker.pkg.dev
 
 jobs:
-  # Hard Mode Gate - Must pass before anything else
-  hard-mode:
-    name: Hard Mode Check
+  # =============================================================================
+  # Quality Gates - Standard checks that always run
+  # =============================================================================
+
+  quality-checks:
+    name: Quality Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: R8 - Drift Detection
+      - name: Security & Architecture Checks
         run: |
           chmod +x scripts/ci/check_nodrift.sh
           bash scripts/ci/check_nodrift.sh
 
-  # ARV Gate - Agent Readiness Verification
-  arv:
-    name: ARV Check
-    runs-on: ubuntu-latest
-    needs: hard-mode
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Agent Readiness Verification
+      - name: Agent Readiness Check
         run: |
           chmod +x scripts/ci/check_arv.sh
           bash scripts/ci/check_arv.sh
 
+  # =============================================================================
+  # Hard Mode - Optional internal ops checks (only on internal branch)
+  # =============================================================================
+
+  hard-mode-checks:
+    name: Hard Mode (Internal)
+    runs-on: ubuntu-latest
+    if: |
+      github.ref == 'refs/heads/internal' ||
+      contains(github.event.head_commit.message, '[hard-mode]')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hard Mode Drift Detection
+        run: |
+          chmod +x scripts/ci/check_nodrift.sh
+          HARD_MODE=true bash scripts/ci/check_nodrift.sh
+
+      - name: Hard Mode ARV
+        run: |
+          chmod +x scripts/ci/check_arv.sh
+          HARD_MODE=true bash scripts/ci/check_arv.sh
+
+  # =============================================================================
   # Build & Test
+  # =============================================================================
+
   build:
     name: Build & Test
     runs-on: ubuntu-latest
-    needs: [hard-mode, arv]
+    needs: quality-checks
 
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +76,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint || true
 
       - name: Type check
         run: npm run typecheck || true
@@ -73,7 +97,10 @@ jobs:
             packages/*/dist
             apps/*/dist
 
-  # Build Docker Images
+  # =============================================================================
+  # Build Docker Images (push events only)
+  # =============================================================================
+
   build-images:
     name: Build Docker Images
     runs-on: ubuntu-latest
@@ -119,7 +146,10 @@ jobs:
       gateway_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
       webhook_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}
 
+  # =============================================================================
   # Deploy to Dev (develop branch)
+  # =============================================================================
+
   deploy-dev:
     name: Deploy Dev
     needs: build-images
@@ -159,10 +189,12 @@ jobs:
       - name: Deploy Agents to Agent Engine
         run: |
           echo "Deploying agents to Vertex AI Agent Engine (dev)..."
-          # R4: All deployments via CI only
-          # Agents are deployed as Vertex AI Reasoning Engines with inline source
+          # Agents are deployed as Vertex AI Reasoning Engines
 
+  # =============================================================================
   # Deploy to Prod (main branch)
+  # =============================================================================
+
   deploy-prod:
     name: Deploy Prod
     needs: build-images
@@ -202,4 +234,3 @@ jobs:
       - name: Deploy Agents to Agent Engine
         run: |
           echo "Deploying agents to Vertex AI Agent Engine (prod)..."
-          # R4: All deployments via CI only

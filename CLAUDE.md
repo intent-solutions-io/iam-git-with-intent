@@ -2,78 +2,191 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## SESSION START PROTOCOL (MANDATORY)
+
+**EVERY new Claude Code session on this repository MUST begin by reading:**
+
+1. This file (`CLAUDE.md`) - Repository conventions
+2. `000-docs/003-AA-AUDT-appaudit-devops-playbook.md` - DevOps rules
+3. `000-docs/006-DR-ADRC-agentfs-beads-policy.md` - AgentFS/Beads policy
+
+**After context compaction/summarization**, read these files again before continuing work.
+
+This ensures:
+- You understand Runtime vs DevTools separation
+- You know when to use AgentFS/Beads (internal dev only)
+- You follow documentation standards (6767 filing)
+
+**Quick Command:** `/session-start` (if available) runs the session initialization.
+
+---
+
+## IMPORTANT: Runtime vs Dev Tools
+
+**Git With Intent is a PUBLIC PRODUCT** designed for external users to install and pay for.
+
+### What This Means
+
+1. **Product Runtime** (user-facing):
+   - CLI (`gwi`) and future API/UI
+   - Depends ONLY on standard, boring components:
+     - Node.js/TypeScript
+     - GitHub API (via Octokit)
+     - Vertex AI / Anthropic APIs
+     - Standard database (SQLite/Turso by default, swappable)
+   - **Does NOT require** AgentFS, Beads, or any experimental tools
+   - Must work for any user who runs `npm install -g @gwi/cli`
+
+2. **Dev/Ops Tools** (internal only):
+   - AgentFS, Beads, "Hard Mode" CI rules
+   - Used by our team and AI agents working IN this repo
+   - Live in `internal/` or behind feature flags
+   - Safe to remove without breaking user functionality
+
+### The Golden Rule
+
+> Any code path that affects user-visible behavior MUST work without AgentFS or Beads.
+> These tools are opt-in enhancements for internal development, not runtime requirements.
+
+---
+
 ## Project Overview
 
-**Git With Intent** is an AI-powered DevOps automation platform that handles PRs, merge conflicts, and issue-to-PR workflows using a multi-agent architecture built on Vertex AI Agent Engine, AgentFS, and Beads.
+**Git With Intent** is an AI-powered multi-agent PR assistant that helps developers:
+
+- Read and understand GitHub issues and PRs
+- Detect and resolve merge conflicts
+- Generate code changes from issue descriptions
+- Run validation (tests, linting)
+- Produce human-readable review summaries
 
 **CLI Command:** `gwi` (git with intent)
-**Architecture Model:** Based on `bobs-brain` (Vertex AI Agent Engine, A2A Protocol)
+
+**Target Users:** Developers who want AI assistance with PR workflows
+
+**Business Model:** CLI is open-source; hosted service will be paid
 
 ---
 
-## Non-Negotiable Dependencies
+## Multi-Agent Architecture (Hidden from Users)
 
-### 1. AgentFS (Turso)
+The system uses multiple specialized agents internally, but users interact through simple commands:
+
+### User-Facing Commands
+
 ```bash
-npm install agentfs-sdk
+gwi triage <pr-url>      # Analyze PR/issue, classify complexity
+gwi plan <pr-url>        # Generate a change plan
+gwi resolve <pr-url>     # Apply conflict resolutions
+gwi review <pr-url>      # Generate review summary
+gwi autopilot <pr-url>   # Full pipeline: triage -> plan -> code -> validate -> review
 ```
 
-**Use for:** All agent state management, file operations, audit trail, FUSE mount for git.
+### Internal Agents
+
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| TriageAgent | Gemini Flash | Classify complexity, identify files, understand context |
+| PlannerAgent | Claude Sonnet | Turn triage findings into actionable change plan |
+| CoderAgent | Claude Sonnet/Opus | Apply code edits using patches/AST transforms |
+| ValidatorAgent | Gemini Flash | Run tests/linters, interpret results |
+| ReviewerAgent | Claude Sonnet | Produce summaries, risks, PR comments |
+
+**Key Point:** Users never need to know about agents. Multi-agent coordination happens inside the CLI/backend.
+
+---
+
+## Storage Architecture
+
+### Interfaces (Required)
+
+All storage is abstracted behind interfaces that can be swapped:
 
 ```typescript
-import { AgentFS } from 'agentfs-sdk';
-const agent = await AgentFS.open({ id: 'my-agent-name' });
-await agent.kv.set('key', value);
-await agent.fs.writeFile('/path', content);
-await agent.tools.record('tool_name', startTime, endTime, input, output);
+// packages/core/src/storage/interfaces.ts
+
+interface PRStore {
+  savePR(pr: PRMetadata): Promise<void>;
+  getPR(id: string): Promise<PRMetadata | null>;
+  listPRs(filter?: PRFilter): Promise<PRMetadata[]>;
+}
+
+interface RunStore {
+  createRun(prId: string): Promise<Run>;
+  updateStep(runId: string, step: RunStep): Promise<void>;
+  getRun(runId: string): Promise<Run | null>;
+  getLatestRun(prId: string): Promise<Run | null>;
+}
+
+interface SettingsStore {
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T): Promise<void>;
+}
 ```
 
-### 2. Beads (steveyegge/beads)
-```bash
-curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
-bd init --quiet
+### Default Implementation (SQLite/Turso)
+
+The default storage uses SQLite (via better-sqlite3 or Turso):
+
+```typescript
+// packages/core/src/storage/sqlite.ts
+export class SQLiteStore implements PRStore, RunStore, SettingsStore { ... }
 ```
 
-**Use for:** ALL task tracking (NO markdown TODOs), agent memory, work coordination.
+### Optional Implementations
 
-```bash
-bd create "Task title" --description="Details" -t task -p 1 --json
-bd ready --json
-bd update bd-42 --status in_progress
-bd close bd-42 "Completion notes"
-```
+- `AgentFSStore` - Uses AgentFS (internal/experimental)
+- `PostgresStore` - For hosted deployments
+- `FirestoreStore` - For Firebase hosting
 
-### 3. Vertex AI Agent Engine
-- A2A protocol for agent communication
-- Session management with persistent state
+**Selection:** Set via `GWI_STORAGE=sqlite|postgres|firestore|agentfs`
 
 ---
 
-## Development Workflow
+## File Structure
 
-### Before Starting ANY Task
-```bash
-bd ready --json           # Check for ready work
-bd update <id> --status in_progress  # Claim work
+```
+git-with-intent/
+├── apps/
+│   ├── cli/              # CLI: gwi triage/plan/resolve/review/autopilot
+│   └── api/              # Future: hosted API
+├── packages/
+│   ├── core/             # Shared utilities
+│   │   ├── src/
+│   │   │   ├── storage/  # Storage interfaces + implementations
+│   │   │   ├── github/   # GitHub API client
+│   │   │   ├── models/   # LLM client abstraction
+│   │   │   └── types.ts  # Shared types
+│   ├── agents/           # Agent implementations
+│   │   ├── src/
+│   │   │   ├── triage/
+│   │   │   ├── planner/
+│   │   │   ├── coder/
+│   │   │   ├── validator/
+│   │   │   └── reviewer/
+│   └── integrations/     # GitHub, future: GitLab
+├── internal/             # Dev tools (AgentFS, Beads wrappers) - NOT for users
+├── infra/                # Terraform, Docker
+├── docs/                 # Documentation
+└── 000-docs/             # Project docs (6767 standard)
 ```
 
-### If You Discover New Work
-```bash
-bd create "Found: <description>" -t task -p 2 --deps discovered-from:<current-issue>
-```
+---
 
-### Code Standards
-- **Language:** TypeScript (primary), Python (Vertex AI SDK)
-- **Runtime:** Node.js 20+, Python 3.11+
-- **Package Manager:** pnpm (monorepo)
-- **Testing:** Vitest (unit), Playwright (E2E)
+## Code Standards
+
+- **Language:** TypeScript (primary)
+- **Runtime:** Node.js 20+
+- **Package Manager:** npm workspaces + Turbo
+- **Testing:** Vitest
 - **Linting:** ESLint + Prettier
 
 ### Commit Messages
-```
-<type>(<agent-name>): description
 
-[Task: bd-xxxx]
+```
+<type>(<scope>): description
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -84,193 +197,142 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`
 
 ---
 
-## Agent Architecture
-
-### Agents Are NOT Functions
-Each agent must be:
-- **Stateful:** Uses AgentFS for persistent memory
-- **Autonomous:** Makes decisions within its domain
-- **Collaborative:** Uses A2A protocol to communicate
-- **Observable:** Logs all actions to AgentFS toolcalls
-
-### Current Agents
-
-| Agent | Model | Purpose |
-|-------|-------|---------|
-| Orchestrator | - | Routes work, manages workflow |
-| Triage | Gemini Flash | Classify complexity, route work |
-| Resolver | Claude Sonnet/Opus | Resolve merge conflicts |
-| Reviewer | Claude Sonnet | Quality check, security scan |
-| Coder | Claude Sonnet | Issue → Code implementation |
-| Test | Gemini Flash | Generate and run tests |
-| Docs | Gemini Flash | Update documentation |
-
-### Creating a New Agent
-```typescript
-import { AgentFS } from 'agentfs-sdk';
-import { Agent, A2AMessage } from '@pr-agent/core';
-
-export class MyAgent extends Agent {
-  private agentfs: AgentFS;
-
-  async initialize() {
-    this.agentfs = await AgentFS.open({ id: 'my-agent' });
-  }
-
-  async handleMessage(message: A2AMessage) {
-    await this.agentfs.tools.record('handle_message', Date.now(), ...);
-    const result = await this.process(message.payload);
-    await this.agentfs.kv.set('last_processed', result);
-    return this.createResponse(message, result);
-  }
-}
-```
-
----
-
-## File Structure
-
-```
-git-with-intent/
-├── apps/
-│   ├── cli/           # CLI: gwi resolve <url>
-│   ├── api/           # API Gateway (Cloud Run)
-│   └── web/           # Dashboard (Phase 4)
-├── packages/
-│   ├── agents/        # All agent implementations
-│   ├── core/          # Shared: AgentFS, Beads, A2A, Models
-│   └── integrations/  # GitHub, GitLab, Slack
-├── infrastructure/    # Terraform, Docker
-├── docs/              # Documentation
-├── .beads/            # Beads database (git-tracked)
-└── .agentfs/          # AgentFS databases
-```
-
----
-
-## Common Commands
-
-```bash
-# Beads
-bd init --quiet
-bd create "Title" -t task -p 1
-bd ready --json
-bd update bd-42 --status in_progress
-bd close bd-42 "Done"
-
-# AgentFS
-agentfs run /bin/bash
-agentfs mount my-agent ./workspace
-
-# Development
-pnpm install
-pnpm dev
-pnpm build
-pnpm test
-```
-
----
-
-## Debug an Agent
-
-```bash
-sqlite3 .agentfs/resolver-agent.db "SELECT * FROM kv;"
-sqlite3 .agentfs/resolver-agent.db "SELECT * FROM toolcalls ORDER BY started_at DESC LIMIT 10;"
-bd show <issue-id>
-bd list --verbose
-```
-
----
-
 ## Environment Variables
 
+### Required for Users
+
 ```bash
+# At least one AI provider
 ANTHROPIC_API_KEY=sk-ant-...
+# OR
 GOOGLE_AI_API_KEY=...
+
+# GitHub access
 GITHUB_TOKEN=ghp_...
-GITHUB_APP_ID=...
-GITHUB_APP_PRIVATE_KEY=...
-AGENT_MAIL_URL=http://localhost:8765
-LOG_LEVEL=debug
+```
+
+### Optional
+
+```bash
+GWI_STORAGE=sqlite              # Storage backend (default: sqlite)
+GWI_DB_PATH=~/.gwi/data.db      # SQLite path
+LOG_LEVEL=info                  # Logging level
+```
+
+### Internal/Dev Only
+
+```bash
+GWI_USE_AGENTFS=true            # Enable AgentFS (internal)
+GWI_USE_BEADS=true              # Enable Beads (internal)
+HARD_MODE=true                  # Enable strict CI checks (internal)
+```
+
+---
+
+## Development Commands
+
+```bash
+# Install
+npm install
+
+# Build all packages
+npm run build
+
+# Run tests
+npm run test
+
+# Type check
+npm run typecheck
+
+# Lint
+npm run lint
+
+# Development
+npm run dev
+
+# CLI (after build)
+node apps/cli/dist/index.js --help
 ```
 
 ---
 
 ## Do NOT
 
-- Use markdown for task tracking (use Beads)
-- Store state in memory only (use AgentFS)
-- Make agents that are just function wrappers
-- Skip the Reviewer agent for any code changes
-- Merge without CI passing
-- Hard-code model names (use model selector)
+- Require AgentFS or Beads for user-facing features
+- Add dependencies that users must install separately
+- Expose multi-agent complexity in the CLI interface
+- Hard-code model names (use config/env)
+- Break the storage interface contract
 
 ---
 
 ## Do
 
-- File Beads issues for all discovered work
-- Use AgentFS for ALL agent state
-- Log all tool calls to AgentFS audit trail
-- Follow A2A protocol for agent communication
-- Escalate to human when confidence < threshold
-- Write tests for new functionality
+- Keep user experience simple (one command does the job)
+- Use storage interfaces for all persistence
+- Test with the default SQLite storage
+- Document any internal-only features clearly
+- Design for future hosted deployment
 
 ---
 
-## Document Filing (000-docs/)
+## MVP Scope (v0.1)
 
-All docs follow the 6767 filing standard:
-- Project docs: `NNN-CC-ABCD-short-description.md`
-- Canonical standards: `6767-{letter}-CC-ABCD-short-description.md`
-- All docs flat in `000-docs/` (no subdirectories)
-- Every phase produces an AAR: `NNN-AA-AACR-phase-n-description.md`
-
----
-
-## MVP Scope (Phase 1)
-
-**Goal:** CLI that resolves merge conflicts on GitHub PRs
+**Goal:** CLI that helps with PR conflict resolution
 
 ```bash
 gwi resolve https://github.com/org/repo/pull/123
 ```
 
-**In scope:** Triage Agent, Resolver Agent, Reviewer Agent, GitHub integration
-**Out of scope:** GitLab, VS Code extension, web dashboard, issue→PR workflow
+**In scope:**
+- Triage, Planner, Coder, Reviewer agents
+- GitHub PR/issue reading
+- Merge conflict detection and resolution
+- PR comment generation
+
+**Out of scope (for now):**
+- GitLab support
+- Web dashboard
+- Slack integration
+- Complex A2A gateway infrastructure
+
+---
+
+## Documentation Standards (Docs-Filing v4 + 6767)
+
+This repository follows **docs-filing v4** for all documentation:
+
+### Key Rules
+
+1. **All docs live in `000-docs/`** (flat, no subdirectories)
+2. **Naming convention:** `NNN-CC-ABCD-short-description.md`
+   - `NNN`: Chronological sequence (001-999)
+   - `CC`: Category code (DR, AA, AT, etc.)
+   - `ABCD`: Type code (ADRC, AACR, STND, etc.)
+3. **After each phase:** Create an AAR using template `6767-b-AA-TMPL-after-action-report-template.md`
+4. **Canonical standards:** Files starting with `6767-` are cross-repo standards
+
+### Category Codes Used in This Repo
+
+| Code | Category | Common Types |
+|------|----------|--------------|
+| DR | Documentation & Reference | ADRC (ADR), STND, GUID |
+| AA | After Action & Review | AACR (AAR), AUDT |
+| AT | Architecture & Technical | ADEC, ARCH |
+
+### Templates
+
+- **AAR Template:** `000-docs/6767-b-AA-TMPL-after-action-report-template.md`
+- **Filing Standard:** `000-docs/6767-a-DR-STND-document-filing-system-standard-v4.md`
 
 ---
 
 ## References
 
-- **Architecture:** `docs/vision/architecture.md`
-- **Product:** `docs/vision/PRD.md`
-- **MVP Scope:** `docs/vision/mvp-scope.md`
-- **Beads:** https://github.com/steveyegge/beads
-- **AgentFS:** https://github.com/tursodatabase/agentfs
-- **bobs-brain:** https://github.com/intent-solutions-io/bobs-brain.git
-- This is a multi-agent DevOps automation platform. Before writing any code, clone and study these non-negotiable dependencies:
-
-1. **AgentFS** (Turso) - Agent filesystem and state management
-   https://github.com/tursodatabase/agentfs
-   - SQLite-backed filesystem for agents
-   - Key-value store for state
-   - Toolcall audit trail
-   - FUSE support for native git operations
-
-2. **Beads** (Steve Yegge) - Agent memory and task coordination
-   https://github.com/steveyegge/beads
-   - Graph-based issue tracking (NOT markdown)
-   - Dependency tracking (blocks, related, parent-child, discovered-from)
-   - Agent Mail for real-time multi-agent coordination
-   - Git-versioned JSONL
-
-3. **Reference architecture** - bobs-brain pattern
-   https://github.com/intent-solutions-io/bobs-brain
-   - Vertex AI Agent Engine
-   - A2A protocol
-   - Session Cache
-   - Hard Mode architecture
-
-4. **Project template**
-   https://github.com/intent-solutions-io/project-template
+- **Architecture Decision (Runtime vs DevTools):** `000-docs/004-DR-ADRC-runtime-vs-devtools.md`
+- **AgentFS/Beads Policy:** `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
+- **Directory Structure:** `000-docs/007-DR-ADRC-directory-structure.md`
+- **DevOps Playbook (Internal):** `000-docs/003-AA-AUDT-appaudit-devops-playbook.md`
+- **Filing Standard:** `000-docs/6767-a-DR-STND-document-filing-system-standard-v4.md`
+- **AAR Template:** `000-docs/6767-b-AA-TMPL-after-action-report-template.md`
+- **Session Start Command:** `.claude/commands/session-start.md`

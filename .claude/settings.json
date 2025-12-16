@@ -1,0 +1,24 @@
+{
+  "$schema": "https://claude.ai/schema/claude-code/settings.json",
+  "projectName": "git-with-intent",
+  "description": "AI-powered multi-agent PR assistant",
+  "sessionStartReminder": {
+    "enabled": true,
+    "files": [
+      "CLAUDE.md",
+      "000-docs/003-AA-AUDT-appaudit-devops-playbook.md",
+      "000-docs/006-DR-ADRC-agentfs-beads-policy.md"
+    ],
+    "message": "IMPORTANT: Before working on this repository, review the devops rules and tooling policy."
+  },
+  "internalTooling": {
+    "agentfs": {
+      "enabled": "GWI_USE_AGENTFS",
+      "required": "internal-dev-only"
+    },
+    "beads": {
+      "enabled": "GWI_USE_BEADS",
+      "required": "internal-dev-only"
+    }
+  }
+}

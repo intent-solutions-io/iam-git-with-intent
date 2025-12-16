@@ -1,15 +1,16 @@
 /**
  * Resolve Command
  *
- * [Task: git-with-intent-iat]
- *
- * Full pipeline for resolving merge conflicts:
+ * Full pipeline for resolving merge conflicts with interactive approval:
  * 1. Fetch PR metadata from GitHub
  * 2. Triage - analyze complexity and route
  * 3. Resolve - generate conflict resolutions
  * 4. Review - validate resolutions
  * 5. Human approval (optional)
  * 6. Report results
+ *
+ * IMPORTANT: This command works without AgentFS or Beads.
+ * Uses pluggable storage (SQLite by default).
  */
 
 import chalk from 'chalk';
@@ -22,8 +23,8 @@ import {
   type TriageOutput,
   type ReviewerOutput,
 } from '@gwi/agents';
-import { createBeadsClient } from '@gwi/core/beads';
-import type { PRMetadata, ResolutionResult } from '@gwi/core';
+import { getDefaultStoreFactory } from '@gwi/core/storage';
+import type { PRMetadata, ResolutionResult, Run, RunStep } from '@gwi/core';
 
 /**
  * Resolve command options
@@ -50,17 +51,27 @@ interface PipelineResult {
  */
 export async function resolveCommand(prUrl: string, options: ResolveOptions): Promise<void> {
   const spinner = ora();
+  const startTime = Date.now();
+
+  // Storage setup
+  const factory = getDefaultStoreFactory();
+  const prStore = factory.createPRStore();
+  const runStore = factory.createRunStore();
 
   console.log(chalk.blue.bold('\n  Git With Intent - Merge Conflict Resolver\n'));
 
   // Initialize clients
   const github = createGitHubClient();
-  const beads = createBeadsClient();
 
-  // Check Beads
-  if (!(await beads.isInitialized())) {
-    spinner.info('Beads not initialized. Run: bd init --quiet');
-  }
+  // Create run record
+  const run: Run = {
+    id: `run-${Date.now()}`,
+    prId: '',
+    command: 'resolve',
+    status: 'running',
+    startedAt: startTime,
+    steps: [],
+  };
 
   // Initialize agents
   spinner.start('Initializing agents...');
@@ -80,6 +91,7 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
   let pr: PRMetadata;
   try {
     pr = await github.getPR(prUrl);
+    run.prId = pr.id;
     spinner.succeed(`Fetched PR #${pr.number}: ${pr.title}`);
   } catch (error) {
     spinner.fail('Failed to fetch PR');
@@ -102,11 +114,25 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
 
   // Step 2: Triage
   spinner.start('Analyzing conflicts...');
+  const triageStep: RunStep = {
+    name: 'triage',
+    agent: 'TriageAgent',
+    status: 'running',
+    startedAt: Date.now(),
+  };
+
   let triageResult: TriageOutput;
   try {
     triageResult = await triageAgent.triage(pr);
+    triageStep.status = 'completed';
+    triageStep.completedAt = Date.now();
+    triageStep.output = triageResult;
+    run.steps.push(triageStep);
     spinner.succeed('Analysis complete');
   } catch (error) {
+    triageStep.status = 'failed';
+    triageStep.completedAt = Date.now();
+    run.steps.push(triageStep);
     spinner.fail('Triage failed');
     await shutdownAgents(triageAgent, resolverAgent, reviewerAgent);
     throw error;
@@ -119,15 +145,21 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
     console.log(chalk.yellow('\n  This PR requires human expertise to resolve.\n'));
     console.log(chalk.dim('  Reason: ' + triageResult.explanation));
 
-    if (await beads.isInitialized()) {
-      const issue = await beads.createIssue({
-        title: `Manual resolution required: ${pr.title}`,
-        type: 'task',
-        priority: 2,
-        description: `PR ${prUrl} requires manual resolution.\n\nReason: ${triageResult.explanation}`,
-      });
-      console.log(chalk.dim(`\n  Created Beads issue: ${issue.id}`));
-    }
+    // Save to storage for tracking
+    await prStore.savePR({
+      ...pr,
+      status: 'escalated',
+      metadata: {
+        triageResult,
+        escalatedAt: Date.now(),
+        reason: triageResult.explanation,
+      },
+    });
+
+    run.status = 'completed';
+    run.completedAt = Date.now();
+    run.result = { status: 'escalated', reason: triageResult.explanation };
+    await runStore.saveRun(run);
 
     await shutdownAgents(triageAgent, resolverAgent, reviewerAgent);
     return;
@@ -140,7 +172,15 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
   }
 
   // Step 3 & 4: Resolve and Review each conflict
+  const resolveStep: RunStep = {
+    name: 'resolve',
+    agent: 'ResolverAgent',
+    status: 'running',
+    startedAt: Date.now(),
+  };
+
   const results: PipelineResult[] = [];
+  const resolutions: ResolutionResult[] = [];
 
   for (const conflict of pr.conflicts) {
     const fileComplexity = triageResult.fileComplexities.find(
@@ -165,6 +205,7 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
         continue;
       }
 
+      resolutions.push(resolverOutput.resolution);
       spinner.text = `Reviewing ${conflict.file}...`;
 
       // Review
@@ -214,6 +255,14 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
     }
   }
 
+  resolveStep.status = 'completed';
+  resolveStep.completedAt = Date.now();
+  resolveStep.output = {
+    resolved: results.filter(r => r.status === 'resolved').length,
+    failed: results.filter(r => r.status === 'failed').length,
+  };
+  run.steps.push(resolveStep);
+
   // Print summary
   printSummary(results, options);
 
@@ -225,19 +274,37 @@ export async function resolveCommand(prUrl: string, options: ResolveOptions): Pr
     console.log(chalk.bold('\n  Human Approval Required\n'));
     console.log(chalk.dim('  Review the resolutions above, then:'));
     console.log(chalk.dim(`    • Apply: gwi apply ${pr.number}`));
-    console.log(chalk.dim(`    • Reject: gwi reject ${pr.number}`));
+    console.log(chalk.dim(`    • Reject: gwi review ${pr.number} --reject`));
     console.log(chalk.dim(`    • View diff: gwi diff ${pr.number}\n`));
   }
 
-  // Create Beads issue for unresolved files
-  if (needsReview.length > 0 && (await beads.isInitialized())) {
-    const issue = await beads.createIssue({
-      title: `Review required: ${needsReview.length} files in PR #${pr.number}`,
-      type: 'task',
-      priority: 1,
-      description: `Files needing manual review:\n${needsReview.map((r) => `- ${r.file}: ${r.status}`).join('\n')}`,
-    });
-    console.log(chalk.dim(`  Created Beads issue for review: ${issue.id}\n`));
+  // Save results to storage
+  const status = resolved.length === pr.conflicts.length ? 'resolved' :
+    resolved.length > 0 ? 'in_progress' : 'failed';
+
+  await prStore.savePR({
+    ...pr,
+    status,
+    metadata: {
+      triageResult,
+      resolutions,
+      pipelineResults: results,
+      completedAt: Date.now(),
+    },
+  });
+
+  // Save run record
+  run.status = 'completed';
+  run.completedAt = Date.now();
+  run.result = {
+    resolved: resolved.map(r => r.file),
+    needsReview: needsReview.map(r => r.file),
+  };
+  await runStore.saveRun(run);
+
+  // Create tracking entry for unresolved files
+  if (needsReview.length > 0) {
+    console.log(chalk.dim(`\n  ${needsReview.length} file(s) need manual attention.\n`));
   }
 
   // Cleanup
