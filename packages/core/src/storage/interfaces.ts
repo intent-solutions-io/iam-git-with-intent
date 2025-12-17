@@ -293,7 +293,7 @@ export interface SaaSRun extends Run {
   tenantId: string;
   repoId: string;
   trigger: {
-    source: 'ui' | 'cli' | 'webhook' | 'scheduled';
+    source: 'ui' | 'cli' | 'webhook' | 'scheduled' | 'api';
     userId?: string;
     webhookEventId?: string;
     commandText?: string;
@@ -306,6 +306,88 @@ export interface SaaSRun extends Run {
     review: number;
     total: number;
   };
+  /** Phase 11: Approval status for runs with destructive actions */
+  approvalStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  /** Phase 11: If approval is required, reason why */
+  approvalReason?: string;
+  /** Phase 11: Proposed changes summary */
+  proposedChanges?: ProposedChange[];
+}
+
+/**
+ * Phase 11: Proposed change (for approval workflow)
+ */
+export interface ProposedChange {
+  file: string;
+  action: 'create' | 'modify' | 'delete';
+  diff?: string;
+  summary?: string;
+}
+
+// =============================================================================
+// Phase 11: Approval and Audit Types
+// =============================================================================
+
+/**
+ * Approval decision
+ */
+export type ApprovalDecision = 'approved' | 'rejected';
+
+/**
+ * Run approval record (Phase 11)
+ *
+ * Stored separately from RunApprovalRecord in capabilities (which is Zod schema).
+ * This is the persistence interface for approval decisions.
+ */
+export interface RunApproval {
+  id: string;
+  runId: string;
+  tenantId: string;
+  decision: ApprovalDecision;
+  decidedBy: string;         // userId who approved/rejected
+  decidedAt: Date;
+  reason?: string;           // Optional comment from approver
+  proposedChangesSnapshot?: ProposedChange[];  // Snapshot at time of approval
+}
+
+/**
+ * Audit event type
+ */
+export type AuditEventType =
+  | 'run_started'
+  | 'run_completed'
+  | 'run_failed'
+  | 'step_started'
+  | 'step_completed'
+  | 'step_failed'
+  | 'approval_requested'
+  | 'approval_granted'
+  | 'approval_rejected'
+  | 'github_comment_posted'
+  | 'branch_created'
+  | 'commit_pushed'
+  | 'pr_created'
+  | 'pr_updated';
+
+/**
+ * Audit event (Phase 11)
+ *
+ * Immutable audit trail for all run actions.
+ */
+export interface AuditEvent {
+  id: string;
+  runId: string;
+  tenantId: string;
+  eventType: AuditEventType;
+  timestamp: Date;
+  actor?: string;            // userId or 'system' or 'webhook'
+  details: Record<string, unknown>;
+  /** 5W fields for GitHub comments */
+  who?: string;
+  what?: string;
+  when?: string;
+  where?: string;
+  why?: string;
 }
 
 // =============================================================================
@@ -488,6 +570,38 @@ export interface MembershipStore {
   listTenantMembers(tenantId: string): Promise<Membership[]>;
   updateMembership(membershipId: string, update: Partial<Membership>): Promise<Membership>;
   deleteMembership(membershipId: string): Promise<void>;
+}
+
+/**
+ * Store for approval records (Phase 11)
+ */
+export interface ApprovalStore {
+  createApproval(approval: Omit<RunApproval, 'id'>): Promise<RunApproval>;
+  getApproval(approvalId: string): Promise<RunApproval | null>;
+  getApprovalByRunId(runId: string): Promise<RunApproval | null>;
+  listApprovals(tenantId: string, filter?: {
+    runId?: string;
+    decision?: ApprovalDecision;
+    limit?: number;
+  }): Promise<RunApproval[]>;
+}
+
+/**
+ * Store for audit events (Phase 11)
+ */
+export interface AuditStore {
+  createEvent(event: Omit<AuditEvent, 'id'>): Promise<AuditEvent>;
+  getEvent(eventId: string): Promise<AuditEvent | null>;
+  listEvents(runId: string, filter?: {
+    eventType?: AuditEventType;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditEvent[]>;
+  listTenantEvents(tenantId: string, filter?: {
+    eventType?: AuditEventType;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditEvent[]>;
 }
 
 // =============================================================================

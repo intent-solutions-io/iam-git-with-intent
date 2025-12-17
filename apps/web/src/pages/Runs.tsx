@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   collection,
   query,
@@ -119,24 +120,21 @@ export function Runs() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Created
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {/* Actions column header */}
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {runs.map((run) => (
-                <tr key={run.id} className="hover:bg-gray-50">
+                <tr key={run.id} className="hover:bg-gray-50 cursor-pointer">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    {run.prUrl ? (
-                      <a
-                        href={run.prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline"
-                      >
-                        PR #{run.prNumber}
-                      </a>
-                    ) : (
-                      <span className="text-gray-500">{run.id.slice(0, 8)}</span>
-                    )}
+                    <Link
+                      to={`/runs/${run.id}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {run.prUrl ? `PR #${run.prNumber}` : run.id.slice(0, 8)}
+                    </Link>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <RunTypeBadge type={run.type} />
@@ -146,6 +144,14 @@ export function Runs() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {run.createdAt?.toLocaleString() || '--'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <Link
+                      to={`/runs/${run.id}`}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      View &rarr;
+                    </Link>
                   </td>
                 </tr>
               ))}

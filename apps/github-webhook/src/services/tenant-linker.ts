@@ -16,7 +16,8 @@ import type {
   SaaSRun,
   RunType,
 } from '@gwi/core';
-import { getTenantStore } from '@gwi/core';
+import { getTenantStore, getAuditStore } from '@gwi/core';
+import { getGitHubCommenter, GitHubCommenter } from './github-commenter.js';
 
 // =============================================================================
 // Types
@@ -265,6 +266,8 @@ export class TenantLinker {
 
   /**
    * Create a run for a webhook event
+   *
+   * Phase 11: Also posts 5W comment to GitHub and creates audit event.
    */
   async createRun(
     tenantContext: TenantContext,
@@ -322,6 +325,57 @@ export class TenantLinker {
       trigger: 'webhook',
       deliveryId: webhookContext.deliveryId,
     }));
+
+    // Phase 11: Create audit event for run started
+    try {
+      const auditStore = getAuditStore();
+      await auditStore.createEvent({
+        runId: created.id,
+        tenantId: tenant.id,
+        eventType: 'run_started',
+        timestamp: new Date(),
+        actor: webhookContext.sender?.login || 'webhook',
+        details: {
+          runType,
+          prNumber: prInfo.number,
+          prUrl: prInfo.url,
+          deliveryId: webhookContext.deliveryId,
+        },
+        who: webhookContext.sender?.login || 'webhook',
+        what: `Started ${runType} run`,
+        when: new Date().toISOString(),
+        where: prInfo.url,
+        why: 'Triggered by webhook event',
+      });
+    } catch (err) {
+      console.error('Failed to create audit event:', err);
+    }
+
+    // Phase 11: Post 5W comment to GitHub (best effort)
+    if (webhookContext.repository) {
+      try {
+        const commenter = getGitHubCommenter();
+        const fiveW = GitHubCommenter.runStarted(
+          created.id,
+          runType,
+          webhookContext.sender?.login || 'webhook',
+          prInfo.url
+        );
+
+        await commenter.postComment(
+          webhookContext.installationId,
+          webhookContext.repository.owner,
+          webhookContext.repository.name,
+          prInfo.number,
+          'run_started',
+          fiveW,
+          `Run ID: \`${created.id}\`\nView status in the [GWI Dashboard](${process.env.WEB_APP_URL || 'https://gwi.dev'}/runs/${created.id})`
+        );
+      } catch (err) {
+        // Comment posting is best-effort, don't fail the run
+        console.error('Failed to post GitHub comment:', err);
+      }
+    }
 
     return created;
   }

@@ -156,6 +156,10 @@ export const COLLECTIONS = {
   MEMBERSHIPS: 'gwi_memberships',
   /** Steps within runs */
   STEPS: 'steps',  // Subcollection under runs
+  /** Phase 11: Approval records */
+  APPROVALS: 'gwi_approvals',
+  /** Phase 11: Audit events */
+  AUDIT_EVENTS: 'gwi_audit_events',
 } as const;
 
 // =============================================================================

@@ -33,8 +33,12 @@ import {
   getStoreBackend,
   getMembershipStore,
   getUserStore,
+  getApprovalStore,
+  getAuditStore,
   type TenantStore,
   type TenantRole,
+  type ApprovalDecision,
+  type AuditEventType,
   // Security utilities
   canPerform,
   checkRunLimit,
@@ -1518,6 +1522,255 @@ app.get('/tenants/:tenantId/runs/:runId', authMiddleware, tenantAuthMiddleware, 
     console.error('Failed to get run:', error);
     res.status(500).json({
       error: 'Failed to get run',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
+// Routes: Run Approvals (Phase 11)
+// =============================================================================
+
+const ApproveRunSchema = z.object({
+  reason: z.string().optional(),
+});
+
+const RejectRunSchema = z.object({
+  reason: z.string().min(1, 'Rejection reason is required'),
+});
+
+/**
+ * POST /tenants/:tenantId/runs/:runId/approve - Approve a run (ADMIN+)
+ *
+ * Phase 11: Creates an ApprovalRecord and updates run status.
+ * Only works for runs with approvalStatus='pending'.
+ */
+app.post('/tenants/:tenantId/runs/:runId/approve', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId, runId } = req.params;
+
+  const parseResult = ApproveRunSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    // Get run directly from store to access Phase 11 fields (SaaSRun)
+    const store = getStore();
+    const run = await store.getRun(tenantId, runId);
+
+    if (!run) {
+      return res.status(404).json({ error: 'Run not found', runId });
+    }
+
+    // Check if run is pending approval
+    if (run.approvalStatus !== 'pending') {
+      return res.status(400).json({
+        error: 'Run is not pending approval',
+        currentStatus: run.approvalStatus || 'none',
+      });
+    }
+
+    // Create approval record
+    const approvalStore = getApprovalStore();
+    const approval = await approvalStore.createApproval({
+      runId,
+      tenantId,
+      decision: 'approved' as ApprovalDecision,
+      decidedBy: req.context!.userId,
+      decidedAt: new Date(),
+      reason: parseResult.data.reason,
+      proposedChangesSnapshot: run.proposedChanges,
+    });
+
+    // Create audit event
+    const auditStore = getAuditStore();
+    await auditStore.createEvent({
+      runId,
+      tenantId,
+      eventType: 'approval_granted' as AuditEventType,
+      timestamp: new Date(),
+      actor: req.context!.userId,
+      details: {
+        approvalId: approval.id,
+        reason: parseResult.data.reason,
+      },
+      who: req.context!.userId,
+      what: 'Approved run for execution',
+      when: new Date().toISOString(),
+      where: `Run ${runId}`,
+      why: parseResult.data.reason || 'Manual approval',
+    });
+
+    // Update run status
+    await store.updateRun(tenantId, runId, {
+      approvalStatus: 'approved',
+      status: 'running',
+    });
+
+    console.log(JSON.stringify({
+      type: 'run_approved',
+      tenantId,
+      runId,
+      approvalId: approval.id,
+      approvedBy: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      approval,
+      message: 'Run approved successfully',
+    });
+  } catch (error) {
+    console.error('Failed to approve run:', error);
+    res.status(500).json({
+      error: 'Failed to approve run',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /tenants/:tenantId/runs/:runId/reject - Reject a run (ADMIN+)
+ *
+ * Phase 11: Creates an ApprovalRecord with rejection and fails the run.
+ */
+app.post('/tenants/:tenantId/runs/:runId/reject', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId, runId } = req.params;
+
+  const parseResult = RejectRunSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    // Get run directly from store to access Phase 11 fields (SaaSRun)
+    const store = getStore();
+    const run = await store.getRun(tenantId, runId);
+
+    if (!run) {
+      return res.status(404).json({ error: 'Run not found', runId });
+    }
+
+    if (run.approvalStatus !== 'pending') {
+      return res.status(400).json({
+        error: 'Run is not pending approval',
+        currentStatus: run.approvalStatus || 'none',
+      });
+    }
+
+    // Create rejection record
+    const approvalStore = getApprovalStore();
+    const approval = await approvalStore.createApproval({
+      runId,
+      tenantId,
+      decision: 'rejected' as ApprovalDecision,
+      decidedBy: req.context!.userId,
+      decidedAt: new Date(),
+      reason: parseResult.data.reason,
+      proposedChangesSnapshot: run.proposedChanges,
+    });
+
+    // Create audit event
+    const auditStore = getAuditStore();
+    await auditStore.createEvent({
+      runId,
+      tenantId,
+      eventType: 'approval_rejected' as AuditEventType,
+      timestamp: new Date(),
+      actor: req.context!.userId,
+      details: {
+        approvalId: approval.id,
+        reason: parseResult.data.reason,
+      },
+      who: req.context!.userId,
+      what: 'Rejected run',
+      when: new Date().toISOString(),
+      where: `Run ${runId}`,
+      why: parseResult.data.reason,
+    });
+
+    // Update run status
+    await store.updateRun(tenantId, runId, {
+      approvalStatus: 'rejected',
+      status: 'failed',
+      error: `Rejected by ${req.context!.userId}: ${parseResult.data.reason}`,
+    });
+
+    console.log(JSON.stringify({
+      type: 'run_rejected',
+      tenantId,
+      runId,
+      approvalId: approval.id,
+      rejectedBy: req.context!.userId,
+      reason: parseResult.data.reason,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      approval,
+      message: 'Run rejected',
+    });
+  } catch (error) {
+    console.error('Failed to reject run:', error);
+    res.status(500).json({
+      error: 'Failed to reject run',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /tenants/:tenantId/runs/:runId/audit - Get audit trail for run (VIEWER+)
+ *
+ * Phase 11: Returns paginated audit events for a run.
+ */
+app.get('/tenants/:tenantId/runs/:runId/audit', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId, runId } = req.params;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const offset = parseInt(req.query.offset as string) || 0;
+  const eventType = req.query.eventType as string | undefined;
+
+  try {
+    // Verify run exists
+    const eng = await getEngine();
+    const run = await eng.getRun(tenantId, runId);
+
+    if (!run) {
+      return res.status(404).json({ error: 'Run not found', runId });
+    }
+
+    // Get audit events
+    const auditStore = getAuditStore();
+    const events = await auditStore.listEvents(runId, {
+      eventType: eventType as AuditEventType,
+      limit,
+      offset,
+    });
+
+    // Get approval record if exists
+    const approvalStore = getApprovalStore();
+    const approval = await approvalStore.getApprovalByRunId(runId);
+
+    res.json({
+      runId,
+      events,
+      approval,
+      pagination: {
+        limit,
+        offset,
+        hasMore: events.length === limit,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to get audit trail:', error);
+    res.status(500).json({
+      error: 'Failed to get audit trail',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

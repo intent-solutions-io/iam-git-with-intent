@@ -13,6 +13,7 @@ import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Runs } from './pages/Runs';
+import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Onboarding } from './pages/Onboarding';
 import { InviteAccept } from './pages/InviteAccept';
@@ -47,6 +48,14 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <Runs />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/runs/:runId"
+              element={
+                <ProtectedRoute>
+                  <RunDetail />
                 </ProtectedRoute>
               }
             />

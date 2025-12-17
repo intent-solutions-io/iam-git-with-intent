@@ -46,6 +46,20 @@ export { FirestoreRunStore } from './firestore-run.js';
 export { FirestoreMembershipStore, getMembershipStore } from './firestore-membership.js';
 export { FirestoreUserStore, getUserStore } from './firestore-user.js';
 
+// Phase 11: Approval and Audit stores
+export {
+  FirestoreApprovalStore,
+  InMemoryApprovalStore,
+  getApprovalStore,
+  resetApprovalStore,
+} from './firestore-approval.js';
+export {
+  FirestoreAuditStore,
+  InMemoryAuditStore,
+  getAuditStore,
+  resetAuditStore,
+} from './firestore-audit.js';
+
 import type { StoreFactory, StorageConfig, TenantStore, RunStore } from './interfaces.js';
 import { getStorageConfig } from './interfaces.js';
 import { SQLiteStoreFactory } from './sqlite.js';
