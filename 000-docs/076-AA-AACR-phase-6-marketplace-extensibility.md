@@ -13,8 +13,8 @@
 | Status | **COMPLETE** |
 | Related Issues/PRs | N/A |
 | Commit(s) | 4a60273 |
-| Beads | N/A |
-| AgentFS | N/A |
+| Beads | missing (not recorded) |
+| AgentFS | missing (not recorded) |
 
 ---
 

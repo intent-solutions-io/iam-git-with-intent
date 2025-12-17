@@ -13,8 +13,8 @@
 | Status | **COMPLETE** |
 | Related Issues/PRs | N/A |
 | Commit(s) | dc58daf |
-| Beads | N/A |
-| AgentFS | N/A |
+| Beads | missing (not recorded) |
+| AgentFS | missing (not recorded) |
 
 ---
 
