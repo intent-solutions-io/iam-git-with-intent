@@ -25,6 +25,10 @@
     "./models": {
       "types": "./dist/models/index.d.ts",
       "import": "./dist/models/index.js"
+    },
+    "./run-bundle": {
+      "types": "./dist/run-bundle/index.d.ts",
+      "import": "./dist/run-bundle/index.js"
     }
   },
   "scripts": {
