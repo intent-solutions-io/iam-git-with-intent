@@ -91,3 +91,14 @@ export {
 
 // Schemas
 export * from './schemas/index.js';
+
+// Run Index
+export {
+  RunIndexEntry,
+  type RunIndexFilter,
+  type RunIndexStore,
+  LocalFsRunIndexStore,
+  AgentFsRunIndexStore,
+  getRunIndexStore,
+  contextToIndexEntry,
+} from './run-index.js';
