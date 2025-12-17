@@ -16,7 +16,7 @@
 | Date/Time (CST) | 2025-12-16 21:50 CST |
 | Status | FINAL |
 | Related Issues/PRs | N/A |
-| Commit(s) | (pending) |
+| Commit(s) | `8bfbf87` |
 | Beads | `git-with-intent-0tx` (3.1 SDK types), `git-with-intent-odu` (3.2 invoke), `git-with-intent-g5t` (3.3 conformance), `git-with-intent-dis` (3.4 migrate), `git-with-intent-1oc` (Phase 3 AAR) |
 | AgentFS | agent id: `gwi` / mount: `agents/gwi` / db: `.agentfs/gwi.db` |
 
