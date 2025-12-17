@@ -181,6 +181,34 @@ npm run dev
 
 ---
 
+## Development Guardrails (ARV)
+
+**ARV (Agent Readiness Verification)** ensures code stays aligned with Agent Engine requirements.
+
+```bash
+# Run all ARV checks (required before commit)
+npm run arv
+
+# Individual checks
+npm run arv:lint      # Forbidden patterns (deprecated ADK, hardcoded models)
+npm run arv:contracts # Schema validation (Zod contracts)
+npm run arv:goldens   # Deterministic output tests
+npm run arv:smoke     # Boot sanity check
+```
+
+**What ARV checks:**
+- No deprecated ADK patterns (`google.adk.serving.fastapi`)
+- No hardcoded model names (use `MODELS` config)
+- All tool schemas validated
+- Scoring produces deterministic outputs
+- Runtime boots successfully
+
+**CI Gate**: ARV runs on every PR. Failures block merge.
+
+See `000-docs/044-DR-GUID-agent-engine-context.md` for full requirements.
+
+---
+
 ## Environment Variables
 
 | Variable | Purpose | Required |

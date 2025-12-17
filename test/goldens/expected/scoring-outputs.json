@@ -1,0 +1,62 @@
+{
+  "outputs": [
+    {
+      "id": "minimal",
+      "score": 1,
+      "reasons": []
+    },
+    {
+      "id": "small_change",
+      "score": 1,
+      "reasons": []
+    },
+    {
+      "id": "medium_change",
+      "score": 2,
+      "reasons": ["medium_change"]
+    },
+    {
+      "id": "large_change",
+      "score": 4,
+      "reasons": ["large_change", "many_files"]
+    },
+    {
+      "id": "security_files",
+      "score": 5,
+      "reasons": ["auth_related", "medium_change", "security_sensitive"]
+    },
+    {
+      "id": "infra_files",
+      "score": 4,
+      "reasons": ["infra_change", "medium_change"]
+    },
+    {
+      "id": "test_only",
+      "score": 2,
+      "reasons": ["medium_change", "test_only"]
+    },
+    {
+      "id": "config_files",
+      "score": 2,
+      "reasons": ["config_change", "medium_change"]
+    },
+    {
+      "id": "complex_hunks",
+      "score": 3,
+      "reasons": ["medium_change", "scattered_changes"]
+    },
+    {
+      "id": "max_complexity",
+      "score": 10,
+      "reasons": [
+        "auth_related",
+        "config_change",
+        "infra_change",
+        "large_change",
+        "many_files",
+        "scattered_changes",
+        "security_sensitive"
+      ]
+    }
+  ]
+}

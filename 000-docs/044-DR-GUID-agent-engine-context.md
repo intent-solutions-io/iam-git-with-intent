@@ -200,6 +200,5 @@ npm run arv:smoke    # Boot sanity check
 
 ## See Also
 
-- `000-docs/agent-engine/COMPLIANCE.md` - Compliance checklist
-- `docs/context.md` - Full architecture context
+- `000-docs/045-DR-CHKL-agent-engine-compliance.md` - Compliance checklist
 - `CLAUDE.md` - Working contract

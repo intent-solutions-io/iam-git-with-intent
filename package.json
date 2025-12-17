@@ -38,7 +38,12 @@
     "claude:after-message": "npx tsx scripts/claude-after-message.ts",
     "smoke:staging": "npx tsx scripts/cloud-smoke-test.ts --env=staging",
     "smoke:production": "npx tsx scripts/cloud-smoke-test.ts --env=production",
-    "deploy:staging": "./scripts/deploy-staging.sh"
+    "deploy:staging": "./scripts/deploy-staging.sh",
+    "arv": "npx tsx scripts/arv/run-all.ts",
+    "arv:lint": "npx tsx scripts/arv/forbidden-patterns.ts",
+    "arv:contracts": "npx vitest run test/contracts/ --reporter=verbose",
+    "arv:goldens": "npx vitest run test/goldens/ --reporter=verbose",
+    "arv:smoke": "npx tsx scripts/arv/smoke-test.ts"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -49,8 +54,10 @@
     "better-sqlite3": "^12.5.0",
     "husky": "^9.0.0",
     "prettier": "^3.2.0",
+    "tsx": "^4.7.0",
     "turbo": "^2.3.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
   },
   "dependencies": {
     "firebase-admin": "^13.6.0"

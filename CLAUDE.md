@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Before writing any code, you MUST:**
 
 1. **Read context capsules**:
-   - `000-docs/agent-engine/CONTEXT.md`
-   - `000-docs/agent-engine/COMPLIANCE.md`
+   - `000-docs/044-DR-GUID-agent-engine-context.md`
+   - `000-docs/045-DR-CHKL-agent-engine-compliance.md`
 
 2. **Print a Constraints Recap** (10-20 bullets max):
    - Deployment target (Vertex AI Agent Engine)
@@ -42,7 +42,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run `npm run arv` before finalizing
 - Provide evidence (command outputs) in the final message
 
-**If anything conflicts, prefer `000-docs/agent-engine/CONTEXT.md` as source of truth.**
+**If anything conflicts, prefer `000-docs/044-DR-GUID-agent-engine-context.md` as source of truth.**
 
 ---
 
@@ -244,8 +244,8 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 ## REFERENCE
 
-- **Agent Engine Context**: `000-docs/agent-engine/CONTEXT.md` (read first!)
-- **Compliance Checklist**: `000-docs/agent-engine/COMPLIANCE.md`
+- **Agent Engine Context**: `000-docs/044-DR-GUID-agent-engine-context.md` (read first!)
+- **Compliance Checklist**: `000-docs/045-DR-CHKL-agent-engine-compliance.md`
 - System audit: `000-docs/032-AA-AUDT-appaudit-devops-playbook.md`
 - AgentFS/Beads policy: `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
 - Phase AARs: `000-docs/NNN-AA-REPT-*.md`

@@ -1,0 +1,55 @@
+name: ARV - Agent Readiness Verification
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  arv:
+    name: Agent Readiness Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: ARV - Forbidden Patterns
+        run: npm run arv:lint
+
+      - name: ARV - Contract Tests
+        run: npm run arv:contracts
+
+      - name: ARV - Golden Tests
+        run: npm run arv:goldens
+
+      - name: ARV - Smoke Tests
+        run: npm run arv:smoke
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## ARV Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Forbidden Patterns | ${{ steps.forbidden.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract Tests | ${{ steps.contracts.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Golden Tests | ${{ steps.goldens.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ steps.smoke.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
