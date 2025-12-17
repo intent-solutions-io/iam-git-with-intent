@@ -323,3 +323,43 @@ npm run arv:smoke     # Boot check
 ```
 
 CI will fail if ARV does not pass.
+
+---
+
+## PHASE EXECUTION PROTOCOL
+
+**Quiet mode**: Do not spam output. Only print when:
+- There are errors/issues needing attention
+- End-of-phase summary with evidence + AAR filename
+
+### Every Phase Must End With:
+
+1. `bd sync` - Sync Beads state
+2. `npm test` (or applicable test command)
+3. **AAR created** in `000-docs/` using `docs/templates/aar-template.md`
+   - Filename: `NNN-AA-AACR-phase-<n>-short-description.md`
+   - Include Beads IDs and AgentFS metadata
+4. Commit + push with bead ID reference
+
+### Subagent Routing (Mandatory)
+
+All work routes through the foreman (`.claude/agents/foreman.md`):
+- AAR/docs work → `docs-filer.md`
+- Hook/enforcement → `reviewer.md` + `ops-arv.md`
+- Scripting → `engine-core.md`
+- Planning → `planner.md`
+- Integrations → `connector-engineer.md`
+
+### Output Evidence Required
+
+At phase end, print:
+- Key file changes
+- Test/ARV results
+- AAR filename
+- Commit hash
+
+### AgentFS + Beads Metadata
+
+Every AAR must include:
+- **Beads**: Bead IDs or `bd list` snapshot
+- **AgentFS**: Agent ID + mount path + db path (if known)

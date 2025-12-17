@@ -86,6 +86,16 @@ else
     ((ERRORS++))
 fi
 
+# Check AAR template
+echo -n "AAR template: "
+if [[ -f "docs/templates/aar-template.md" ]]; then
+    echo "OK (docs/templates/aar-template.md)"
+else
+    echo "MISSING"
+    echo "  Create: docs/templates/aar-template.md"
+    ((ERRORS++))
+fi
+
 echo ""
 
 # Run agents verification
