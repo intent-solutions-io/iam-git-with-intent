@@ -459,3 +459,16 @@ export class GitHubClient {
 export function createGitHubClient(config?: GitHubClientConfig): GitHubClient {
   return new GitHubClient(config);
 }
+
+// =============================================================================
+// Re-exports from Phase 2 modules
+// =============================================================================
+
+// Policy-aware connector
+export * from './connector.js';
+
+// Comment/check-run formatting
+export * from './comment-formatter.js';
+
+// Workflow orchestration
+export * from './workflows.js';
