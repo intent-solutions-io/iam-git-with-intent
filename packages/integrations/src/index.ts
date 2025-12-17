@@ -3,3 +3,4 @@
  */
 
 export * from './github/index.js';
+export * from './airbyte/index.js';
