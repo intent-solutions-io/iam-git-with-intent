@@ -472,3 +472,30 @@ export * from './comment-formatter.js';
 
 // Workflow orchestration
 export * from './workflows.js';
+
+// SDK-compliant connector (Phase 3)
+// Note: Use named imports to avoid conflicts with connector.ts exports
+export {
+  GitHubSDKConnector,
+  createGitHubSDKConnector,
+  type GitHubSDKConnectorConfig,
+  // SDK schemas have different names to avoid conflicts
+  PostCommentInput as SDKPostCommentInput,
+  PostCommentOutput,
+  CreateCheckRunInput as SDKCreateCheckRunInput,
+  CreateCheckRunOutput,
+  ManageLabelsInput as SDKManageLabelsInput,
+  ManageLabelsOutput,
+  CreateBranchInput as SDKCreateBranchInput,
+  CreateBranchOutput,
+  PushCommitInput as SDKPushCommitInput,
+  PushCommitOutput,
+  CreatePullRequestInput,
+  CreatePullRequestOutput,
+  UpdatePullRequestInput,
+  UpdatePullRequestOutput,
+  GetIssueInput,
+  GetIssueOutput,
+  GetPullRequestInput,
+  GetPullRequestOutput,
+} from './sdk-connector.js';

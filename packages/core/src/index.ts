@@ -50,3 +50,6 @@ export * from './scoring/index.js';
 
 // Capabilities exports (Phase 17: Approval-gated GitHub operations)
 export * from './capabilities/index.js';
+
+// Connector SDK exports (Phase 3: Unified connector framework)
+export * from './connectors/index.js';
