@@ -16,7 +16,7 @@
 | Date/Time (CST) | 2025-12-16 22:00 CST |
 | Status | FINAL |
 | Related Issues/PRs | N/A |
-| Commit(s) | (pending) |
+| Commit(s) | `fff4b4c` |
 | Beads | `git-with-intent-7jo` (epic), `git-with-intent-i1b` (4.1), `git-with-intent-pzb` (4.2), `git-with-intent-4lu` (4.3), `git-with-intent-vfk` (4.4), `git-with-intent-29t` (4.5 AAR) |
 | AgentFS | agent id: `gwi` / mount: `agents/gwi` / db: `.agentfs/gwi.db` |
 
