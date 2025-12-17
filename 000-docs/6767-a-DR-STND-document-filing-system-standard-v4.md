@@ -260,8 +260,41 @@ When creating or renaming a document:
 7) **Place ALL docs (both NNN and 6767) directly in `000-docs/`** — no subdirectories.
 8) **After every phase, create an AAR:** `NNN-AA-AACR-phase-<n>-short-description.md`
 
+### 9.1) AAR Requirements (Beads + AgentFS)
+AARs MUST include:
+- **Beads**: Epic ID + Task bead IDs for the phase
+- **AgentFS**: Agent ID, mount path, and db path used during the phase
+- Optional but recommended: `bd` commands run and AgentFS evidence pointer
+
 ---
 
-**DOCUMENT FILING SYSTEM STANDARD v4.2**
-*Fully compatible with v3.0 and v4.0; optimized for AI assistants and deterministic naming.*
-*v4.2 enforces strict flat 000-docs (no subdirectories allowed).*
+## 10) INTERNAL DEV TOOLING (NON-PRODUCT)
+
+**Purpose:** Clarify the role of internal build-process-only tools.
+
+**Beads + AgentFS are internal dev tooling:**
+- Used during development for task tracking and audit trail
+- **Never** described in user journey, product docs, or customer-facing materials
+- **Always** referenced in AAR metadata for every phase
+- Provide structured evidence of work performed by AI assistants
+
+**Example `bd` commands (Linux):**
+```bash
+bd epic create "phase-14: signals-pr-queue" --repo git-with-intent
+bd task create --epic <epic-id> "14.1: signal schema"
+bd ls
+bd show <epic-id>
+bd status <task-id> completed
+```
+
+**AgentFS evidence:**
+```bash
+ls -la .agentfs || true
+# Record mount + db path in AAR metadata
+```
+
+---
+
+**DOCUMENT FILING SYSTEM STANDARD v4.3**
+*Fully compatible with v3.0, v4.0, v4.2; optimized for AI assistants and deterministic naming.*
+*v4.3 adds Beads + AgentFS requirements for AARs; enforces strict flat 000-docs.*
