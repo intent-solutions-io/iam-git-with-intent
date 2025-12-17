@@ -90,6 +90,11 @@ async function main(): Promise<void> {
       command: 'npx',
       args: ['tsx', join(__dirname, 'smoke-test.ts')],
     },
+    {
+      name: 'Connector Supply Chain',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'connector-supply-chain.ts')],
+    },
   ];
 
   const results: CheckResult[] = [];
