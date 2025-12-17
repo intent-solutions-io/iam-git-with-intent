@@ -52,6 +52,9 @@ export * from './run-bundle/index.js';
 // Scoring exports (Phase 17: Deterministic complexity scoring)
 export * from './scoring/index.js';
 
+// Capabilities exports (Phase 17: Approval-gated GitHub operations)
+export * from './capabilities/index.js';
+
 // Optional internal tools (require GWI_USE_AGENTFS=true or GWI_USE_BEADS=true)
 export * from './agentfs/index.js';
 export * from './beads/index.js';
