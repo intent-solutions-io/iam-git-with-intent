@@ -1,0 +1,152 @@
+{
+  "description": "Golden test fixtures for deterministic complexity scoring",
+  "fixtures": [
+    {
+      "id": "simple-docs-change",
+      "description": "Simple documentation change in single file",
+      "features": {
+        "numFiles": 1,
+        "numHunks": 1,
+        "totalConflictLines": 10,
+        "totalAdditions": 8,
+        "totalDeletions": 2,
+        "fileTypes": ["md"],
+        "hasSecurityFiles": false,
+        "hasInfraFiles": false,
+        "hasConfigFiles": false,
+        "hasTestFiles": false,
+        "hasConflictMarkers": false,
+        "maxHunksPerFile": 1,
+        "avgHunksPerFile": 1
+      },
+      "expectedScore": 1,
+      "expectedReasons": ["small_change", "simple_conflict"]
+    },
+    {
+      "id": "medium-code-change",
+      "description": "Medium-sized code change across 3 files",
+      "features": {
+        "numFiles": 3,
+        "numHunks": 5,
+        "totalConflictLines": 120,
+        "totalAdditions": 80,
+        "totalDeletions": 40,
+        "fileTypes": ["ts", "tsx"],
+        "hasSecurityFiles": false,
+        "hasInfraFiles": false,
+        "hasConfigFiles": false,
+        "hasTestFiles": false,
+        "hasConflictMarkers": true,
+        "maxHunksPerFile": 3,
+        "avgHunksPerFile": 1.67
+      },
+      "expectedScore": 2,
+      "expectedReasons": ["medium_change"]
+    },
+    {
+      "id": "large-refactor",
+      "description": "Large refactoring across many files",
+      "features": {
+        "numFiles": 12,
+        "numHunks": 25,
+        "totalConflictLines": 400,
+        "totalAdditions": 300,
+        "totalDeletions": 200,
+        "fileTypes": ["ts", "tsx", "json"],
+        "hasSecurityFiles": false,
+        "hasInfraFiles": false,
+        "hasConfigFiles": true,
+        "hasTestFiles": false,
+        "hasConflictMarkers": true,
+        "maxHunksPerFile": 4,
+        "avgHunksPerFile": 2.08
+      },
+      "expectedScore": 7,
+      "expectedReasons": ["large_change", "many_files", "logic_conflict", "config_change"]
+    },
+    {
+      "id": "auth-change",
+      "description": "Change to authentication code",
+      "features": {
+        "numFiles": 2,
+        "numHunks": 3,
+        "totalConflictLines": 80,
+        "totalAdditions": 50,
+        "totalDeletions": 30,
+        "fileTypes": ["ts"],
+        "hasSecurityFiles": true,
+        "hasInfraFiles": false,
+        "hasConfigFiles": false,
+        "hasTestFiles": false,
+        "hasConflictMarkers": true,
+        "maxHunksPerFile": 2,
+        "avgHunksPerFile": 1.5
+      },
+      "expectedScore": 4,
+      "expectedReasons": ["security_sensitive", "auth_related"]
+    },
+    {
+      "id": "infrastructure-change",
+      "description": "Terraform infrastructure change",
+      "features": {
+        "numFiles": 4,
+        "numHunks": 6,
+        "totalConflictLines": 150,
+        "totalAdditions": 100,
+        "totalDeletions": 50,
+        "fileTypes": ["tf", "tfvars"],
+        "hasSecurityFiles": false,
+        "hasInfraFiles": true,
+        "hasConfigFiles": true,
+        "hasTestFiles": false,
+        "hasConflictMarkers": true,
+        "maxHunksPerFile": 3,
+        "avgHunksPerFile": 1.5
+      },
+      "expectedScore": 7,
+      "expectedReasons": ["medium_change", "logic_conflict", "config_change", "infra_change"]
+    },
+    {
+      "id": "critical-auth-infra",
+      "description": "Auth change with infrastructure impact",
+      "features": {
+        "numFiles": 10,
+        "numHunks": 20,
+        "totalConflictLines": 600,
+        "totalAdditions": 400,
+        "totalDeletions": 200,
+        "fileTypes": ["ts", "tf", "yaml"],
+        "hasSecurityFiles": true,
+        "hasInfraFiles": true,
+        "hasConfigFiles": true,
+        "hasTestFiles": false,
+        "hasConflictMarkers": true,
+        "maxHunksPerFile": 5,
+        "avgHunksPerFile": 2
+      },
+      "expectedScore": 10,
+      "expectedReasons": ["large_change", "many_files", "logic_conflict", "config_change", "security_sensitive", "auth_related", "infra_change"]
+    },
+    {
+      "id": "test-only",
+      "description": "Changes only to test files",
+      "features": {
+        "numFiles": 2,
+        "numHunks": 3,
+        "totalConflictLines": 100,
+        "totalAdditions": 70,
+        "totalDeletions": 30,
+        "fileTypes": ["test", "spec"],
+        "hasSecurityFiles": false,
+        "hasInfraFiles": false,
+        "hasConfigFiles": false,
+        "hasTestFiles": true,
+        "hasConflictMarkers": true,
+        "maxHunksPerFile": 2,
+        "avgHunksPerFile": 1.5
+      },
+      "expectedScore": 1,
+      "expectedReasons": []
+    }
+  ]
+}
