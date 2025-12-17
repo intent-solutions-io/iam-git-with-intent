@@ -2,7 +2,7 @@
  * Storage Interfaces for Git With Intent
  *
  * These interfaces define the contract for all persistence operations.
- * Implementations can use SQLite, Turso, PostgreSQL, Firestore, or AgentFS.
+ * Implementations can use SQLite, Turso, PostgreSQL, or Firestore.
  *
  * The default implementation uses SQLite for maximum portability.
  */
@@ -548,7 +548,7 @@ export interface StoreFactory {
 /**
  * Storage backend types
  */
-export type StorageType = 'sqlite' | 'turso' | 'postgres' | 'firestore' | 'memory' | 'agentfs';
+export type StorageType = 'sqlite' | 'turso' | 'postgres' | 'firestore' | 'memory';
 
 /**
  * Storage configuration
@@ -568,9 +568,6 @@ export interface StorageConfig {
 
   // Firestore options
   firestoreProjectId?: string;
-
-  // AgentFS options (internal only)
-  agentfsId?: string;
 }
 
 /**
@@ -586,6 +583,5 @@ export function getStorageConfig(): StorageConfig {
     tursoAuthToken: process.env.TURSO_AUTH_TOKEN,
     postgresUrl: process.env.DATABASE_URL,
     firestoreProjectId: process.env.GCP_PROJECT_ID,
-    agentfsId: process.env.GWI_AGENTFS_ID,
   };
 }

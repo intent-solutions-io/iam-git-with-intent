@@ -1,7 +1,7 @@
 {
   "name": "@gwi/core",
   "version": "0.1.0",
-  "description": "Core utilities for Git With Intent: AgentFS, Beads, A2A, Models",
+  "description": "Core utilities for Git With Intent: Storage, A2A, Models",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,14 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./agentfs": {
-      "types": "./dist/agentfs/index.d.ts",
-      "import": "./dist/agentfs/index.js"
-    },
-    "./beads": {
-      "types": "./dist/beads/index.d.ts",
-      "import": "./dist/beads/index.js"
     },
     "./a2a": {
       "types": "./dist/a2a/index.d.ts",
@@ -53,13 +45,5 @@
     "eslint": "^8.56.0",
     "typescript": "^5.3.0",
     "vitest": "^2.0.0"
-  },
-  "peerDependencies": {
-    "agentfs-sdk": ">=0.1.0"
-  },
-  "peerDependenciesMeta": {
-    "agentfs-sdk": {
-      "optional": true
-    }
   }
 }

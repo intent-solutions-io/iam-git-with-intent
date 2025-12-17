@@ -6,7 +6,7 @@
  * Resolves merge conflicts using Claude Sonnet/Opus.
  * Selects model based on complexity from Triage.
  *
- * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
+ * TRUE AGENT: Stateful (state), Autonomous, Collaborative (A2A)
  */
 
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
@@ -124,7 +124,7 @@ export class ResolverAgent extends BaseAgent {
   }
 
   /**
-   * Initialize - load history from AgentFS
+   * Initialize - load history from state
    */
   protected async onInitialize(): Promise<void> {
     const history = await this.loadState<ResolutionHistoryEntry[]>('resolution_history');
@@ -139,7 +139,7 @@ export class ResolverAgent extends BaseAgent {
   }
 
   /**
-   * Shutdown - persist state to AgentFS
+   * Shutdown - persist state to state
    */
   protected async onShutdown(): Promise<void> {
     await this.saveState('resolution_history', this.history);

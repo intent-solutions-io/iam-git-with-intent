@@ -26,6 +26,11 @@ import {
   validateReviewResult,
   parseReviewResult,
 
+  // Publish
+  PublishResult,
+  validatePublishResult,
+  parsePublishResult,
+
   // Common
   ComplexityScore,
   ConfidenceScore,
@@ -212,6 +217,46 @@ const validReviewResult = {
   humanReviewReasons: [],
   recommendedNextState: 'awaiting_approval',
   suggestions: ['Consider adding unit tests for new configuration'],
+};
+
+const validPublishResult = {
+  version: 1,
+  timestamp: '2025-12-16T12:00:00.000Z',
+  action: 'create_pr',
+  status: 'success',
+  confidence: 95,
+  summary: 'Created PR #123 for merge conflict resolution',
+  commit: {
+    sha: 'abc123def456',
+    message: 'Resolve merge conflicts in src/config.ts',
+    author: 'gwi-bot',
+    timestamp: '2025-12-16T12:00:00.000Z',
+  },
+  push: {
+    branch: 'fix/conflict-resolution',
+    remote: 'origin',
+    commitsPushed: 1,
+    beforeSha: 'abc123',
+    afterSha: 'def456',
+  },
+  pr: {
+    number: 123,
+    url: 'https://github.com/owner/repo/pull/123',
+    title: 'Resolve merge conflicts',
+    body: 'Automated conflict resolution by GWI',
+    baseBranch: 'main',
+    headBranch: 'fix/conflict-resolution',
+    isDraft: false,
+    labels: ['auto-merge', 'conflict-resolution'],
+    reviewers: ['reviewer1'],
+  },
+  patchHash: 'sha256:abc123',
+  patchFile: 'patch.diff',
+  approvalId: '550e8400-e29b-41d4-a716-446655440000',
+  approvedBy: 'user@example.com',
+  approvedAt: '2025-12-16T11:55:00.000Z',
+  requiresManualAction: false,
+  suggestedNextSteps: ['Monitor CI status', 'Request review'],
 };
 
 // =============================================================================
@@ -488,6 +533,127 @@ describe('ReviewResult Schema', () => {
     };
     const result = validateReviewResult(invalid);
     expect(result.valid).toBe(false);
+  });
+});
+
+// =============================================================================
+// Publish Schema Tests
+// =============================================================================
+
+describe('PublishResult Schema', () => {
+  it('should validate a valid publish result', () => {
+    const result = validatePublishResult(validPublishResult);
+    expect(result.valid).toBe(true);
+  });
+
+  it('should parse a valid publish result', () => {
+    const parsed = parsePublishResult(validPublishResult);
+    expect(parsed.action).toBe('create_pr');
+    expect(parsed.status).toBe('success');
+    expect(parsed.pr?.number).toBe(123);
+  });
+
+  it('should accept all publish action types', () => {
+    const actions = ['commit', 'push', 'create_pr', 'update_pr', 'comment'];
+    for (const action of actions) {
+      const result = validatePublishResult({ ...validPublishResult, action });
+      expect(result.valid).toBe(true);
+    }
+  });
+
+  it('should accept all publish status types', () => {
+    const statuses = ['success', 'partial', 'failed', 'skipped', 'pending'];
+    for (const status of statuses) {
+      const result = validatePublishResult({ ...validPublishResult, status });
+      expect(result.valid).toBe(true);
+    }
+  });
+
+  it('should reject invalid action type', () => {
+    const invalid = { ...validPublishResult, action: 'invalid_action' };
+    const result = validatePublishResult(invalid);
+    expect(result.valid).toBe(false);
+  });
+
+  it('should reject invalid status type', () => {
+    const invalid = { ...validPublishResult, status: 'maybe' };
+    const result = validatePublishResult(invalid);
+    expect(result.valid).toBe(false);
+  });
+
+  it('should accept minimal publish result (commit only)', () => {
+    const minimal = {
+      version: 1,
+      timestamp: '2025-12-16T12:00:00.000Z',
+      action: 'commit',
+      status: 'success',
+      confidence: 90,
+      summary: 'Committed changes locally',
+      commit: {
+        message: 'Local commit',
+      },
+    };
+    const result = validatePublishResult(minimal);
+    expect(result.valid).toBe(true);
+  });
+
+  it('should accept publish result with error', () => {
+    const withError = {
+      version: 1,
+      timestamp: '2025-12-16T12:00:00.000Z',
+      action: 'push',
+      status: 'failed',
+      confidence: 50,
+      summary: 'Push failed due to authentication error',
+      error: 'Authentication failed',
+      errorDetails: { code: 401 },
+      requiresManualAction: true,
+      manualActionReason: 'Please check your GitHub token',
+      suggestedNextSteps: ['Verify GITHUB_TOKEN is valid', 'Check repository permissions'],
+    };
+    const result = validatePublishResult(withError);
+    expect(result.valid).toBe(true);
+  });
+
+  it('should accept comment-only publish', () => {
+    const commentOnly = {
+      version: 1,
+      timestamp: '2025-12-16T12:00:00.000Z',
+      action: 'comment',
+      status: 'success',
+      confidence: 100,
+      summary: 'Posted review comment on PR',
+      comment: {
+        id: 'comment-123',
+        url: 'https://github.com/owner/repo/pull/123#issuecomment-456',
+        body: 'GWI analysis complete - see details above.',
+        target: 'pr',
+      },
+    };
+    const result = validatePublishResult(commentOnly);
+    expect(result.valid).toBe(true);
+  });
+
+  it('should reject invalid PR URL', () => {
+    const invalid = {
+      ...validPublishResult,
+      pr: {
+        ...validPublishResult.pr,
+        url: 'not-a-url',
+      },
+    };
+    const result = validatePublishResult(invalid);
+    expect(result.valid).toBe(false);
+  });
+
+  it('should reject invalid approval ID format', () => {
+    const invalid = { ...validPublishResult, approvalId: 'not-a-uuid' };
+    const result = validatePublishResult(invalid);
+    expect(result.valid).toBe(false);
+  });
+
+  it('should throw on parse of invalid data', () => {
+    expect(() => parsePublishResult({ version: 'invalid' })).toThrow();
   });
 });
 

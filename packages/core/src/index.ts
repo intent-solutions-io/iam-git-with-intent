@@ -5,10 +5,6 @@
  * - Storage: Pluggable storage backends (SQLite default, Firestore for production)
  * - A2A: Agent-to-Agent protocol types and utilities
  * - Models: Multi-model client abstraction
- *
- * IMPORTANT: AgentFS and Beads are available but OPTIONAL.
- * They are for internal development only - the product runtime
- * works without them using the Storage interfaces.
  */
 
 // Storage exports (primary source for storage types)
@@ -54,7 +50,3 @@ export * from './scoring/index.js';
 
 // Capabilities exports (Phase 17: Approval-gated GitHub operations)
 export * from './capabilities/index.js';
-
-// Optional internal tools (require GWI_USE_AGENTFS=true or GWI_USE_BEADS=true)
-export * from './agentfs/index.js';
-export * from './beads/index.js';

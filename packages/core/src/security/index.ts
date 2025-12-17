@@ -395,7 +395,7 @@ export interface TenantMembership {
 }
 
 // =============================================================================
-// Rejection Reasons (for AgentFS logging)
+// Rejection Reasons (for state logging)
 // =============================================================================
 
 /**

@@ -2,7 +2,7 @@
  * @gwi/agents - Agent implementations for Git With Intent
  *
  * Each agent is a TRUE AGENT - stateful, autonomous, collaborative.
- * NOT function wrappers. Uses AgentFS for ALL state.
+ * NOT function wrappers. Uses in-memory state during runtime.
  */
 
 export * from './base/agent.js';

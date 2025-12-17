@@ -3,8 +3,6 @@
  *
  * This module provides a hook system for the Git With Intent agent pipeline.
  * Hooks can be registered to run after each agent step, enabling:
- * - Audit logging (AgentFS)
- * - Task tracking (Beads)
  * - Custom telemetry
  * - Extensible behavior
  *
@@ -54,9 +52,6 @@ export type { HookRunResult } from './runner.js';
 export {
   readHookConfigFromEnv,
   readBeadsConfigFromEnv,
-  readAgentFSConfigFromEnv,
   buildDefaultHookRunner,
   buildHookRunner,
-  getInternalHookStatus,
 } from './config.js';
-export type { AgentFSConfig } from './config.js';

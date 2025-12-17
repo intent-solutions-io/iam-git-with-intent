@@ -3,8 +3,6 @@
  *
  * These types define the contract for the hook system that runs after each
  * agent step, message, or run. Hooks can be used for:
- * - Auditing to AgentFS (internal)
- * - Creating/updating Beads issues (internal)
  * - Custom logging or telemetry
  * - Future extensibility
  *
@@ -191,18 +189,6 @@ export interface AgentHook {
  */
 export interface HookConfig {
   /**
-   * Enable AgentFS audit hook (internal dev only)
-   * @default false
-   */
-  enableAgentFs: boolean;
-
-  /**
-   * Enable Beads task tracking hook (internal dev only)
-   * @default false
-   */
-  enableBeads: boolean;
-
-  /**
    * Enable custom hooks from plugins
    * @default true
    */
@@ -231,8 +217,6 @@ export interface HookConfig {
  * Default hook configuration
  */
 export const DEFAULT_HOOK_CONFIG: HookConfig = {
-  enableAgentFs: false,
-  enableBeads: false,
   enableCustomHooks: true,
   hookTimeoutMs: 5000,
   parallelExecution: true,

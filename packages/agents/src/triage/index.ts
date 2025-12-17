@@ -185,7 +185,7 @@ export class TriageAgent extends BaseAgent {
   }
 
   /**
-   * Initialize - load history from AgentFS
+   * Initialize - load history from state
    */
   protected async onInitialize(): Promise<void> {
     const history = await this.loadState<TriageOutput[]>('triage_history');
@@ -195,7 +195,7 @@ export class TriageAgent extends BaseAgent {
   }
 
   /**
-   * Shutdown - save history to AgentFS
+   * Shutdown - save history to state
    */
   protected async onShutdown(): Promise<void> {
     await this.saveState('triage_history', this.triageHistory);
@@ -258,7 +258,7 @@ export class TriageAgent extends BaseAgent {
       this.triageHistory = this.triageHistory.slice(-100);
     }
 
-    // Persist to AgentFS
+    // Persist to state
     await this.saveState('triage_history', this.triageHistory);
 
     return result;
@@ -295,7 +295,7 @@ export class TriageAgent extends BaseAgent {
       this.triageHistory = this.triageHistory.slice(-100);
     }
 
-    // Persist to AgentFS
+    // Persist to state
     await this.saveState('triage_history', this.triageHistory);
 
     return result;

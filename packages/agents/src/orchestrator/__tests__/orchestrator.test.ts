@@ -7,35 +7,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { OrchestratorAgent } from '../index.js';
 
-// Mock AgentFS to avoid actual persistence
-vi.mock('@gwi/core/agentfs', () => ({
-  openAgentFS: vi.fn(() => Promise.resolve({
-    kv: {
-      get: vi.fn(() => Promise.resolve(null)),
-      set: vi.fn(() => Promise.resolve()),
-      delete: vi.fn(() => Promise.resolve()),
-      list: vi.fn(() => Promise.resolve([])),
-    },
-    fs: {
-      writeFile: vi.fn(() => Promise.resolve()),
-      readFile: vi.fn(() => Promise.resolve(Buffer.from(''))),
-      readdir: vi.fn(() => Promise.resolve([])),
-      mkdir: vi.fn(() => Promise.resolve()),
-      unlink: vi.fn(() => Promise.resolve()),
-      exists: vi.fn(() => Promise.resolve(false)),
-    },
-    tools: {
-      record: vi.fn(() => Promise.resolve()),
-      list: vi.fn(() => Promise.resolve([])),
-    },
-  })),
-  createAgentId: vi.fn((name: string) => `spiffe://intent.solutions/agent/${name}`),
-  AuditLogger: vi.fn().mockImplementation(() => ({
-    record: vi.fn(async <T>(_name: string, _input: unknown, fn: () => Promise<T>) => fn()),
-    getRecent: vi.fn(() => Promise.resolve([])),
-  })),
-}));
-
 // Mock model selector to avoid real API calls
 vi.mock('@gwi/core/models', () => ({
   createModelSelector: vi.fn(() => ({

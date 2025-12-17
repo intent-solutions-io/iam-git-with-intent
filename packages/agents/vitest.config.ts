@@ -10,7 +10,7 @@ export default defineConfig({
     },
     // Mock environment variables for tests
     env: {
-      GWI_AGENTFS_MOCK: 'true',
+      GWI_INTERNAL_MOCK: 'true',
     },
   },
 });

@@ -6,7 +6,7 @@
  * Validates resolutions from Resolver Agent.
  * Checks: syntax, code loss, security issues.
  *
- * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
+ * TRUE AGENT: Stateful (state), Autonomous, Collaborative (A2A)
  */
 
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
@@ -184,7 +184,7 @@ export class ReviewerAgent extends BaseAgent {
   }
 
   /**
-   * Initialize - load history from AgentFS
+   * Initialize - load history from state
    */
   protected async onInitialize(): Promise<void> {
     const history = await this.loadState<ReviewHistoryEntry[]>('review_history');

@@ -18,7 +18,6 @@
  * - postgres: PostgreSQL
  * - firestore: Google Firestore
  * - memory: In-memory (for testing)
- * - agentfs: AgentFS (internal only)
  *
  * For Firestore, set:
  * - GCP_PROJECT_ID: Google Cloud project ID
@@ -79,15 +78,6 @@ export function createStoreFactory(config?: Partial<StorageConfig>): StoreFactor
     case 'memory':
       // TODO: Implement MemoryStoreFactory for testing
       throw new Error('Memory storage not yet implemented. Use sqlite for now.');
-
-    case 'agentfs':
-      // Internal only - check for explicit opt-in
-      if (process.env.GWI_USE_AGENTFS !== 'true') {
-        console.warn('AgentFS storage is internal-only. Falling back to SQLite.');
-        return new SQLiteStoreFactory(finalConfig.sqlitePath);
-      }
-      // TODO: Implement AgentFSStoreFactory
-      throw new Error('AgentFS storage not yet implemented.');
 
     default:
       console.warn(`Unknown storage type: ${finalConfig.type}. Falling back to SQLite.`);

@@ -14,7 +14,7 @@
  *
  * Uses Gemini Flash for fast routing decisions.
  *
- * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
+ * TRUE AGENT: Stateful (state), Autonomous, Collaborative (A2A)
  */
 
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
@@ -150,7 +150,7 @@ export class OrchestratorAgent extends BaseAgent {
   }
 
   /**
-   * Initialize - load state from AgentFS
+   * Initialize - load state from state
    */
   protected async onInitialize(): Promise<void> {
     // Load active workflows

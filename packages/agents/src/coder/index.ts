@@ -13,7 +13,7 @@
  *
  * Uses Claude Sonnet for standard tasks, Opus for complex implementations.
  *
- * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
+ * TRUE AGENT: Stateful (state), Autonomous, Collaborative (A2A)
  */
 
 import { mkdir, writeFile } from 'fs/promises';
@@ -185,7 +185,7 @@ export class CoderAgent extends BaseAgent {
   }
 
   /**
-   * Initialize - load history from AgentFS
+   * Initialize - load history from state
    */
   protected async onInitialize(): Promise<void> {
     const history = await this.loadState<CodeGenHistoryEntry[]>('codegen_history');
