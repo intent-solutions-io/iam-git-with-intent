@@ -104,6 +104,16 @@ apps/gateway, apps/github-webhook → @gwi/core
 
 > **Golden Rule**: Any user-visible code path MUST work without AgentFS or Beads.
 
+### AgentFS + Beads: REQUIRED for Development
+
+**These tools are non-negotiable for internal development work:**
+
+- **AgentFS**: All agent state and audit trails go here. Initialize with `npm run agentfs:init`.
+- **Beads**: All task tracking (no markdown TODOs). Use `bd create`, `bd close`, `bd ready`.
+- **Reference**: See `bobs-brain` repo for canonical Agent Engine deployment + ARV + drift control.
+
+Verify setup: `npm run tools:verify`
+
 ---
 
 ## KEY DIRECTORIES

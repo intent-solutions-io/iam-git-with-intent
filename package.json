@@ -43,7 +43,8 @@
     "arv:lint": "npx tsx scripts/arv/forbidden-patterns.ts",
     "arv:contracts": "npx vitest run test/contracts/ --reporter=verbose",
     "arv:goldens": "npx vitest run test/goldens/ --reporter=verbose",
-    "arv:smoke": "npx tsx scripts/arv/smoke-test.ts"
+    "arv:smoke": "npx tsx scripts/arv/smoke-test.ts",
+    "tools:verify": "bash scripts/verify-tools.sh"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

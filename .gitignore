@@ -39,6 +39,10 @@ Thumbs.db
 # Turbo
 .turbo/
 
+# GWI runtime state (local only)
+.gwi/
+.engine/
+
 # AgentFS databases (local state, not committed)
 .agentfs/*.db
 
