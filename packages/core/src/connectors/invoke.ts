@@ -2,15 +2,17 @@
  * Unified Tool Invocation Pipeline
  *
  * Phase 3: Single choke point for all tool invocations.
+ * Phase 5: Integrated with tenant-aware policy engine.
+ *
  * Every connector tool call MUST go through this pipeline.
  *
  * Pipeline steps:
  * 1. Validate input schema
- * 2. Write audit "tool_invocation_requested"
- * 3. Enforce policy gate (block DESTRUCTIVE without approval)
+ * 2. Write audit "tool_invocation_requested" (includes tenantId, actorId)
+ * 3. Enforce policy gate via PolicyEngine (block DESTRUCTIVE without approval + policy allow)
  * 4. Execute tool
  * 5. Validate output schema
- * 6. Write audit "tool_invocation_succeeded/failed"
+ * 6. Write audit "tool_invocation_succeeded/failed" (includes policyDecision)
  * 7. Return output
  *
  * @module @gwi/core/connectors/invoke
@@ -27,43 +29,58 @@ import {
   type ConnectorRegistry,
 } from './types.js';
 import { appendAudit } from '../run-bundle/audit-log.js';
+import {
+  type TenantContext,
+  type PolicyDecision,
+  getPolicyEngine,
+  createPolicyRequest,
+} from '../tenancy/index.js';
 
 // =============================================================================
-// Policy Gate
+// Policy Gate (Phase 5: Tenant-aware policy engine integration)
 // =============================================================================
 
 /**
- * Check if a tool invocation is allowed based on policy
+ * Check if a tool invocation is allowed based on policy engine
+ *
+ * Phase 5: Uses the global PolicyEngine for tenant-aware decisions.
+ * Returns both the decision and policy metadata for audit.
  */
-function checkPolicy(
+function checkPolicyWithEngine(
   tool: ToolSpec,
-  ctx: ToolContext
-): { allowed: boolean; reason: string } {
-  const policyClass = tool.policyClass;
+  connectorId: string,
+  ctx: ToolContext,
+  tenant?: TenantContext
+): PolicyDecision {
+  const policyEngine = getPolicyEngine();
 
-  // READ operations are always allowed
-  if (policyClass === 'READ') {
-    return { allowed: true, reason: 'Read operations are always allowed' };
+  // If no tenant context provided, fall back to simple policy check
+  if (!tenant) {
+    return checkPolicySimple(tool, ctx);
   }
 
-  // WRITE_NON_DESTRUCTIVE operations are allowed without approval
-  if (policyClass === 'WRITE_NON_DESTRUCTIVE') {
-    return { allowed: true, reason: 'Non-destructive writes are allowed' };
-  }
-
-  // DESTRUCTIVE operations require approval
-  if (policyClass === 'DESTRUCTIVE') {
-    if (!ctx.approval) {
-      return {
-        allowed: false,
-        reason: `Destructive operation '${tool.name}' requires approval`,
-      };
+  // Create policy request from tenant context
+  const policyRequest = createPolicyRequest(
+    tenant,
+    tool.name,
+    connectorId,
+    tool.policyClass,
+    {
+      resource: tenant.repo?.fullName,
+      hasApproval: !!ctx.approval,
     }
+  );
 
+  // Evaluate via policy engine
+  const decision = policyEngine.evaluate(policyRequest);
+
+  // Additional approval validation for DESTRUCTIVE operations
+  if (tool.policyClass === 'DESTRUCTIVE' && decision.allowed && ctx.approval) {
     // Verify approval run ID matches
     if (ctx.approval.runId !== ctx.runId) {
       return {
         allowed: false,
+        reasonCode: 'DENY_APPROVAL_MISMATCH',
         reason: 'Approval is for a different run',
       };
     }
@@ -73,14 +90,83 @@ function checkPolicy(
     if (requiredScope && !ctx.approval.scope.includes(requiredScope)) {
       return {
         allowed: false,
+        reasonCode: 'DENY_APPROVAL_MISMATCH',
+        reason: `Approval does not include required scope '${requiredScope}'`,
+      };
+    }
+  }
+
+  return decision;
+}
+
+/**
+ * Simple policy check (fallback when no tenant context)
+ */
+function checkPolicySimple(
+  tool: ToolSpec,
+  ctx: ToolContext
+): PolicyDecision {
+  const policyClass = tool.policyClass;
+
+  // READ operations are always allowed
+  if (policyClass === 'READ') {
+    return {
+      allowed: true,
+      reasonCode: 'ALLOW_READ_DEFAULT',
+      reason: 'Read operations are always allowed',
+    };
+  }
+
+  // WRITE_NON_DESTRUCTIVE operations are allowed without approval
+  if (policyClass === 'WRITE_NON_DESTRUCTIVE') {
+    return {
+      allowed: true,
+      reasonCode: 'ALLOW_POLICY_MATCH',
+      reason: 'Non-destructive writes are allowed',
+    };
+  }
+
+  // DESTRUCTIVE operations require approval
+  if (policyClass === 'DESTRUCTIVE') {
+    if (!ctx.approval) {
+      return {
+        allowed: false,
+        reasonCode: 'DENY_DESTRUCTIVE_NO_APPROVAL',
+        reason: `Destructive operation '${tool.name}' requires approval`,
+      };
+    }
+
+    // Verify approval run ID matches
+    if (ctx.approval.runId !== ctx.runId) {
+      return {
+        allowed: false,
+        reasonCode: 'DENY_APPROVAL_MISMATCH',
+        reason: 'Approval is for a different run',
+      };
+    }
+
+    // Check approval scope covers required operations
+    const requiredScope = getRequiredScope(tool.name);
+    if (requiredScope && !ctx.approval.scope.includes(requiredScope)) {
+      return {
+        allowed: false,
+        reasonCode: 'DENY_APPROVAL_MISMATCH',
         reason: `Approval does not include required scope '${requiredScope}'`,
       };
     }
 
-    return { allowed: true, reason: 'Operation approved' };
+    return {
+      allowed: true,
+      reasonCode: 'ALLOW_POLICY_MATCH',
+      reason: 'Operation approved',
+    };
   }
 
-  return { allowed: false, reason: `Unknown policy class: ${policyClass}` };
+  return {
+    allowed: false,
+    reasonCode: 'DENY_NO_POLICY',
+    reason: `Unknown policy class: ${policyClass}`,
+  };
 }
 
 /**
@@ -115,6 +201,8 @@ function hashInput(input: unknown): string {
 
 /**
  * Write a tool audit event
+ *
+ * Phase 5: Extended to include actorId, policyReasonCode, approvalRef
  */
 async function writeAuditEvent(
   event: Omit<ToolAuditEvent, 'timestamp'>,
@@ -124,12 +212,16 @@ async function writeAuditEvent(
     timestamp: new Date().toISOString(),
     runId: event.runId,
     actor: 'tool' as const,
-    actorId: event.toolName,
+    actorId: event.actorId ?? event.toolName,
     action: event.type,
     details: {
+      tenantId: event.tenantId,
+      toolName: event.toolName,
       policyClass: event.policyClass,
       inputHash: event.inputHash,
       policyPassed: event.policyPassed,
+      policyReasonCode: event.policyReasonCode,
+      approvalRef: event.approvalRef,
       error: event.error,
       durationMs: event.durationMs,
     },
@@ -159,7 +251,11 @@ export async function invokeTool(
   basePath?: string
 ): Promise<ToolInvocationResult> {
   const startTime = Date.now();
-  const { runId, tenantId, toolName, input, approval } = request;
+  const { runId, tenantId, toolName, input, approval, tenant } = request;
+
+  // Extract actorId from tenant context (Phase 5)
+  const actorId = tenant?.actor?.actorId;
+  const approvalRef = approval ? `${approval.runId}:${approval.approvedAt}` : undefined;
 
   // Parse tool name (format: "connector.tool")
   const [connectorId, ...toolParts] = toolName.split('.');
@@ -196,16 +292,18 @@ export async function invokeTool(
   const inputHash = hashInput(input);
   const auditEventIds: string[] = [];
 
-  // Step 1: Write audit "tool_invocation_requested"
+  // Step 1: Write audit "tool_invocation_requested" (Phase 5: includes actorId)
   try {
     await writeAuditEvent(
       {
         type: 'tool_invocation_requested',
         runId,
         tenantId,
+        actorId,
         toolName,
         policyClass: tool.policyClass,
         inputHash,
+        approvalRef,
       },
       basePath
     );
@@ -224,9 +322,11 @@ export async function invokeTool(
         type: 'tool_invocation_validated',
         runId,
         tenantId,
+        actorId,
         toolName,
         policyClass: tool.policyClass,
         inputHash,
+        approvalRef,
       },
       basePath
     );
@@ -241,11 +341,13 @@ export async function invokeTool(
         type: 'tool_invocation_failed',
         runId,
         tenantId,
+        actorId,
         toolName,
         policyClass: tool.policyClass,
         inputHash,
         error: errorMessage,
         durationMs: Date.now() - startTime,
+        approvalRef,
       },
       basePath
     );
@@ -259,34 +361,37 @@ export async function invokeTool(
     };
   }
 
-  // Step 3: Enforce policy gate
+  // Step 3: Enforce policy gate (Phase 5: uses PolicyEngine)
   const ctx: ToolContext = {
     runId,
     tenantId,
     approval,
   };
 
-  const policyResult = checkPolicy(tool, ctx);
+  const policyDecision = checkPolicyWithEngine(tool, connectorId, ctx, tenant);
 
   await writeAuditEvent(
     {
       type: 'tool_invocation_policy_checked',
       runId,
       tenantId,
+      actorId,
       toolName,
       policyClass: tool.policyClass,
       inputHash,
-      policyPassed: policyResult.allowed,
-      error: policyResult.allowed ? undefined : policyResult.reason,
+      policyPassed: policyDecision.allowed,
+      policyReasonCode: policyDecision.reasonCode,
+      error: policyDecision.allowed ? undefined : policyDecision.reason,
+      approvalRef,
     },
     basePath
   );
   auditEventIds.push(`${runId}-policy`);
 
-  if (!policyResult.allowed) {
+  if (!policyDecision.allowed) {
     return {
       success: false,
-      error: policyResult.reason,
+      error: policyDecision.reason,
       errorCode: 'POLICY_DENIED',
       auditEventIds,
       durationMs: Date.now() - startTime,
@@ -305,11 +410,14 @@ export async function invokeTool(
         type: 'tool_invocation_failed',
         runId,
         tenantId,
+        actorId,
         toolName,
         policyClass: tool.policyClass,
         inputHash,
+        policyReasonCode: policyDecision.reasonCode,
         error: errorMessage,
         durationMs: Date.now() - startTime,
+        approvalRef,
       },
       basePath
     );
@@ -337,11 +445,14 @@ export async function invokeTool(
         type: 'tool_invocation_failed',
         runId,
         tenantId,
+        actorId,
         toolName,
         policyClass: tool.policyClass,
         inputHash,
+        policyReasonCode: policyDecision.reasonCode,
         error: errorMessage,
         durationMs: Date.now() - startTime,
+        approvalRef,
       },
       basePath
     );
@@ -355,15 +466,18 @@ export async function invokeTool(
     };
   }
 
-  // Step 6: Write audit "tool_invocation_succeeded"
+  // Step 6: Write audit "tool_invocation_succeeded" (Phase 5: includes policyReasonCode)
   await writeAuditEvent(
     {
       type: 'tool_invocation_succeeded',
       runId,
       tenantId,
+      actorId,
       toolName,
       policyClass: tool.policyClass,
       inputHash,
+      policyReasonCode: policyDecision.reasonCode,
+      approvalRef,
       durationMs: Date.now() - startTime,
     },
     basePath

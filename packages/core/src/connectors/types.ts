@@ -2,6 +2,8 @@
  * Connector SDK Types
  *
  * Phase 3: Defines the core contracts for building connectors.
+ * Phase 5: Extended with tenant-aware policy integration.
+ *
  * After this phase, adding new connectors (Zendesk, Airbyte, etc.)
  * is mostly wiring + schemas, not new architecture.
  *
@@ -9,6 +11,7 @@
  */
 
 import { z } from 'zod';
+import { TenantContext as TenantContextSchema } from '../tenancy/context.js';
 
 // =============================================================================
 // Tool Policy Classification
@@ -145,6 +148,8 @@ export interface Connector {
 
 /**
  * Request to invoke a tool
+ *
+ * Phase 5: Extended with optional TenantContext for policy engine integration.
  */
 export const ToolInvocationRequest = z.object({
   /** Run ID for audit trail */
@@ -168,6 +173,9 @@ export const ToolInvocationRequest = z.object({
     patchHash: z.string(),
     comment: z.string().optional(),
   }).optional(),
+
+  /** Tenant context (Phase 5: for policy engine evaluation) */
+  tenant: TenantContextSchema.optional(),
 });
 
 export type ToolInvocationRequest = z.infer<typeof ToolInvocationRequest>;
@@ -209,6 +217,8 @@ export type ToolInvocationResult = z.infer<typeof ToolInvocationResult>;
 
 /**
  * Audit event for tool invocations
+ *
+ * Phase 5: Extended with tenant-aware fields (actorId, policyReasonCode, approvalRef)
  */
 export const ToolAuditEvent = z.object({
   /** Event type */
@@ -229,6 +239,9 @@ export const ToolAuditEvent = z.object({
   /** Tenant ID */
   tenantId: z.string(),
 
+  /** Actor ID (Phase 5: who initiated this invocation) */
+  actorId: z.string().optional(),
+
   /** Tool name */
   toolName: z.string(),
 
@@ -241,11 +254,17 @@ export const ToolAuditEvent = z.object({
   /** Whether policy check passed */
   policyPassed: z.boolean().optional(),
 
+  /** Policy reason code (Phase 5: standardized reason from PolicyEngine) */
+  policyReasonCode: z.string().optional(),
+
   /** Error message if failed */
   error: z.string().optional(),
 
   /** Duration in milliseconds */
   durationMs: z.number().optional(),
+
+  /** Approval reference (Phase 5: if present, links to approval record) */
+  approvalRef: z.string().optional(),
 });
 
 export type ToolAuditEvent = z.infer<typeof ToolAuditEvent>;

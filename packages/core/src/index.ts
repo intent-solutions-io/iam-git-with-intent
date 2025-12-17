@@ -53,3 +53,6 @@ export * from './capabilities/index.js';
 
 // Connector SDK exports (Phase 3: Unified connector framework)
 export * from './connectors/index.js';
+
+// Multi-tenancy exports (Phase 5: SaaS multi-tenancy + policy-as-code)
+export * from './tenancy/index.js';
