@@ -4,6 +4,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## SESSION BOOT (MANDATORY)
+
+**Before writing any code, you MUST:**
+
+1. **Read context capsules**:
+   - `000-docs/agent-engine/CONTEXT.md`
+   - `000-docs/agent-engine/COMPLIANCE.md`
+
+2. **Print a Constraints Recap** (10-20 bullets max):
+   - Deployment target (Vertex AI Agent Engine)
+   - ADK patterns to use/avoid
+   - Tool contract rules
+   - Run artifact requirements
+   - Approval gating rules
+   - ARV checks that apply
+
+3. **Inventory files** you will touch and list them explicitly
+
+4. **Write a test plan** before implementing:
+   - What tests will be added/modified
+   - Which ARV checks apply
+   - How to verify the change
+
+### Hard Requirements
+
+- This repo targets **Vertex AI Agent Engine** deployments. No local-only shortcuts.
+- Use approved ADK patterns. If unsure, find current usage in repo and match it.
+- Every tool has a Zod schema; validate with contract tests.
+- Produce deterministic outputs where required (goldens/fixtures).
+- Implement approval gating for any destructive external writes.
+- All runs produce artifacts + audit log using the repo's run bundle format.
+
+### Execution Requirements
+
+- Add/adjust tests with every change
+- Run `npm run arv` before finalizing
+- Provide evidence (command outputs) in the final message
+
+**If anything conflicts, prefer `000-docs/agent-engine/CONTEXT.md` as source of truth.**
+
+---
+
 ## SAFETY GUARDRAILS
 
 - **No direct gcloud deploys** - All infra goes through GitHub Actions + Terraform
@@ -202,6 +244,24 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 ## REFERENCE
 
+- **Agent Engine Context**: `000-docs/agent-engine/CONTEXT.md` (read first!)
+- **Compliance Checklist**: `000-docs/agent-engine/COMPLIANCE.md`
 - System audit: `000-docs/032-AA-AUDT-appaudit-devops-playbook.md`
 - AgentFS/Beads policy: `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
 - Phase AARs: `000-docs/NNN-AA-REPT-*.md`
+
+---
+
+## ARV (Agent Readiness Verification)
+
+Run before every commit:
+
+```bash
+npm run arv           # All checks
+npm run arv:lint      # Forbidden patterns
+npm run arv:contracts # Schema validation
+npm run arv:goldens   # Deterministic outputs
+npm run arv:smoke     # Boot check
+```
+
+CI will fail if ARV does not pass.
