@@ -1,0 +1,7 @@
+{
+  "name": "ours-delete-theirs-edit",
+  "description": "Ours deletes code that theirs edits - modify/delete conflict",
+  "expectedStatus": "conflict",
+  "expectedConflicts": 1,
+  "category": "true-conflict"
+}

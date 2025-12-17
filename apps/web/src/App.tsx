@@ -26,6 +26,11 @@ import { AdminSecrets } from './pages/AdminSecrets';
 import { Templates } from './pages/Templates';
 import { Instances } from './pages/Instances';
 import { InstanceDetail } from './pages/InstanceDetail';
+// Phase 14: Queue + Candidates
+import { Queue } from './pages/Queue';
+import { QueueDetail } from './pages/QueueDetail';
+import { Candidates } from './pages/Candidates';
+import { CandidateDetail } from './pages/CandidateDetail';
 
 export function App() {
   return (
@@ -131,6 +136,39 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <InstanceDetail />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 14: Queue + Candidates */}
+            <Route
+              path="/queue"
+              element={
+                <ProtectedRoute>
+                  <Queue />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/queue/:itemId"
+              element={
+                <ProtectedRoute>
+                  <QueueDetail />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/candidates"
+              element={
+                <ProtectedRoute>
+                  <Candidates />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/candidates/:candidateId"
+              element={
+                <ProtectedRoute>
+                  <CandidateDetail />
                 </ProtectedRoute>
               }
             />

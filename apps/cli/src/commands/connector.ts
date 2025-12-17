@@ -24,7 +24,6 @@ import chalk from 'chalk';
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { createHash } from 'crypto';
 import {
   createRemoteRegistry,
   installConnector,
@@ -34,6 +33,12 @@ import {
   listTrustedKeys,
   removeTrustedKey,
   createTarball,
+  // Phase 21: Real signing
+  createSignedSignatureFile,
+  generateKeyPair,
+  // Phase 21: Federation
+  createFederatedRegistry,
+  listRegistries,
 } from '@gwi/core';
 
 /**
@@ -406,19 +411,31 @@ export async function connectorRemoveKeyCommand(
 }
 
 // =============================================================================
-// Publish Command (Phase 10)
+// Publish Command (Phase 10 + Phase 21 enhancements)
 // =============================================================================
 
 /**
  * Publish a connector to a registry
+ *
+ * Phase 21: Now uses real Ed25519 signing
  */
 export async function connectorPublishCommand(options: ConnectorOptions): Promise<void> {
   const connectorPath = options.path ?? process.cwd();
-  const registryUrl = options.registry ?? 'http://localhost:3456';
+  const registryUrl = options.registry ?? process.env.GWI_REGISTRY_URL ?? 'http://localhost:3456';
   const keyId = options.key;
+  const privateKeyBase64 = options.privateKey ?? process.env.GWI_SIGNING_KEY;
 
   if (!keyId) {
     console.error(chalk.red('Error:'), 'Key ID required (--key <keyId>)');
+    console.error(chalk.dim('  Use: gwi connector publish --key <keyId> --private-key <base64>'));
+    console.error(chalk.dim('  Or set GWI_SIGNING_KEY environment variable'));
+    process.exit(1);
+  }
+
+  if (!privateKeyBase64) {
+    console.error(chalk.red('Error:'), 'Private key required for signing');
+    console.error(chalk.dim('  Use: --private-key <base64> or set GWI_SIGNING_KEY env var'));
+    console.error(chalk.dim('\n  Generate a new keypair with: gwi connector generate-key'));
     process.exit(1);
   }
 
@@ -441,15 +458,10 @@ export async function connectorPublishCommand(options: ConnectorOptions): Promis
     const checksum = tarballResult.checksum;
     console.log(chalk.dim(`  Checksum: ${checksum}`));
 
-    // Create signature (mock for now - in real impl would use private key)
-    const signature = {
-      version: '1.0',
-      keyId,
-      algorithm: 'ed25519',
-      checksum,
-      signature: 'MOCK_SIGNATURE_' + createHash('sha256').update(checksum + keyId).digest('hex').slice(0, 64),
-      signedAt: new Date().toISOString(),
-    };
+    // Phase 21: Create real Ed25519 signature
+    console.log(chalk.dim('  Signing with Ed25519...'));
+    const signature = await createSignedSignatureFile(keyId, checksum, privateKeyBase64);
+    console.log(chalk.dim(`  Signed by: ${keyId}`));
 
     if (options.dryRun) {
       console.log(chalk.yellow('\n  Dry run - would publish:'));
@@ -457,6 +469,7 @@ export async function connectorPublishCommand(options: ConnectorOptions): Promis
       console.log(chalk.dim(`    Registry: ${registryUrl}`));
       console.log(chalk.dim(`    Checksum: ${checksum}`));
       console.log(chalk.dim(`    Key ID: ${keyId}`));
+      console.log(chalk.dim(`    Signature: ${signature.signature.slice(0, 32)}...`));
       console.log();
       return;
     }
@@ -476,7 +489,7 @@ export async function connectorPublishCommand(options: ConnectorOptions): Promis
       }),
     });
 
-    const result = (await response.json()) as { success: boolean; error?: string };
+    const result = (await response.json()) as { success: boolean; error?: string; warnings?: string[] };
 
     if (options.json) {
       console.log(JSON.stringify(result, null, 2));
@@ -492,7 +505,145 @@ export async function connectorPublishCommand(options: ConnectorOptions): Promis
     console.log(chalk.green('  ✓ Published successfully'));
     console.log(chalk.dim(`    ${manifest.id}@${manifest.version}`));
     console.log(chalk.dim(`    Registry: ${registryUrl}`));
+
+    if (result.warnings && result.warnings.length > 0) {
+      console.log(chalk.yellow('\n  Warnings:'));
+      for (const warning of result.warnings) {
+        console.log(chalk.yellow(`    ⚠ ${warning}`));
+      }
+    }
+
     console.log();
+  } catch (error) {
+    console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+// =============================================================================
+// Generate Key Command (Phase 21)
+// =============================================================================
+
+/**
+ * Generate a new Ed25519 keypair for signing connectors
+ */
+export async function connectorGenerateKeyCommand(options: ConnectorOptions): Promise<void> {
+  try {
+    console.log(chalk.blue('\n  Generating Ed25519 keypair...\n'));
+
+    const keyPair = await generateKeyPair();
+
+    if (options.json) {
+      console.log(JSON.stringify(keyPair, null, 2));
+      return;
+    }
+
+    console.log(chalk.green('  ✓ Keypair generated\n'));
+    console.log(chalk.bold('  Public Key (share this):'));
+    console.log(chalk.cyan(`    ${keyPair.publicKey}`));
+    console.log();
+    console.log(chalk.bold('  Private Key (keep secret):'));
+    console.log(chalk.yellow(`    ${keyPair.privateKey}`));
+    console.log();
+    console.log(chalk.dim('  To publish with this key:'));
+    console.log(chalk.dim('    1. Add public key to registry trusted keys'));
+    console.log(chalk.dim('    2. Set GWI_SIGNING_KEY environment variable to private key'));
+    console.log(chalk.dim('    3. Use --key <your-key-id> when publishing'));
+    console.log();
+  } catch (error) {
+    console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+// =============================================================================
+// Federation Commands (Phase 21)
+// =============================================================================
+
+/**
+ * List configured registries
+ */
+export async function connectorRegistriesCommand(options: ConnectorOptions): Promise<void> {
+  try {
+    const registries = await listRegistries();
+
+    if (options.json) {
+      console.log(JSON.stringify(registries, null, 2));
+      return;
+    }
+
+    console.log(chalk.blue.bold('\n  Configured Registries\n'));
+
+    if (registries.length === 0) {
+      console.log(chalk.yellow('  No registries configured.\n'));
+      return;
+    }
+
+    for (const registry of registries) {
+      const enabledIcon = registry.enabled ? chalk.green('✓') : chalk.gray('○');
+      const trustBadge =
+        registry.trustLevel === 'official'
+          ? chalk.green('[official]')
+          : registry.trustLevel === 'enterprise'
+            ? chalk.blue('[enterprise]')
+            : registry.trustLevel === 'community'
+              ? chalk.yellow('[community]')
+              : chalk.gray('[local]');
+
+      console.log(`  ${enabledIcon} ${chalk.bold(registry.name)} ${trustBadge}`);
+      console.log(chalk.dim(`    ID: ${registry.id}`));
+      console.log(chalk.dim(`    URL: ${registry.url}`));
+      console.log(chalk.dim(`    Priority: ${registry.priority}`));
+      if (registry.description) {
+        console.log(chalk.dim(`    ${registry.description}`));
+      }
+      console.log();
+    }
+  } catch (error) {
+    console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+/**
+ * Federated search across all enabled registries
+ */
+export async function connectorFederatedSearchCommand(
+  query: string,
+  options: ConnectorOptions
+): Promise<void> {
+  try {
+    const federated = await createFederatedRegistry();
+    const result = await federated.search(query);
+
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    console.log(chalk.blue.bold('\n  Federated Search Results\n'));
+
+    if (result.results.length === 0) {
+      console.log(chalk.yellow('  No connectors found.\n'));
+      if (result.errors.length > 0) {
+        console.log(chalk.red('  Errors:'));
+        for (const err of result.errors) {
+          console.log(chalk.dim(`    ${err.registryId}: ${err.error}`));
+        }
+      }
+      return;
+    }
+
+    for (const item of result.results) {
+      console.log(`  ${chalk.green(item.connector.id)}@${item.connector.latestVersion}`);
+      console.log(chalk.dim(`    Registry: ${item.registryName}`));
+      console.log(chalk.dim(`    ${item.connector.description || 'No description'}`));
+      console.log();
+    }
+
+    console.log(
+      chalk.dim(`  Found ${result.total} connector(s) across ${result.registriesSearched} registry(ies)\n`)
+    );
   } catch (error) {
     console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
     process.exit(1);

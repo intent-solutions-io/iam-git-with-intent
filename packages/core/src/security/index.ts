@@ -1069,3 +1069,271 @@ export function redactSecrets(obj: Record<string, unknown>): Record<string, unkn
 
   return result;
 }
+
+// =============================================================================
+// Webhook Signature Verification (Phase 15)
+// =============================================================================
+
+import { createHmac, timingSafeEqual } from 'crypto';
+
+/**
+ * Webhook verification result
+ */
+export interface WebhookVerificationResult {
+  valid: boolean;
+  error?: string;
+  signatureType?: 'sha256' | 'sha1';
+}
+
+/**
+ * Verify GitHub webhook signature (HMAC SHA-256)
+ *
+ * GitHub sends the signature in the `X-Hub-Signature-256` header
+ * Format: sha256=<hex-encoded-signature>
+ *
+ * @param payload - Raw request body as string or Buffer
+ * @param signature - Value of X-Hub-Signature-256 header
+ * @param secret - Webhook secret configured in GitHub
+ * @returns Verification result
+ */
+export function verifyGitHubWebhookSignature(
+  payload: string | Buffer,
+  signature: string | null | undefined,
+  secret: string
+): WebhookVerificationResult {
+  if (!signature) {
+    return {
+      valid: false,
+      error: 'Missing X-Hub-Signature-256 header',
+    };
+  }
+
+  if (!secret) {
+    return {
+      valid: false,
+      error: 'Webhook secret not configured',
+    };
+  }
+
+  // Parse signature header
+  const [algorithm, receivedSignature] = signature.split('=');
+
+  if (algorithm !== 'sha256') {
+    // Also support legacy sha1 for backwards compatibility
+    if (algorithm !== 'sha1') {
+      return {
+        valid: false,
+        error: `Unsupported signature algorithm: ${algorithm}`,
+      };
+    }
+  }
+
+  if (!receivedSignature) {
+    return {
+      valid: false,
+      error: 'Malformed signature header',
+    };
+  }
+
+  // Compute expected signature
+  const payloadBuffer = typeof payload === 'string' ? Buffer.from(payload, 'utf8') : payload;
+  const hmac = createHmac(algorithm as 'sha256' | 'sha1', secret);
+  hmac.update(payloadBuffer);
+  const expectedSignature = hmac.digest('hex');
+
+  // Use timing-safe comparison to prevent timing attacks
+  const receivedBuffer = Buffer.from(receivedSignature, 'hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+
+  if (receivedBuffer.length !== expectedBuffer.length) {
+    return {
+      valid: false,
+      error: 'Signature length mismatch',
+    };
+  }
+
+  const isValid = timingSafeEqual(receivedBuffer, expectedBuffer);
+
+  return {
+    valid: isValid,
+    signatureType: algorithm as 'sha256' | 'sha1',
+    error: isValid ? undefined : 'Signature verification failed',
+  };
+}
+
+/**
+ * Verify Stripe webhook signature
+ *
+ * Stripe sends the signature in the `Stripe-Signature` header
+ * Format: t=timestamp,v1=signature[,v0=signature]
+ *
+ * @param payload - Raw request body as string
+ * @param signature - Value of Stripe-Signature header
+ * @param secret - Webhook secret from Stripe dashboard (whsec_...)
+ * @param toleranceSeconds - Max age of webhook in seconds (default: 300 = 5 min)
+ * @returns Verification result
+ */
+export function verifyStripeWebhookSignature(
+  payload: string,
+  signature: string | null | undefined,
+  secret: string,
+  toleranceSeconds = 300
+): WebhookVerificationResult {
+  if (!signature) {
+    return {
+      valid: false,
+      error: 'Missing Stripe-Signature header',
+    };
+  }
+
+  if (!secret) {
+    return {
+      valid: false,
+      error: 'Webhook secret not configured',
+    };
+  }
+
+  // Parse Stripe signature header
+  const signatureParts: Record<string, string> = {};
+  for (const part of signature.split(',')) {
+    const [key, value] = part.split('=');
+    if (key && value) {
+      signatureParts[key] = value;
+    }
+  }
+
+  const timestamp = signatureParts.t;
+  const receivedSignature = signatureParts.v1;
+
+  if (!timestamp || !receivedSignature) {
+    return {
+      valid: false,
+      error: 'Malformed Stripe-Signature header',
+    };
+  }
+
+  // Check timestamp tolerance
+  const timestampInt = parseInt(timestamp, 10);
+  const now = Math.floor(Date.now() / 1000);
+
+  if (Math.abs(now - timestampInt) > toleranceSeconds) {
+    return {
+      valid: false,
+      error: `Webhook timestamp too old (${Math.abs(now - timestampInt)}s > ${toleranceSeconds}s tolerance)`,
+    };
+  }
+
+  // Compute expected signature
+  const signedPayload = `${timestamp}.${payload}`;
+  const hmac = createHmac('sha256', secret);
+  hmac.update(signedPayload);
+  const expectedSignature = hmac.digest('hex');
+
+  // Use timing-safe comparison
+  const receivedBuffer = Buffer.from(receivedSignature, 'hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+
+  if (receivedBuffer.length !== expectedBuffer.length) {
+    return {
+      valid: false,
+      error: 'Signature length mismatch',
+    };
+  }
+
+  const isValid = timingSafeEqual(receivedBuffer, expectedBuffer);
+
+  return {
+    valid: isValid,
+    signatureType: 'sha256',
+    error: isValid ? undefined : 'Signature verification failed',
+  };
+}
+
+/**
+ * Generic HMAC signature verification
+ *
+ * @param payload - Raw request body
+ * @param signature - Expected signature (hex-encoded)
+ * @param secret - Signing secret
+ * @param algorithm - Hash algorithm (default: sha256)
+ * @returns Verification result
+ */
+export function verifyHmacSignature(
+  payload: string | Buffer,
+  signature: string,
+  secret: string,
+  algorithm: 'sha256' | 'sha1' | 'sha512' = 'sha256'
+): WebhookVerificationResult {
+  if (!signature) {
+    return {
+      valid: false,
+      error: 'Missing signature',
+    };
+  }
+
+  if (!secret) {
+    return {
+      valid: false,
+      error: 'Secret not configured',
+    };
+  }
+
+  // Compute expected signature
+  const payloadBuffer = typeof payload === 'string' ? Buffer.from(payload, 'utf8') : payload;
+  const hmac = createHmac(algorithm, secret);
+  hmac.update(payloadBuffer);
+  const expectedSignature = hmac.digest('hex');
+
+  // Use timing-safe comparison
+  const receivedBuffer = Buffer.from(signature, 'hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+
+  if (receivedBuffer.length !== expectedBuffer.length) {
+    return {
+      valid: false,
+      error: 'Signature length mismatch',
+    };
+  }
+
+  const isValid = timingSafeEqual(receivedBuffer, expectedBuffer);
+
+  return {
+    valid: isValid,
+    signatureType: algorithm === 'sha1' ? 'sha1' : 'sha256',
+    error: isValid ? undefined : 'Signature verification failed',
+  };
+}
+
+/**
+ * Create HMAC signature for outgoing webhooks
+ *
+ * @param payload - Request body to sign
+ * @param secret - Signing secret
+ * @param algorithm - Hash algorithm (default: sha256)
+ * @returns Hex-encoded signature
+ */
+export function createHmacSignature(
+  payload: string | Buffer,
+  secret: string,
+  algorithm: 'sha256' | 'sha1' | 'sha512' = 'sha256'
+): string {
+  const payloadBuffer = typeof payload === 'string' ? Buffer.from(payload, 'utf8') : payload;
+  const hmac = createHmac(algorithm, secret);
+  hmac.update(payloadBuffer);
+  return hmac.digest('hex');
+}
+
+/**
+ * Create GitHub-style signature header value
+ *
+ * @param payload - Request body to sign
+ * @param secret - Signing secret
+ * @returns Signature header value (sha256=<signature>)
+ */
+export function createGitHubSignatureHeader(
+  payload: string | Buffer,
+  secret: string
+): string {
+  const signature = createHmacSignature(payload, secret, 'sha256');
+  return `sha256=${signature}`;
+}

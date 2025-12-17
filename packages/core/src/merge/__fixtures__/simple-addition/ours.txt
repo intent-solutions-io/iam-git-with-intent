@@ -1,0 +1,7 @@
+function hello() {
+  console.log('hello');
+}
+
+function addedByOurs() {
+  return 'ours';
+}

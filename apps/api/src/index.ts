@@ -3176,6 +3176,628 @@ app.delete('/v1/schedules/:scheduleId', authMiddleware, async (req, res) => {
 });
 
 // =============================================================================
+// Phase 14: Signal and PR Queue Routes
+// =============================================================================
+
+import {
+  getSignalStore,
+  getWorkItemStore,
+  getPRCandidateStore,
+  SignalProcessor,
+  createCandidateIntentReceipt,
+  assessCandidateRisk,
+  type SignalSource,
+  type WorkItemStatus,
+} from '@gwi/core';
+
+// Initialize Phase 14 stores
+const signalStore = getSignalStore();
+const workItemStore = getWorkItemStore();
+const prCandidateStore = getPRCandidateStore();
+
+// Request schemas for Phase 14
+const CreateSignalSchema = z.object({
+  source: z.enum(['github_issue', 'github_pr', 'github_comment', 'webhook', 'scheduled', 'manual', 'api']),
+  externalId: z.string(),
+  occurredAt: z.string().datetime().optional(),
+  payload: z.record(z.unknown()),
+  context: z.object({
+    repo: z.object({
+      owner: z.string(),
+      name: z.string(),
+      fullName: z.string(),
+      id: z.number().optional(),
+    }).optional(),
+    resourceNumber: z.number().optional(),
+    resourceType: z.enum(['issue', 'pr', 'comment', 'commit']).optional(),
+    resourceUrl: z.string().optional(),
+    actor: z.string().optional(),
+    action: z.string().optional(),
+    title: z.string().optional(),
+    body: z.string().optional(),
+    labels: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+const UpdateWorkItemSchema = z.object({
+  status: z.enum(['queued', 'in_progress', 'awaiting_approval', 'approved', 'rejected', 'completed', 'dismissed']).optional(),
+  assignedTo: z.string().optional(),
+});
+
+const GenerateCandidateSchema = z.object({
+  planSummary: z.string(),
+  steps: z.array(z.object({
+    order: z.number(),
+    description: z.string(),
+    files: z.array(z.string()).optional(),
+    action: z.enum(['create', 'modify', 'delete', 'review', 'test']),
+  })),
+  affectedFiles: z.array(z.string()),
+  complexity: z.number().min(1).max(5),
+  estimatedMinutes: z.number().optional(),
+});
+
+const ApproveCandidateSchema = z.object({
+  decision: z.enum(['approved', 'rejected', 'changes_requested']),
+  comment: z.string().optional(),
+});
+
+/**
+ * POST /v1/tenants/:tenantId/signals - Create a signal (DEVELOPER+)
+ */
+app.post('/v1/tenants/:tenantId/signals', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  const parseResult = CreateSignalSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  const input = parseResult.data;
+
+  try {
+    const existing = await signalStore.getSignalByExternalId(
+      tenantId,
+      input.source as SignalSource,
+      input.externalId
+    );
+    if (existing) {
+      return res.status(409).json({
+        error: 'Signal already exists',
+        signalId: existing.id,
+        status: existing.status,
+      });
+    }
+
+    const signal = await signalStore.createSignal({
+      tenantId,
+      source: input.source as SignalSource,
+      externalId: input.externalId,
+      occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+      status: 'pending',
+      payload: input.payload,
+      context: input.context || {},
+    });
+
+    console.log(JSON.stringify({
+      type: 'signal_created',
+      signalId: signal.id,
+      tenantId,
+      source: input.source,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.status(201).json(signal);
+  } catch (error) {
+    console.error('Failed to create signal:', error);
+    res.status(500).json({
+      error: 'Failed to create signal',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/tenants/:tenantId/signals - List signals (VIEWER+)
+ */
+app.get('/v1/tenants/:tenantId/signals', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { source, status, limit, offset } = req.query;
+
+  try {
+    const signals = await signalStore.listSignals(tenantId, {
+      source: source as SignalSource | undefined,
+      status: status as 'pending' | 'processed' | 'ignored' | 'failed' | undefined,
+      limit: limit ? parseInt(limit as string, 10) : 50,
+      offset: offset ? parseInt(offset as string, 10) : 0,
+    });
+
+    res.json({
+      signals,
+      count: signals.length,
+    });
+  } catch (error) {
+    console.error('Failed to list signals:', error);
+    res.status(500).json({
+      error: 'Failed to list signals',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /v1/tenants/:tenantId/signals/process - Process pending signals (DEVELOPER+)
+ */
+app.post('/v1/tenants/:tenantId/signals/process', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { limit } = req.query;
+
+  try {
+    const processor = new SignalProcessor(signalStore, workItemStore);
+    const result = await processor.processPendingSignals(
+      tenantId,
+      limit ? parseInt(limit as string, 10) : 100
+    );
+
+    console.log(JSON.stringify({
+      type: 'signals_processed',
+      tenantId,
+      ...result,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to process signals:', error);
+    res.status(500).json({
+      error: 'Failed to process signals',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/tenants/:tenantId/queue - Get PR queue (work items) (VIEWER+)
+ */
+app.get('/v1/tenants/:tenantId/queue', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { status, type, repo, assignedTo, minScore, limit, offset } = req.query;
+
+  try {
+    let statusFilter: WorkItemStatus | WorkItemStatus[] | undefined;
+    if (status) {
+      const statuses = (status as string).split(',') as WorkItemStatus[];
+      statusFilter = statuses.length === 1 ? statuses[0] : statuses;
+    }
+
+    const items = await workItemStore.listWorkItems(tenantId, {
+      status: statusFilter,
+      type: type as 'issue_to_code' | 'pr_review' | 'pr_resolve' | 'docs_update' | 'test_gen' | 'custom' | undefined,
+      repo: repo as string | undefined,
+      assignedTo: assignedTo as string | undefined,
+      minScore: minScore ? parseInt(minScore as string, 10) : undefined,
+      limit: limit ? parseInt(limit as string, 10) : 50,
+      offset: offset ? parseInt(offset as string, 10) : 0,
+    });
+
+    const stats = await workItemStore.getQueueStats(tenantId);
+
+    res.json({
+      items,
+      count: items.length,
+      stats,
+    });
+  } catch (error) {
+    console.error('Failed to list queue:', error);
+    res.status(500).json({
+      error: 'Failed to list queue',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/tenants/:tenantId/queue/:itemId - Get work item details (VIEWER+)
+ */
+app.get('/v1/tenants/:tenantId/queue/:itemId', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId, itemId } = req.params;
+
+  try {
+    const item = await workItemStore.getWorkItem(itemId);
+
+    if (!item) {
+      return res.status(404).json({
+        error: 'Work item not found',
+        itemId,
+      });
+    }
+
+    if (item.tenantId !== tenantId) {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const signals = await Promise.all(
+      item.signalIds.map(id => signalStore.getSignal(id))
+    );
+
+    let candidate = null;
+    if (item.candidateId) {
+      candidate = await prCandidateStore.getCandidate(item.candidateId);
+    }
+
+    res.json({
+      item,
+      signals: signals.filter(Boolean),
+      candidate,
+    });
+  } catch (error) {
+    console.error('Failed to get work item:', error);
+    res.status(500).json({
+      error: 'Failed to get work item',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * PATCH /v1/tenants/:tenantId/queue/:itemId - Update work item (DEVELOPER+)
+ */
+app.patch('/v1/tenants/:tenantId/queue/:itemId', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+  const { tenantId, itemId } = req.params;
+
+  const parseResult = UpdateWorkItemSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    const item = await workItemStore.getWorkItem(itemId);
+
+    if (!item) {
+      return res.status(404).json({
+        error: 'Work item not found',
+        itemId,
+      });
+    }
+
+    if (item.tenantId !== tenantId) {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const updated = await workItemStore.updateWorkItem(itemId, parseResult.data);
+
+    console.log(JSON.stringify({
+      type: 'work_item_updated',
+      itemId,
+      tenantId,
+      changes: parseResult.data,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Failed to update work item:', error);
+    res.status(500).json({
+      error: 'Failed to update work item',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /v1/tenants/:tenantId/queue/:itemId/dismiss - Dismiss work item (DEVELOPER+)
+ */
+app.post('/v1/tenants/:tenantId/queue/:itemId/dismiss', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+  const { tenantId, itemId } = req.params;
+
+  try {
+    const item = await workItemStore.getWorkItem(itemId);
+
+    if (!item) {
+      return res.status(404).json({
+        error: 'Work item not found',
+        itemId,
+      });
+    }
+
+    if (item.tenantId !== tenantId) {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const updated = await workItemStore.updateWorkItem(itemId, { status: 'dismissed' });
+
+    console.log(JSON.stringify({
+      type: 'work_item_dismissed',
+      itemId,
+      tenantId,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Failed to dismiss work item:', error);
+    res.status(500).json({
+      error: 'Failed to dismiss work item',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /v1/tenants/:tenantId/queue/:itemId/candidate - Generate PR candidate (DEVELOPER+)
+ */
+app.post('/v1/tenants/:tenantId/queue/:itemId/candidate', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+  const { tenantId, itemId } = req.params;
+
+  const parseResult = GenerateCandidateSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  const input = parseResult.data;
+
+  try {
+    const item = await workItemStore.getWorkItem(itemId);
+
+    if (!item) {
+      return res.status(404).json({
+        error: 'Work item not found',
+        itemId,
+      });
+    }
+
+    if (item.tenantId !== tenantId) {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    if (item.candidateId) {
+      const existing = await prCandidateStore.getCandidate(item.candidateId);
+      if (existing && existing.status !== 'rejected' && existing.status !== 'failed') {
+        return res.status(409).json({
+          error: 'Candidate already exists',
+          candidateId: existing.id,
+          status: existing.status,
+        });
+      }
+    }
+
+    const plan = {
+      summary: input.planSummary,
+      steps: input.steps,
+      complexity: input.complexity,
+      affectedFiles: input.affectedFiles,
+      estimatedMinutes: input.estimatedMinutes,
+    };
+
+    const risk = assessCandidateRisk(plan, item);
+    const intentReceipt = createCandidateIntentReceipt(item, plan, req.context!.userId);
+    const requiredApprovals = risk.level === 'critical' ? 2 : risk.level === 'high' ? 2 : 1;
+
+    const candidate = await prCandidateStore.createCandidate({
+      workItemId: itemId,
+      tenantId,
+      status: 'ready',
+      plan,
+      risk,
+      confidence: 100 - risk.score,
+      requiredApprovals,
+      intentReceipt,
+    });
+
+    await workItemStore.updateWorkItem(itemId, {
+      candidateId: candidate.id,
+      status: 'awaiting_approval',
+    });
+
+    console.log(JSON.stringify({
+      type: 'candidate_generated',
+      candidateId: candidate.id,
+      workItemId: itemId,
+      tenantId,
+      riskLevel: risk.level,
+      requiredApprovals,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.status(201).json(candidate);
+  } catch (error) {
+    console.error('Failed to generate candidate:', error);
+    res.status(500).json({
+      error: 'Failed to generate candidate',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/tenants/:tenantId/candidates - List PR candidates (VIEWER+)
+ */
+app.get('/v1/tenants/:tenantId/candidates', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { status, workItemId, limit, offset } = req.query;
+
+  try {
+    let statusFilter: string | string[] | undefined;
+    if (status) {
+      const statuses = (status as string).split(',');
+      statusFilter = statuses.length === 1 ? statuses[0] : statuses;
+    }
+
+    const candidates = await prCandidateStore.listCandidates(tenantId, {
+      status: statusFilter as any,
+      workItemId: workItemId as string | undefined,
+      limit: limit ? parseInt(limit as string, 10) : 50,
+      offset: offset ? parseInt(offset as string, 10) : 0,
+    });
+
+    res.json({
+      candidates,
+      count: candidates.length,
+    });
+  } catch (error) {
+    console.error('Failed to list candidates:', error);
+    res.status(500).json({
+      error: 'Failed to list candidates',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/candidates/:candidateId - Get candidate details
+ */
+app.get('/v1/candidates/:candidateId', authMiddleware, async (req, res) => {
+  const { candidateId } = req.params;
+
+  try {
+    const candidate = await prCandidateStore.getCandidate(candidateId);
+
+    if (!candidate) {
+      return res.status(404).json({
+        error: 'Candidate not found',
+        candidateId,
+      });
+    }
+
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, candidate.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const workItem = await workItemStore.getWorkItem(candidate.workItemId);
+
+    res.json({
+      candidate,
+      workItem,
+    });
+  } catch (error) {
+    console.error('Failed to get candidate:', error);
+    res.status(500).json({
+      error: 'Failed to get candidate',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /v1/candidates/:candidateId/approve - Approve/reject candidate (DEVELOPER+)
+ */
+app.post('/v1/candidates/:candidateId/approve', authMiddleware, async (req, res) => {
+  const { candidateId } = req.params;
+
+  const parseResult = ApproveCandidateSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  const input = parseResult.data;
+
+  try {
+    const candidate = await prCandidateStore.getCandidate(candidateId);
+
+    if (!candidate) {
+      return res.status(404).json({
+        error: 'Candidate not found',
+        candidateId,
+      });
+    }
+
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, candidate.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const roleNum = membership.role === 'owner' ? 100 : membership.role === 'admin' ? 50 : 10;
+    if (roleNum < 10) {
+      return res.status(403).json({
+        error: 'Permission denied',
+        message: 'You need DEVELOPER permission to approve candidates',
+      });
+    }
+
+    if (candidate.status !== 'ready') {
+      return res.status(400).json({
+        error: 'Cannot approve candidate',
+        message: `Candidate is in '${candidate.status}' state`,
+      });
+    }
+
+    if (candidate.approvals.some(a => a.userId === req.context!.userId)) {
+      return res.status(409).json({
+        error: 'Already voted',
+        message: 'You have already submitted a decision for this candidate',
+      });
+    }
+
+    const updated = await prCandidateStore.addApproval(candidateId, {
+      userId: req.context!.userId,
+      decision: input.decision,
+      comment: input.comment,
+      timestamp: new Date(),
+    });
+
+    if (updated.status === 'approved') {
+      await workItemStore.updateWorkItem(candidate.workItemId, { status: 'approved' });
+    } else if (updated.status === 'rejected') {
+      await workItemStore.updateWorkItem(candidate.workItemId, { status: 'rejected' });
+    }
+
+    console.log(JSON.stringify({
+      type: 'candidate_approval',
+      candidateId,
+      workItemId: candidate.workItemId,
+      tenantId: candidate.tenantId,
+      decision: input.decision,
+      newStatus: updated.status,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      candidate: updated,
+      message: input.decision === 'approved' ? 'Approval recorded' : input.decision === 'rejected' ? 'Candidate rejected' : 'Changes requested',
+    });
+  } catch (error) {
+    console.error('Failed to approve candidate:', error);
+    res.status(500).json({
+      error: 'Failed to approve candidate',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
 // Error Handling
 // =============================================================================
 

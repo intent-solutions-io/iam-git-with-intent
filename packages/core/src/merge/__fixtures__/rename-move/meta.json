@@ -1,0 +1,12 @@
+{
+  "name": "rename-move",
+  "description": "Ours renames/moves file while theirs edits original - requires rename detection",
+  "expectedStatus": "conflict",
+  "expectedConflicts": 1,
+  "category": "edge-case",
+  "renameInfo": {
+    "oursPath": "src/utils/new-name.ts",
+    "theirsPath": "src/old-name.ts",
+    "basePath": "src/old-name.ts"
+  }
+}

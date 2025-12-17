@@ -68,3 +68,18 @@ export * from './tenancy/index.js';
 
 // Reliability exports (Phase 7: Operator-grade hardening)
 export * from './reliability/index.js';
+
+// Signals exports (Phase 14: Signals → PR Queue)
+export * from './signals/index.js';
+
+// Rate Limiting exports (Phase 15: Production hardening)
+export * from './ratelimit/index.js';
+
+// Queue exports (Phase 17: Job queue abstraction)
+export * from './queue/index.js';
+
+// Agent exports (Phase 18: Agent Integration)
+export * from './agents/index.js';
+
+// Merge exports (Phase 20: 3-Way Merge Resolver)
+export * from './merge/index.js';

@@ -978,3 +978,93 @@ export {
   getStripeConfigFromEnv,
   type StripeProviderConfig,
 } from './stripe.js';
+
+export {
+  StripeWebhookHandler,
+  createStripeWebhookHandler,
+  createStubWebhookDeps,
+  type StripeWebhookEventType,
+  type WebhookHandlerContext,
+  type WebhookHandlerResult,
+  type SubscriptionStateUpdate,
+  type WebhookHandlerDeps,
+} from './stripe-webhooks.js';
+
+// =============================================================================
+// Phase 22: Entitlements and Usage Exports
+// =============================================================================
+
+export {
+  // Types
+  type ExtendedPlanLimits,
+  type MeteredResource,
+  type EntitlementCheckResult,
+  type TenantUsageSnapshot,
+  // Constants
+  EXTENDED_PLAN_LIMITS,
+  // Functions
+  getExtendedLimits,
+  getCombinedLimits,
+  checkEntitlement,
+  checkMultipleEntitlements,
+  getRemainingQuota,
+  checkUsageWarning,
+  createEmptyUsageSnapshot,
+  needsDailyReset,
+  needsMonthlyReset,
+  resetDailyCounters,
+  resetMonthlyCounters,
+} from './entitlements.js';
+
+export {
+  // Types
+  type ExtendedUsageEventType,
+  type ExtendedUsageEvent,
+  type UsageUnit,
+  type DailyUsageAggregate,
+  type MonthlyUsageAggregate,
+  // Factory functions
+  createUsageEvent,
+  createRunStartedEvent,
+  createRunCompletedEvent,
+  createTokensUsedEvent,
+  createApiCallEvent,
+  createSignalIngestedEvent,
+  createCandidateGeneratedEvent,
+  createPROpenedEvent,
+  createNotificationSentEvent,
+  // Aggregate functions
+  createEmptyDailyAggregate,
+  createEmptyMonthlyAggregate,
+  updateDailyAggregate,
+  getAggregateCounterForResource,
+} from './usage.js';
+
+export {
+  // Types
+  type EnforcementContext,
+  type EnforcementResult,
+  type PreflightCheckResult,
+  // Response builders
+  build429Response,
+  build402Response,
+  // Enforcement functions
+  enforceLimit,
+  preflightCheck,
+  enforceRunCreation,
+  enforceApiCall,
+  enforceSignalIngestion,
+  enforceCandidateGeneration,
+  enforcePRCreation,
+  enforceNotification,
+  enforceTokenUsage,
+  // Snapshot management
+  ensureFreshSnapshot,
+  getOrCreateSnapshot,
+  // Express helpers
+  buildExpressErrorResponse,
+  addRateLimitHeaders,
+  // Logging
+  createEnforcementLog,
+  shouldLogEnforcement,
+} from './enforcement.js';

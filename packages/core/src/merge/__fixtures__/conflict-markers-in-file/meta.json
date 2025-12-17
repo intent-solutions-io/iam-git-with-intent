@@ -1,0 +1,7 @@
+{
+  "name": "conflict-markers-in-file",
+  "description": "File contains literal conflict marker characters in comments - must not confuse parser",
+  "expectedStatus": "conflict",
+  "expectedConflicts": 1,
+  "category": "edge-case"
+}

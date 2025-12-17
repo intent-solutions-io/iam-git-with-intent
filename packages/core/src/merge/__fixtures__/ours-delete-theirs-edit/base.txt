@@ -1,0 +1,7 @@
+function deprecated() {
+  return 'old behavior';
+}
+
+function main() {
+  return deprecated();
+}

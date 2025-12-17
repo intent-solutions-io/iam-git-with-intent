@@ -1,0 +1,4 @@
+const config = {
+  timeout: 1000,
+  retries: 3,
+};

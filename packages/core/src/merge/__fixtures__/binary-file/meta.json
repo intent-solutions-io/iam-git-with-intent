@@ -1,0 +1,9 @@
+{
+  "name": "binary-file",
+  "description": "Binary files cannot be text-merged - must skip with reason",
+  "expectedStatus": "skipped",
+  "expectedConflicts": 0,
+  "skipReason": "binary",
+  "category": "edge-case",
+  "isBinary": true
+}

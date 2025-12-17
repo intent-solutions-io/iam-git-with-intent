@@ -1,0 +1,7 @@
+import { alpha } from './alpha';
+import { beta } from './beta';
+import { gamma } from './gamma';
+
+export function combined() {
+  return alpha() + beta() + gamma();
+}

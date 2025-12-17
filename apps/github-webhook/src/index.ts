@@ -9,7 +9,6 @@
 
 import express from 'express';
 import helmet from 'helmet';
-import crypto from 'crypto';
 import {
   handleInstallationCreated,
   handleInstallationDeleted,
@@ -22,6 +21,12 @@ import {
   type WebhookContext,
   type TenantContext,
 } from './services/tenant-linker.js';
+import {
+  verifyGitHubWebhookSignature,
+  type WebhookVerificationResult,
+  enqueueJob,
+  createWorkflowJob,
+} from '@gwi/core';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -33,6 +38,8 @@ const config = {
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
   env: process.env.DEPLOYMENT_ENV || 'dev',
   location: 'us-central1',
+  // Phase 17: Use job queue instead of direct orchestrator calls
+  useJobQueue: process.env.USE_JOB_QUEUE === 'true',
 };
 
 // Security validation: Require webhook secret in production
@@ -90,25 +97,26 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
   const signature = req.headers['x-hub-signature-256'] as string;
 
   try {
-    // Validate webhook signature (required in production)
+    // Validate webhook signature using centralized security function (Phase 17)
     if (config.webhookSecret) {
-      if (!signature) {
+      const verificationResult: WebhookVerificationResult = verifyGitHubWebhookSignature(
+        req.rawBody || '',
+        signature,
+        config.webhookSecret
+      );
+
+      if (!verificationResult.valid) {
         console.log(JSON.stringify({
           severity: 'WARNING',
-          type: 'webhook_missing_signature',
+          type: 'webhook_signature_verification_failed',
           delivery,
           event,
+          error: verificationResult.error,
+          signatureType: verificationResult.signatureType,
         }));
-        return res.status(401).json({ error: 'Missing signature header' });
-      }
-      if (!verifySignature(req.rawBody || '', signature)) {
-        console.log(JSON.stringify({
-          severity: 'WARNING',
-          type: 'webhook_invalid_signature',
-          delivery,
-          event,
-        }));
-        return res.status(401).json({ error: 'Invalid signature' });
+        return res.status(401).json({
+          error: verificationResult.error || 'Signature verification failed',
+        });
       }
     }
 
@@ -141,17 +149,7 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
   }
 });
 
-/**
- * Verify GitHub webhook signature
- */
-function verifySignature(payload: string, signature: string): boolean {
-  if (!signature) return false;
-
-  const hmac = crypto.createHmac('sha256', config.webhookSecret);
-  const digest = 'sha256=' + hmac.update(payload).digest('hex');
-
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
-}
+// Note: verifySignature removed in Phase 17 - now using centralized verifyGitHubWebhookSignature from @gwi/core
 
 /**
  * Handle webhook event based on type
@@ -665,13 +663,45 @@ async function handlePushEvent(
 }
 
 /**
- * Trigger a workflow via the orchestrator
+ * Trigger a workflow via the job queue or orchestrator
+ *
+ * Phase 17: Supports both queue-based (recommended) and direct orchestrator calls.
+ * Set USE_JOB_QUEUE=true to use the job queue.
  */
 async function triggerWorkflow(
   type: string,
   input: Record<string, unknown>
 ): Promise<string> {
   const workflowId = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Phase 17: Use job queue when enabled
+  if (config.useJobQueue) {
+    const tenantId = input.tenantId as string;
+    const runId = input.runId as string;
+
+    const job = createWorkflowJob(tenantId, runId, type, {
+      ...input,
+      workflowId,
+    });
+
+    const result = await enqueueJob(job);
+
+    console.log(JSON.stringify({
+      type: 'workflow_queued',
+      workflowType: type,
+      workflowId,
+      messageId: result.messageId,
+      success: result.success,
+      tenantId,
+      runId,
+    }));
+
+    if (!result.success) {
+      throw new Error(`Failed to queue workflow: ${result.error}`);
+    }
+
+    return workflowId;
+  }
 
   // Skip actual orchestrator call if not configured
   if (!config.projectId || !config.orchestratorEngineId) {

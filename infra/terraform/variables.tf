@@ -190,3 +190,44 @@ variable "firestore_location" {
   type        = string
   default     = "us-central1"
 }
+
+# ============================================================================
+# Phase 16: Worker Service Configuration
+# ============================================================================
+
+variable "gwi_worker_image" {
+  description = "Docker image for GWI Worker service"
+  type        = string
+  default     = ""
+}
+
+variable "gwi_worker_max_instances" {
+  description = "Max Cloud Run instances for Worker"
+  type        = number
+  default     = 10
+}
+
+variable "gwi_worker_concurrency" {
+  description = "Container concurrency for Worker (jobs per container)"
+  type        = number
+  default     = 1
+}
+
+variable "gwi_worker_topic" {
+  description = "Pub/Sub topic name for worker jobs"
+  type        = string
+  default     = "gwi-worker-jobs"
+}
+
+variable "gwi_worker_subscription" {
+  description = "Pub/Sub subscription name for worker"
+  type        = string
+  default     = "gwi-worker-push-sub"
+}
+
+# Phase 17: DLQ Configuration
+variable "gwi_worker_max_delivery_attempts" {
+  description = "Maximum delivery attempts before sending to DLQ"
+  type        = number
+  default     = 5
+}

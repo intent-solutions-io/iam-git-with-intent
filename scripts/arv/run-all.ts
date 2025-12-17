@@ -105,6 +105,21 @@ async function main(): Promise<void> {
       command: 'npx',
       args: ['tsx', join(__dirname, 'docs-gate.ts')],
     },
+    {
+      name: 'Merge Resolver Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'merge-resolver-gate.ts')],
+    },
+    {
+      name: 'Registry Integration Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'registry-gate.ts')],
+    },
+    {
+      name: 'Metering Integration Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'metering-gate.ts')],
+    },
   ];
 
   const results: CheckResult[] = [];

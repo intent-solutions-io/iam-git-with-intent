@@ -29,6 +29,19 @@ import type {
   ScheduleStore,
   WorkflowInstance,
   WorkflowSchedule,
+  // Phase 14 types
+  Signal,
+  SignalSource,
+  SignalStatus,
+  SignalStore,
+  WorkItem,
+  WorkItemStatus,
+  WorkItemType,
+  WorkItemStore,
+  PRCandidate,
+  PRCandidateStatus,
+  PRCandidateStore,
+  CandidateApproval,
 } from './interfaces.js';
 import { generateInstanceId, generateScheduleId } from '../templates/index.js';
 
@@ -640,5 +653,326 @@ export class InMemoryScheduleStore implements ScheduleStore {
 
   async deleteSchedule(scheduleId: string): Promise<void> {
     this.schedules.delete(scheduleId);
+  }
+}
+
+// =============================================================================
+// In-Memory Signal Store (Phase 14)
+// =============================================================================
+
+/**
+ * TEMPORARY: In-memory SignalStore implementation
+ */
+export class InMemorySignalStore implements SignalStore {
+  private signals = new Map<string, Signal>();
+  private byExternalId = new Map<string, string>(); // "tenantId:source:externalId" -> signalId
+
+  async createSignal(signal: Omit<Signal, 'id' | 'receivedAt'>): Promise<Signal> {
+    const fullSignal: Signal = {
+      ...signal,
+      id: generateId('sig'),
+      receivedAt: now(),
+    };
+    this.signals.set(fullSignal.id, fullSignal);
+
+    // Index by external ID for deduplication
+    const externalKey = `${signal.tenantId}:${signal.source}:${signal.externalId}`;
+    this.byExternalId.set(externalKey, fullSignal.id);
+
+    return fullSignal;
+  }
+
+  async getSignal(signalId: string): Promise<Signal | null> {
+    return this.signals.get(signalId) ?? null;
+  }
+
+  async getSignalByExternalId(tenantId: string, source: SignalSource, externalId: string): Promise<Signal | null> {
+    const key = `${tenantId}:${source}:${externalId}`;
+    const signalId = this.byExternalId.get(key);
+    return signalId ? this.signals.get(signalId) ?? null : null;
+  }
+
+  async listSignals(tenantId: string, filter?: {
+    source?: SignalSource;
+    status?: SignalStatus;
+    since?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<Signal[]> {
+    let results = Array.from(this.signals.values()).filter(s => s.tenantId === tenantId);
+
+    if (filter?.source) {
+      results = results.filter(s => s.source === filter.source);
+    }
+    if (filter?.status) {
+      results = results.filter(s => s.status === filter.status);
+    }
+    if (filter?.since) {
+      results = results.filter(s => s.receivedAt >= filter.since!);
+    }
+
+    // Sort by received time descending
+    results.sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
+
+    const offset = filter?.offset ?? 0;
+    const limit = filter?.limit ?? 100;
+    return results.slice(offset, offset + limit);
+  }
+
+  async updateSignal(signalId: string, update: Partial<Pick<Signal, 'status' | 'processingMeta'>>): Promise<Signal> {
+    const signal = this.signals.get(signalId);
+    if (!signal) {
+      throw new Error(`Signal not found: ${signalId}`);
+    }
+    const updated = { ...signal, ...update };
+    this.signals.set(signalId, updated);
+    return updated;
+  }
+
+  async listPendingSignals(tenantId: string, limit = 100): Promise<Signal[]> {
+    return this.listSignals(tenantId, { status: 'pending', limit });
+  }
+}
+
+// =============================================================================
+// In-Memory Work Item Store (Phase 14)
+// =============================================================================
+
+/**
+ * TEMPORARY: In-memory WorkItemStore implementation
+ */
+export class InMemoryWorkItemStore implements WorkItemStore {
+  private items = new Map<string, WorkItem>();
+  private byDedupeKey = new Map<string, string>(); // "tenantId:dedupeKey" -> itemId
+
+  async createWorkItem(item: Omit<WorkItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<WorkItem> {
+    const fullItem: WorkItem = {
+      ...item,
+      id: generateId('wi'),
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    this.items.set(fullItem.id, fullItem);
+
+    // Index by dedupe key
+    const dedupeIndex = `${item.tenantId}:${item.dedupeKey}`;
+    this.byDedupeKey.set(dedupeIndex, fullItem.id);
+
+    return fullItem;
+  }
+
+  async getWorkItem(itemId: string): Promise<WorkItem | null> {
+    return this.items.get(itemId) ?? null;
+  }
+
+  async getWorkItemByDedupeKey(tenantId: string, dedupeKey: string): Promise<WorkItem | null> {
+    const key = `${tenantId}:${dedupeKey}`;
+    const itemId = this.byDedupeKey.get(key);
+    return itemId ? this.items.get(itemId) ?? null : null;
+  }
+
+  async listWorkItems(tenantId: string, filter?: {
+    status?: WorkItemStatus | WorkItemStatus[];
+    type?: WorkItemType;
+    repo?: string;
+    assignedTo?: string;
+    minScore?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<WorkItem[]> {
+    let results = Array.from(this.items.values()).filter(i => i.tenantId === tenantId);
+
+    if (filter?.status) {
+      const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+      results = results.filter(i => statuses.includes(i.status));
+    }
+    if (filter?.type) {
+      results = results.filter(i => i.type === filter.type);
+    }
+    if (filter?.repo) {
+      results = results.filter(i => i.repo?.fullName === filter.repo);
+    }
+    if (filter?.assignedTo) {
+      results = results.filter(i => i.assignedTo === filter.assignedTo);
+    }
+    if (filter?.minScore !== undefined) {
+      results = results.filter(i => i.score >= filter.minScore!);
+    }
+
+    // Sort by score descending, then by creation time
+    results.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    });
+
+    const offset = filter?.offset ?? 0;
+    const limit = filter?.limit ?? 100;
+    return results.slice(offset, offset + limit);
+  }
+
+  async updateWorkItem(itemId: string, update: Partial<Pick<WorkItem, 'status' | 'assignedTo' | 'candidateId' | 'score' | 'scoreBreakdown'>>): Promise<WorkItem> {
+    const item = this.items.get(itemId);
+    if (!item) {
+      throw new Error(`Work item not found: ${itemId}`);
+    }
+    const updated = { ...item, ...update, updatedAt: now() };
+    this.items.set(itemId, updated);
+    return updated;
+  }
+
+  async addSignalToWorkItem(itemId: string, signalId: string): Promise<WorkItem> {
+    const item = this.items.get(itemId);
+    if (!item) {
+      throw new Error(`Work item not found: ${itemId}`);
+    }
+    if (!item.signalIds.includes(signalId)) {
+      item.signalIds.push(signalId);
+      item.updatedAt = now();
+    }
+    return item;
+  }
+
+  async countWorkItems(tenantId: string, status?: WorkItemStatus | WorkItemStatus[]): Promise<number> {
+    let results = Array.from(this.items.values()).filter(i => i.tenantId === tenantId);
+    if (status) {
+      const statuses = Array.isArray(status) ? status : [status];
+      results = results.filter(i => statuses.includes(i.status));
+    }
+    return results.length;
+  }
+
+  async getQueueStats(tenantId: string): Promise<{
+    total: number;
+    byStatus: Record<WorkItemStatus, number>;
+    byType: Record<WorkItemType, number>;
+    avgScore: number;
+  }> {
+    const items = Array.from(this.items.values()).filter(i => i.tenantId === tenantId);
+
+    const byStatus: Record<WorkItemStatus, number> = {
+      queued: 0,
+      in_progress: 0,
+      awaiting_approval: 0,
+      approved: 0,
+      rejected: 0,
+      completed: 0,
+      dismissed: 0,
+    };
+
+    const byType: Record<WorkItemType, number> = {
+      issue_to_code: 0,
+      pr_review: 0,
+      pr_resolve: 0,
+      docs_update: 0,
+      test_gen: 0,
+      custom: 0,
+    };
+
+    let totalScore = 0;
+    for (const item of items) {
+      byStatus[item.status]++;
+      byType[item.type]++;
+      totalScore += item.score;
+    }
+
+    return {
+      total: items.length,
+      byStatus,
+      byType,
+      avgScore: items.length > 0 ? Math.round(totalScore / items.length) : 0,
+    };
+  }
+}
+
+// =============================================================================
+// In-Memory PR Candidate Store (Phase 14)
+// =============================================================================
+
+/**
+ * TEMPORARY: In-memory PRCandidateStore implementation
+ */
+export class InMemoryPRCandidateStore implements PRCandidateStore {
+  private candidates = new Map<string, PRCandidate>();
+  private byWorkItemId = new Map<string, string>(); // workItemId -> candidateId
+
+  async createCandidate(candidate: Omit<PRCandidate, 'id' | 'createdAt' | 'updatedAt' | 'approvals'>): Promise<PRCandidate> {
+    const fullCandidate: PRCandidate = {
+      ...candidate,
+      id: generateId('prc'),
+      approvals: [],
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    this.candidates.set(fullCandidate.id, fullCandidate);
+
+    // Index by work item ID
+    this.byWorkItemId.set(candidate.workItemId, fullCandidate.id);
+
+    return fullCandidate;
+  }
+
+  async getCandidate(candidateId: string): Promise<PRCandidate | null> {
+    return this.candidates.get(candidateId) ?? null;
+  }
+
+  async getCandidateByWorkItemId(workItemId: string): Promise<PRCandidate | null> {
+    const candidateId = this.byWorkItemId.get(workItemId);
+    return candidateId ? this.candidates.get(candidateId) ?? null : null;
+  }
+
+  async listCandidates(tenantId: string, filter?: {
+    status?: PRCandidateStatus | PRCandidateStatus[];
+    workItemId?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<PRCandidate[]> {
+    let results = Array.from(this.candidates.values()).filter(c => c.tenantId === tenantId);
+
+    if (filter?.status) {
+      const statuses = Array.isArray(filter.status) ? filter.status : [filter.status];
+      results = results.filter(c => statuses.includes(c.status));
+    }
+    if (filter?.workItemId) {
+      results = results.filter(c => c.workItemId === filter.workItemId);
+    }
+
+    // Sort by creation time descending
+    results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const offset = filter?.offset ?? 0;
+    const limit = filter?.limit ?? 100;
+    return results.slice(offset, offset + limit);
+  }
+
+  async updateCandidate(candidateId: string, update: Partial<Pick<PRCandidate, 'status' | 'patchset' | 'resultingPRUrl' | 'runId' | 'appliedAt' | 'plan' | 'risk' | 'confidence' | 'intentReceipt'>>): Promise<PRCandidate> {
+    const candidate = this.candidates.get(candidateId);
+    if (!candidate) {
+      throw new Error(`PR candidate not found: ${candidateId}`);
+    }
+    const updated = { ...candidate, ...update, updatedAt: now() };
+    this.candidates.set(candidateId, updated);
+    return updated;
+  }
+
+  async addApproval(candidateId: string, approval: CandidateApproval): Promise<PRCandidate> {
+    const candidate = this.candidates.get(candidateId);
+    if (!candidate) {
+      throw new Error(`PR candidate not found: ${candidateId}`);
+    }
+    candidate.approvals.push(approval);
+    candidate.updatedAt = now();
+
+    // Check if we have enough approvals
+    const approvedCount = candidate.approvals.filter(a => a.decision === 'approved').length;
+    if (approvedCount >= candidate.requiredApprovals && candidate.status === 'ready') {
+      candidate.status = 'approved';
+    }
+
+    // Check if rejected
+    if (approval.decision === 'rejected') {
+      candidate.status = 'rejected';
+    }
+
+    return candidate;
   }
 }

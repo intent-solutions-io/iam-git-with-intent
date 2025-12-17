@@ -1,0 +1,11 @@
+function hello() {
+  console.log('hello');
+}
+
+function addedByOurs() {
+  return 'ours';
+}
+
+function addedByTheirs() {
+  return 'theirs';
+}

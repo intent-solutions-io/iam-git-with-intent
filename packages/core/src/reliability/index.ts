@@ -2,12 +2,14 @@
  * Reliability Primitives
  *
  * Phase 7: Operator-grade hardening for deterministic, resumable runs.
+ * Phase 16: Firestore-backed distributed implementations.
  *
  * This module provides:
  * - Run locking to prevent concurrent mutation
  * - Idempotency keys for tool/step invocations
  * - Error taxonomy for consistent failure handling
  * - Observability primitives (structured logging, tracing, metrics)
+ * - Checkpoints for resume/replay
  *
  * @module @gwi/core/reliability
  */
@@ -24,6 +26,9 @@ export {
   setRunLockManager,
 } from './locking.js';
 
+// Firestore locking (Phase 16)
+export { FirestoreRunLockManager } from './firestore-locking.js';
+
 // Idempotency
 export {
   type IdempotencyKey,
@@ -37,6 +42,9 @@ export {
   hashInput,
   createIdempotencyKey,
 } from './idempotency.js';
+
+// Firestore idempotency (Phase 16)
+export { FirestoreIdempotencyStore } from './firestore-idempotency.js';
 
 // Error taxonomy
 export {
@@ -85,3 +93,72 @@ export {
   getCheckpointManager,
   setCheckpointManager,
 } from './resume.js';
+
+// Firestore checkpoint (Phase 16)
+export {
+  FirestoreCheckpointManager,
+  getFirestoreCheckpointManager,
+  resetFirestoreCheckpointManager,
+} from './firestore-checkpoint.js';
+
+// =============================================================================
+// Environment-Aware Store Getters (Phase 16)
+// =============================================================================
+
+import { getStoreBackend } from '../storage/index.js';
+import { RunLockManager, MemoryRunLockManager, setRunLockManager, getRunLockManager as getBaseRunLockManager } from './locking.js';
+import { IdempotencyStore, MemoryIdempotencyStore, setIdempotencyStore, getIdempotencyStore as getBaseIdempotencyStore } from './idempotency.js';
+import { FirestoreRunLockManager } from './firestore-locking.js';
+import { FirestoreIdempotencyStore } from './firestore-idempotency.js';
+
+let reliabilityInitialized = false;
+
+/**
+ * Initialize reliability stores based on environment
+ *
+ * Call this at app startup to configure the appropriate store backends.
+ */
+export function initializeReliabilityStores(): void {
+  if (reliabilityInitialized) {
+    return;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    setRunLockManager(new FirestoreRunLockManager());
+    setIdempotencyStore(new FirestoreIdempotencyStore());
+  } else {
+    setRunLockManager(new MemoryRunLockManager());
+    setIdempotencyStore(new MemoryIdempotencyStore());
+  }
+
+  reliabilityInitialized = true;
+}
+
+/**
+ * Reset reliability stores (for testing)
+ */
+export function resetReliabilityStores(): void {
+  reliabilityInitialized = false;
+}
+
+/**
+ * Get the run lock manager (environment-aware)
+ *
+ * Auto-initializes if not already done.
+ */
+export function getDistributedLockManager(): RunLockManager {
+  initializeReliabilityStores();
+  return getBaseRunLockManager();
+}
+
+/**
+ * Get the idempotency store (environment-aware)
+ *
+ * Auto-initializes if not already done.
+ */
+export function getDistributedIdempotencyStore(): IdempotencyStore {
+  initializeReliabilityStores();
+  return getBaseIdempotencyStore();
+}

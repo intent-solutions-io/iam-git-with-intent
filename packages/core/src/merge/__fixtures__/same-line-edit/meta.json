@@ -1,0 +1,7 @@
+{
+  "name": "same-line-edit",
+  "description": "Both sides edit the same line with different values - must produce conflict markers",
+  "expectedStatus": "conflict",
+  "expectedConflicts": 1,
+  "category": "true-conflict"
+}

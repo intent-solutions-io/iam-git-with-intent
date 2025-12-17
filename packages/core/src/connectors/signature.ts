@@ -386,3 +386,93 @@ export function createSignatureFile(
     signedAt: new Date().toISOString(),
   };
 }
+
+// =============================================================================
+// Signing Functions (Phase 21: Real Ed25519 signing)
+// =============================================================================
+
+/**
+ * Sign a checksum with an Ed25519 private key
+ *
+ * Uses @noble/ed25519 if available, otherwise falls back to Node.js crypto
+ */
+export async function signChecksum(
+  checksum: string,
+  privateKeyBase64: string
+): Promise<string> {
+  const message = new TextEncoder().encode(checksum);
+  const privateKey = base64ToBytes(privateKeyBase64);
+
+  try {
+    // Try @noble/ed25519 first (preferred, optional dependency)
+    // @ts-expect-error Optional dependency - may not be installed
+    const ed = await import('@noble/ed25519');
+    const signature = await ed.signAsync(message, privateKey.slice(0, 32));
+    return bytesToBase64(signature);
+  } catch {
+    // Fallback to Node.js crypto
+    const crypto = await import('crypto');
+
+    const keyObject = crypto.createPrivateKey({
+      key: Buffer.concat([
+        // Ed25519 private key PKCS8 prefix
+        Buffer.from('302e020100300506032b657004220420', 'hex'),
+        Buffer.from(privateKey.slice(0, 32)),
+      ]),
+      format: 'der',
+      type: 'pkcs8',
+    });
+
+    const signature = crypto.sign(null, Buffer.from(message), keyObject);
+    return bytesToBase64(new Uint8Array(signature));
+  }
+}
+
+/**
+ * Generate a new Ed25519 keypair
+ */
+export async function generateKeyPair(): Promise<{
+  publicKey: string;
+  privateKey: string;
+}> {
+  try {
+    // Try @noble/ed25519 first
+    // @ts-expect-error Optional dependency - may not be installed
+    const ed = await import('@noble/ed25519');
+    const crypto = await import('crypto');
+    const privateKey = crypto.randomBytes(32);
+    const publicKey = await ed.getPublicKeyAsync(privateKey);
+    return {
+      publicKey: bytesToBase64(publicKey),
+      privateKey: bytesToBase64(privateKey),
+    };
+  } catch {
+    // Fallback to Node.js crypto
+    const crypto = await import('crypto');
+    const keyPair = crypto.generateKeyPairSync('ed25519', {
+      publicKeyEncoding: { type: 'spki', format: 'der' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'der' },
+    });
+
+    // Extract raw keys from DER format
+    const publicKey = keyPair.publicKey.subarray(12); // Skip DER header
+    const privateKey = keyPair.privateKey.subarray(16); // Skip PKCS8 header
+
+    return {
+      publicKey: bytesToBase64(publicKey),
+      privateKey: bytesToBase64(privateKey),
+    };
+  }
+}
+
+/**
+ * Create and sign a signature file
+ */
+export async function createSignedSignatureFile(
+  keyId: string,
+  checksum: string,
+  privateKeyBase64: string
+): Promise<SignatureFile> {
+  const signature = await signChecksum(checksum, privateKeyBase64);
+  return createSignatureFile(keyId, checksum, signature);
+}

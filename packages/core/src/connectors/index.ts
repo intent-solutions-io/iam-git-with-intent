@@ -116,7 +116,7 @@ export {
   isValidTarball,
 } from './tarball.js';
 
-// Signature verification (Phase 9)
+// Signature verification (Phase 9) + signing (Phase 21)
 export {
   type SignatureFile as SignatureFileType,
   type TrustedKey,
@@ -132,6 +132,10 @@ export {
   getTrustedKeysPath,
   bytesToBase64,
   createSignatureFile,
+  // Phase 21: Real Ed25519 signing
+  signChecksum,
+  generateKeyPair,
+  createSignedSignatureFile,
 } from './signature.js';
 
 // Installer (Phase 9)
@@ -156,3 +160,23 @@ export {
   getPinnedVersion,
   unpinConnectorVersion,
 } from './installer.js';
+
+// Federation (Phase 21)
+export {
+  type RegistryTrustLevel,
+  type RegistryConfig,
+  type FederationConfig,
+  type FederatedSearchResult,
+  type FederatedLookupResult,
+  getDefaultFederationConfig,
+  getFederationConfigPath,
+  loadFederationConfig,
+  saveFederationConfig,
+  addRegistry,
+  removeRegistry,
+  setRegistryEnabled,
+  setDefaultRegistry,
+  listRegistries,
+  FederatedRegistryClient,
+  createFederatedRegistry,
+} from './federation.js';
