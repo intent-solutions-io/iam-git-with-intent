@@ -31,6 +31,8 @@ export {
   InMemoryTenantStore,
   InMemoryUserStore,
   InMemoryMembershipStore,
+  InMemoryInstanceStore,
+  InMemoryScheduleStore,
 } from './inmemory.js';
 
 // Firestore exports

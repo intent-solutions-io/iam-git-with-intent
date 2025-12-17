@@ -757,7 +757,7 @@ export class GCPSecretProvider implements SecretProvider {
         const secretManager = await import('@google-cloud/secret-manager' as string);
         const SecretManagerServiceClient = secretManager.SecretManagerServiceClient;
         this.client = new SecretManagerServiceClient();
-      } catch (error) {
+      } catch {
         throw new Error(
           'GCP Secret Manager client not available. ' +
           'Install @google-cloud/secret-manager or use DevSecretProvider for development.'

@@ -601,6 +601,7 @@ export interface TenantStore {
     limit?: number;
   }): Promise<SaaSRun[]>;
   updateRun(tenantId: string, runId: string, update: Partial<SaaSRun>): Promise<SaaSRun>;
+  countRuns(tenantId: string, sinceDate?: string): Promise<number>;
 
   // Phase 12: Connector Config management
   getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null>;
@@ -666,6 +667,115 @@ export interface AuditStore {
 }
 
 // =============================================================================
+// Phase 13: Instance and Schedule Types
+// =============================================================================
+
+/**
+ * Connector binding for an instance (Phase 13)
+ */
+export interface ConnectorBinding {
+  /** Connector requirement ID from template */
+  requirementId: string;
+  /** Bound connector config ID */
+  connectorConfigId: string;
+}
+
+/**
+ * Workflow Instance - tenant-configured deployment of a template (Phase 13)
+ */
+export interface WorkflowInstance {
+  /** Unique instance ID */
+  id: string;
+  /** Tenant ID */
+  tenantId: string;
+  /** Reference to template (id@version) */
+  templateRef: string;
+  /** Instance display name */
+  name: string;
+  /** Instance description */
+  description?: string;
+  /** Configured input values */
+  configuredInputs: Record<string, unknown>;
+  /** Connector bindings */
+  connectorBindings: ConnectorBinding[];
+  /** Whether instance is enabled */
+  enabled: boolean;
+  /** Creation timestamp */
+  createdAt: Date;
+  /** Last update timestamp */
+  updatedAt: Date;
+  /** Created by user ID */
+  createdBy: string;
+  /** Last run timestamp */
+  lastRunAt?: Date;
+  /** Total run count */
+  runCount: number;
+}
+
+/**
+ * Schedule for automated instance execution (Phase 13)
+ */
+export interface WorkflowSchedule {
+  /** Unique schedule ID */
+  id: string;
+  /** Instance ID */
+  instanceId: string;
+  /** Tenant ID (denormalized for queries) */
+  tenantId: string;
+  /** Cron expression (standard 5-field) */
+  cronExpression: string;
+  /** Timezone (IANA format) */
+  timezone: string;
+  /** Whether schedule is enabled */
+  enabled: boolean;
+  /** Creation timestamp */
+  createdAt: Date;
+  /** Last update timestamp */
+  updatedAt: Date;
+  /** Last trigger timestamp */
+  lastTriggeredAt?: Date;
+  /** Next scheduled trigger */
+  nextTriggerAt?: Date;
+  /** Created by user ID */
+  createdBy: string;
+}
+
+/**
+ * Store for workflow instances (Phase 13)
+ */
+export interface InstanceStore {
+  createInstance(instance: Omit<WorkflowInstance, 'id' | 'createdAt' | 'updatedAt' | 'runCount'>): Promise<WorkflowInstance>;
+  getInstance(instanceId: string): Promise<WorkflowInstance | null>;
+  listInstances(tenantId: string, filter?: {
+    templateRef?: string;
+    enabled?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<WorkflowInstance[]>;
+  updateInstance(instanceId: string, update: Partial<Pick<WorkflowInstance, 'name' | 'description' | 'configuredInputs' | 'connectorBindings' | 'enabled'>>): Promise<WorkflowInstance>;
+  deleteInstance(instanceId: string): Promise<void>;
+  incrementRunCount(instanceId: string): Promise<void>;
+  updateLastRun(instanceId: string, runAt: Date): Promise<void>;
+}
+
+/**
+ * Store for workflow schedules (Phase 13)
+ */
+export interface ScheduleStore {
+  createSchedule(schedule: Omit<WorkflowSchedule, 'id' | 'createdAt' | 'updatedAt'>): Promise<WorkflowSchedule>;
+  getSchedule(scheduleId: string): Promise<WorkflowSchedule | null>;
+  listSchedules(instanceId: string): Promise<WorkflowSchedule[]>;
+  listTenantSchedules(tenantId: string, filter?: {
+    enabled?: boolean;
+    limit?: number;
+  }): Promise<WorkflowSchedule[]>;
+  listDueSchedules(beforeTime: Date): Promise<WorkflowSchedule[]>;
+  updateSchedule(scheduleId: string, update: Partial<Pick<WorkflowSchedule, 'cronExpression' | 'timezone' | 'enabled'>>): Promise<WorkflowSchedule>;
+  updateLastTriggered(scheduleId: string, triggeredAt: Date, nextTriggerAt: Date): Promise<void>;
+  deleteSchedule(scheduleId: string): Promise<void>;
+}
+
+// =============================================================================
 // Store Factory
 // =============================================================================
 
@@ -709,6 +819,16 @@ export interface StoreFactory {
    * Create a membership store instance (SaaS only)
    */
   createMembershipStore?(): MembershipStore;
+
+  /**
+   * Create an instance store (Phase 13: Workflow Catalog)
+   */
+  createInstanceStore?(): InstanceStore;
+
+  /**
+   * Create a schedule store (Phase 13: Workflow Catalog)
+   */
+  createScheduleStore?(): ScheduleStore;
 
   /**
    * Close all connections and cleanup

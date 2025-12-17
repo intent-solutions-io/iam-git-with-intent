@@ -57,7 +57,7 @@ export function AdminSecrets() {
       setNewSecretValue('');
       setShowAddForm(false);
       setSuccess('Secret reference added. Value is never shown again after save.');
-    } catch (err) {
+    } catch {
       setError('Failed to add secret');
     } finally {
       setSaving(false);

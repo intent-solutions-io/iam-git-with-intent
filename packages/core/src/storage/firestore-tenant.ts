@@ -597,6 +597,18 @@ export class FirestoreTenantStore implements TenantStore {
     return updated;
   }
 
+  async countRuns(tenantId: string, sinceDate?: string): Promise<number> {
+    let query: Query = this.runsRef().where('tenantId', '==', tenantId);
+
+    if (sinceDate) {
+      const since = Timestamp.fromDate(new Date(sinceDate));
+      query = query.where('createdAt', '>=', since);
+    }
+
+    const snapshot = await query.count().get();
+    return snapshot.data().count;
+  }
+
   // ---------------------------------------------------------------------------
   // Phase 12: Connector Config Management
   // ---------------------------------------------------------------------------

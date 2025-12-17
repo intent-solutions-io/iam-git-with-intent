@@ -25,7 +25,12 @@ import type {
   UserStore,
   Membership,
   MembershipStore,
+  InstanceStore,
+  ScheduleStore,
+  WorkflowInstance,
+  WorkflowSchedule,
 } from './interfaces.js';
+import { generateInstanceId, generateScheduleId } from '../templates/index.js';
 
 // =============================================================================
 // Helper Functions
@@ -322,6 +327,15 @@ export class InMemoryTenantStore implements TenantStore {
     return updated;
   }
 
+  async countRuns(tenantId: string, sinceDate?: string): Promise<number> {
+    const runs = this.runs.get(tenantId) ?? [];
+    if (!sinceDate) {
+      return runs.length;
+    }
+    const since = new Date(sinceDate);
+    return runs.filter(r => r.createdAt >= since).length;
+  }
+
   // Phase 12: Connector Config management
   async getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null> {
     const configs = this.connectorConfigs.get(tenantId) ?? [];
@@ -467,5 +481,164 @@ export class InMemoryMembershipStore implements MembershipStore {
 
   async deleteMembership(membershipId: string): Promise<void> {
     this.memberships.delete(membershipId);
+  }
+}
+
+// =============================================================================
+// In-Memory Instance Store (Phase 13)
+// =============================================================================
+
+/**
+ * TEMPORARY: In-memory InstanceStore implementation
+ */
+export class InMemoryInstanceStore implements InstanceStore {
+  private instances = new Map<string, WorkflowInstance>();
+
+  async createInstance(instance: Omit<WorkflowInstance, 'id' | 'createdAt' | 'updatedAt' | 'runCount'>): Promise<WorkflowInstance> {
+    const fullInstance: WorkflowInstance = {
+      ...instance,
+      id: generateInstanceId(),
+      createdAt: now(),
+      updatedAt: now(),
+      runCount: 0,
+    };
+    this.instances.set(fullInstance.id, fullInstance);
+    return fullInstance;
+  }
+
+  async getInstance(instanceId: string): Promise<WorkflowInstance | null> {
+    return this.instances.get(instanceId) ?? null;
+  }
+
+  async listInstances(tenantId: string, filter?: {
+    templateRef?: string;
+    enabled?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<WorkflowInstance[]> {
+    let results = Array.from(this.instances.values()).filter(i => i.tenantId === tenantId);
+
+    if (filter?.templateRef) {
+      results = results.filter(i => i.templateRef === filter.templateRef);
+    }
+    if (filter?.enabled !== undefined) {
+      results = results.filter(i => i.enabled === filter.enabled);
+    }
+
+    // Sort by creation time descending
+    results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    const offset = filter?.offset ?? 0;
+    const limit = filter?.limit ?? 100;
+    return results.slice(offset, offset + limit);
+  }
+
+  async updateInstance(instanceId: string, update: Partial<Pick<WorkflowInstance, 'name' | 'description' | 'configuredInputs' | 'connectorBindings' | 'enabled'>>): Promise<WorkflowInstance> {
+    const instance = this.instances.get(instanceId);
+    if (!instance) {
+      throw new Error(`Instance not found: ${instanceId}`);
+    }
+    const updated = { ...instance, ...update, updatedAt: now() };
+    this.instances.set(instanceId, updated);
+    return updated;
+  }
+
+  async deleteInstance(instanceId: string): Promise<void> {
+    this.instances.delete(instanceId);
+  }
+
+  async incrementRunCount(instanceId: string): Promise<void> {
+    const instance = this.instances.get(instanceId);
+    if (instance) {
+      instance.runCount += 1;
+      instance.updatedAt = now();
+    }
+  }
+
+  async updateLastRun(instanceId: string, runAt: Date): Promise<void> {
+    const instance = this.instances.get(instanceId);
+    if (instance) {
+      instance.lastRunAt = runAt;
+      instance.updatedAt = now();
+    }
+  }
+}
+
+// =============================================================================
+// In-Memory Schedule Store (Phase 13)
+// =============================================================================
+
+/**
+ * TEMPORARY: In-memory ScheduleStore implementation
+ */
+export class InMemoryScheduleStore implements ScheduleStore {
+  private schedules = new Map<string, WorkflowSchedule>();
+
+  async createSchedule(schedule: Omit<WorkflowSchedule, 'id' | 'createdAt' | 'updatedAt'>): Promise<WorkflowSchedule> {
+    const fullSchedule: WorkflowSchedule = {
+      ...schedule,
+      id: generateScheduleId(),
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    this.schedules.set(fullSchedule.id, fullSchedule);
+    return fullSchedule;
+  }
+
+  async getSchedule(scheduleId: string): Promise<WorkflowSchedule | null> {
+    return this.schedules.get(scheduleId) ?? null;
+  }
+
+  async listSchedules(instanceId: string): Promise<WorkflowSchedule[]> {
+    return Array.from(this.schedules.values())
+      .filter(s => s.instanceId === instanceId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async listTenantSchedules(tenantId: string, filter?: {
+    enabled?: boolean;
+    limit?: number;
+  }): Promise<WorkflowSchedule[]> {
+    let results = Array.from(this.schedules.values()).filter(s => s.tenantId === tenantId);
+
+    if (filter?.enabled !== undefined) {
+      results = results.filter(s => s.enabled === filter.enabled);
+    }
+
+    results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    if (filter?.limit) {
+      results = results.slice(0, filter.limit);
+    }
+
+    return results;
+  }
+
+  async listDueSchedules(beforeTime: Date): Promise<WorkflowSchedule[]> {
+    return Array.from(this.schedules.values())
+      .filter(s => s.enabled && s.nextTriggerAt && s.nextTriggerAt <= beforeTime);
+  }
+
+  async updateSchedule(scheduleId: string, update: Partial<Pick<WorkflowSchedule, 'cronExpression' | 'timezone' | 'enabled'>>): Promise<WorkflowSchedule> {
+    const schedule = this.schedules.get(scheduleId);
+    if (!schedule) {
+      throw new Error(`Schedule not found: ${scheduleId}`);
+    }
+    const updated = { ...schedule, ...update, updatedAt: now() };
+    this.schedules.set(scheduleId, updated);
+    return updated;
+  }
+
+  async updateLastTriggered(scheduleId: string, triggeredAt: Date, nextTriggerAt: Date): Promise<void> {
+    const schedule = this.schedules.get(scheduleId);
+    if (schedule) {
+      schedule.lastTriggeredAt = triggeredAt;
+      schedule.nextTriggerAt = nextTriggerAt;
+      schedule.updatedAt = now();
+    }
+  }
+
+  async deleteSchedule(scheduleId: string): Promise<void> {
+    this.schedules.delete(scheduleId);
   }
 }

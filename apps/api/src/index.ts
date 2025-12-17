@@ -2646,6 +2646,536 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), async (r
 });
 
 // =============================================================================
+// Routes: Templates + Instances + Schedules (Phase 13)
+// =============================================================================
+
+import {
+  getTemplateRegistry,
+  validateTemplateInputs,
+  applyTemplateDefaults,
+  type WorkflowTemplate,
+} from '@gwi/core';
+import { InMemoryInstanceStore, InMemoryScheduleStore } from '@gwi/core';
+
+// In-memory stores for Phase 13 (will be replaced with Firestore)
+const instanceStore = new InMemoryInstanceStore();
+const scheduleStore = new InMemoryScheduleStore();
+
+/**
+ * GET /v1/templates - List available workflow templates
+ */
+app.get('/v1/templates', authMiddleware, async (req, res) => {
+  try {
+    const registry = getTemplateRegistry();
+    const category = req.query.category as string | undefined;
+    const tags = req.query.tags ? (req.query.tags as string).split(',') : undefined;
+
+    const templates = registry.list({
+      category: category as WorkflowTemplate['category'],
+      enabled: true,
+      tags,
+    });
+
+    res.json({
+      templates: templates.map(t => ({
+        id: t.id,
+        version: t.version,
+        displayName: t.displayName,
+        description: t.description,
+        category: t.category,
+        tags: t.tags,
+        requiredConnectors: t.requiredConnectors,
+      })),
+      count: templates.length,
+    });
+  } catch (error) {
+    console.error('Failed to list templates:', error);
+    res.status(500).json({
+      error: 'Failed to list templates',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/templates/:templateId - Get template details
+ */
+app.get('/v1/templates/:templateId', authMiddleware, async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    const registry = getTemplateRegistry();
+    const template = registry.getByRef(templateId);
+
+    if (!template) {
+      return res.status(404).json({
+        error: 'Template not found',
+        templateId,
+      });
+    }
+
+    res.json(template);
+  } catch (error) {
+    console.error('Failed to get template:', error);
+    res.status(500).json({
+      error: 'Failed to get template',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * Instance creation schema
+ */
+const CreateInstanceSchema = z.object({
+  templateRef: z.string().min(1),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  configuredInputs: z.record(z.unknown()).default({}),
+  connectorBindings: z.array(z.object({
+    requirementId: z.string(),
+    connectorConfigId: z.string(),
+  })).default([]),
+});
+
+/**
+ * POST /v1/tenants/:tenantId/instances - Create a workflow instance
+ */
+app.post('/v1/tenants/:tenantId/instances', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:update'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  const parseResult = CreateInstanceSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    const input = parseResult.data;
+    const registry = getTemplateRegistry();
+    const template = registry.getByRef(input.templateRef);
+
+    if (!template) {
+      return res.status(404).json({
+        error: 'Template not found',
+        templateRef: input.templateRef,
+      });
+    }
+
+    // Apply defaults and validate inputs
+    const inputsWithDefaults = applyTemplateDefaults(template, input.configuredInputs);
+    const validation = validateTemplateInputs(template, inputsWithDefaults);
+
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: 'Invalid template inputs',
+        validationErrors: validation.errors,
+      });
+    }
+
+    // Create instance
+    const instance = await instanceStore.createInstance({
+      tenantId,
+      templateRef: `${template.id}@${template.version}`,
+      name: input.name,
+      description: input.description,
+      configuredInputs: inputsWithDefaults,
+      connectorBindings: input.connectorBindings,
+      enabled: true,
+      createdBy: req.context!.userId,
+    });
+
+    console.log(JSON.stringify({
+      type: 'instance_created',
+      instanceId: instance.id,
+      tenantId,
+      templateRef: instance.templateRef,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.status(201).json(instance);
+  } catch (error) {
+    console.error('Failed to create instance:', error);
+    res.status(500).json({
+      error: 'Failed to create instance',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/tenants/:tenantId/instances - List workflow instances
+ */
+app.get('/v1/tenants/:tenantId/instances', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const instances = await instanceStore.listInstances(tenantId, {
+      templateRef: req.query.templateRef as string | undefined,
+      enabled: req.query.enabled === 'true' ? true : req.query.enabled === 'false' ? false : undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
+    });
+
+    res.json({
+      instances,
+      count: instances.length,
+    });
+  } catch (error) {
+    console.error('Failed to list instances:', error);
+    res.status(500).json({
+      error: 'Failed to list instances',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/instances/:instanceId - Get instance details
+ */
+app.get('/v1/instances/:instanceId', authMiddleware, async (req, res) => {
+  const { instanceId } = req.params;
+
+  try {
+    const instance = await instanceStore.getInstance(instanceId);
+
+    if (!instance) {
+      return res.status(404).json({
+        error: 'Instance not found',
+        instanceId,
+      });
+    }
+
+    // Check tenant access
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, instance.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'You do not have access to this instance',
+      });
+    }
+
+    res.json(instance);
+  } catch (error) {
+    console.error('Failed to get instance:', error);
+    res.status(500).json({
+      error: 'Failed to get instance',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /v1/instances/:instanceId/run - Trigger a workflow run
+ */
+app.post('/v1/instances/:instanceId/run', authMiddleware, async (req, res) => {
+  const { instanceId } = req.params;
+
+  try {
+    const instance = await instanceStore.getInstance(instanceId);
+
+    if (!instance) {
+      return res.status(404).json({
+        error: 'Instance not found',
+        instanceId,
+      });
+    }
+
+    // Check tenant access
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, instance.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'You do not have access to this instance',
+      });
+    }
+
+    // Check permission (DEVELOPER+ to run)
+    const roleNum = membership.role === 'owner' ? 100 : membership.role === 'admin' ? 50 : 10;
+    if (roleNum < 30) { // DEVELOPER = 30
+      return res.status(403).json({
+        error: 'Permission denied',
+        message: 'You need DEVELOPER permission to run workflows',
+      });
+    }
+
+    if (!instance.enabled) {
+      return res.status(400).json({
+        error: 'Instance disabled',
+        message: 'This workflow instance is currently disabled',
+      });
+    }
+
+    // Check plan limits
+    const tenantStore = getTenantStore();
+    const tenant = await tenantStore.getTenant(instance.tenantId);
+    if (tenant) {
+      const planId = (tenant.plan || 'free') as PlanId;
+      const store = getStore();
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      const runsThisMonth = await store.countRuns(instance.tenantId, monthStart.toISOString());
+      const limitCheck = checkRunLimit(runsThisMonth, planId);
+
+      if (!limitCheck.allowed) {
+        console.log(JSON.stringify({
+          type: 'run_rejected_plan_limit',
+          tenantId: instance.tenantId,
+          instanceId,
+          currentUsage: limitCheck.currentUsage,
+          limit: limitCheck.limit,
+          reason: limitCheck.reason,
+          timestamp: new Date().toISOString(),
+        }));
+        return res.status(429).json({
+          error: 'Plan limit reached',
+          message: limitCheck.reason,
+          currentUsage: limitCheck.currentUsage,
+          limit: limitCheck.limit,
+        });
+      }
+    }
+
+    // Get template
+    const registry = getTemplateRegistry();
+    const template = registry.getByRef(instance.templateRef);
+
+    if (!template) {
+      return res.status(500).json({
+        error: 'Template not found',
+        message: 'The template for this instance no longer exists',
+      });
+    }
+
+    // Create a run using existing engine infrastructure
+    const store = getStore();
+    const run = await store.createRun(instance.tenantId, {
+      prId: `instance-${instanceId}`,
+      prUrl: `gwi://instances/${instanceId}`,
+      type: 'autopilot',
+      status: 'pending',
+      steps: [],
+      trigger: {
+        source: 'api',
+        userId: req.context!.userId,
+        commandText: `run instance ${instanceId}`,
+      },
+      tenantId: instance.tenantId,
+      repoId: 'workflow-instance',
+    });
+
+    // Update instance stats
+    await instanceStore.incrementRunCount(instanceId);
+    await instanceStore.updateLastRun(instanceId, new Date());
+
+    console.log(JSON.stringify({
+      type: 'instance_run_triggered',
+      instanceId,
+      runId: run.id,
+      tenantId: instance.tenantId,
+      templateRef: instance.templateRef,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.status(201).json({
+      runId: run.id,
+      instanceId,
+      status: run.status,
+      createdAt: run.createdAt,
+    });
+  } catch (error) {
+    console.error('Failed to trigger run:', error);
+    res.status(500).json({
+      error: 'Failed to trigger run',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * Schedule creation schema
+ */
+const CreateScheduleSchema = z.object({
+  cronExpression: z.string().regex(/^(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)$/, 'Invalid cron expression'),
+  timezone: z.string().default('UTC'),
+  enabled: z.boolean().default(true),
+});
+
+/**
+ * POST /v1/instances/:instanceId/schedules - Create a schedule
+ */
+app.post('/v1/instances/:instanceId/schedules', authMiddleware, async (req, res) => {
+  const { instanceId } = req.params;
+
+  const parseResult = CreateScheduleSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid request body',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    const instance = await instanceStore.getInstance(instanceId);
+
+    if (!instance) {
+      return res.status(404).json({
+        error: 'Instance not found',
+        instanceId,
+      });
+    }
+
+    // Check tenant access (ADMIN+ to create schedules)
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, instance.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const roleNum = membership.role === 'owner' ? 100 : membership.role === 'admin' ? 50 : 10;
+    if (roleNum < 50) { // ADMIN = 50
+      return res.status(403).json({
+        error: 'Permission denied',
+        message: 'You need ADMIN permission to create schedules',
+      });
+    }
+
+    const input = parseResult.data;
+
+    // Calculate next trigger time (simplified - in production use a cron library)
+    const nextTriggerAt = new Date(Date.now() + 60000); // Placeholder: 1 minute from now
+
+    const schedule = await scheduleStore.createSchedule({
+      instanceId,
+      tenantId: instance.tenantId,
+      cronExpression: input.cronExpression,
+      timezone: input.timezone,
+      enabled: input.enabled,
+      nextTriggerAt,
+      createdBy: req.context!.userId,
+    });
+
+    console.log(JSON.stringify({
+      type: 'schedule_created',
+      scheduleId: schedule.id,
+      instanceId,
+      tenantId: instance.tenantId,
+      cronExpression: input.cronExpression,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.status(201).json(schedule);
+  } catch (error) {
+    console.error('Failed to create schedule:', error);
+    res.status(500).json({
+      error: 'Failed to create schedule',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /v1/instances/:instanceId/schedules - List schedules for an instance
+ */
+app.get('/v1/instances/:instanceId/schedules', authMiddleware, async (req, res) => {
+  const { instanceId } = req.params;
+
+  try {
+    const instance = await instanceStore.getInstance(instanceId);
+
+    if (!instance) {
+      return res.status(404).json({
+        error: 'Instance not found',
+        instanceId,
+      });
+    }
+
+    // Check tenant access
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, instance.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const schedules = await scheduleStore.listSchedules(instanceId);
+
+    res.json({
+      schedules,
+      count: schedules.length,
+    });
+  } catch (error) {
+    console.error('Failed to list schedules:', error);
+    res.status(500).json({
+      error: 'Failed to list schedules',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * DELETE /v1/schedules/:scheduleId - Delete a schedule
+ */
+app.delete('/v1/schedules/:scheduleId', authMiddleware, async (req, res) => {
+  const { scheduleId } = req.params;
+
+  try {
+    const schedule = await scheduleStore.getSchedule(scheduleId);
+
+    if (!schedule) {
+      return res.status(404).json({
+        error: 'Schedule not found',
+        scheduleId,
+      });
+    }
+
+    // Check tenant access (ADMIN+ to delete)
+    const membershipStore = getMembershipStore();
+    const membership = await membershipStore.getMembership(req.context!.userId, schedule.tenantId);
+    if (!membership || membership.status !== 'active') {
+      return res.status(403).json({
+        error: 'Access denied',
+      });
+    }
+
+    const roleNum = membership.role === 'owner' ? 100 : membership.role === 'admin' ? 50 : 10;
+    if (roleNum < 50) {
+      return res.status(403).json({
+        error: 'Permission denied',
+        message: 'You need ADMIN permission to delete schedules',
+      });
+    }
+
+    await scheduleStore.deleteSchedule(scheduleId);
+
+    console.log(JSON.stringify({
+      type: 'schedule_deleted',
+      scheduleId,
+      tenantId: schedule.tenantId,
+      userId: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Failed to delete schedule:', error);
+    res.status(500).json({
+      error: 'Failed to delete schedule',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
 // Error Handling
 // =============================================================================
 

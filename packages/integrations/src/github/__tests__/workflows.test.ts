@@ -12,7 +12,7 @@ import {
   runPRPush,
   runConflictResolution,
 } from '../workflows.js';
-import { GitHubConnector } from '../connector.js';
+import { GitHubConnector as _GitHubConnector } from '../connector.js';
 
 // Mock the GitHubConnector
 vi.mock('../connector.js', () => ({

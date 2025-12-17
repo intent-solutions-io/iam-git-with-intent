@@ -112,9 +112,9 @@ export function AdminConnectorConfig() {
           }
           setSecretRefs(refs);
         }
-      } catch (err) {
+      } catch (error) {
         setError('Failed to load connector config');
-        console.error(err);
+        console.error(error);
       } finally {
         setLoading(false);
       }
@@ -169,7 +169,7 @@ export function AdminConnectorConfig() {
         const data = await res.json();
         setError(data.error || 'Failed to save configuration');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to save configuration');
     } finally {
       setSaving(false);
@@ -199,7 +199,7 @@ export function AdminConnectorConfig() {
         const data = await res.json();
         setError(data.error || 'Failed to delete configuration');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to delete configuration');
     } finally {
       setDeleting(false);

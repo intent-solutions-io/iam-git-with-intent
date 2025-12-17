@@ -22,6 +22,10 @@ import { AdminPolicy } from './pages/AdminPolicy';
 import { AdminConnectors } from './pages/AdminConnectors';
 import { AdminConnectorConfig } from './pages/AdminConnectorConfig';
 import { AdminSecrets } from './pages/AdminSecrets';
+// Phase 13: Templates + Instances
+import { Templates } from './pages/Templates';
+import { Instances } from './pages/Instances';
+import { InstanceDetail } from './pages/InstanceDetail';
 
 export function App() {
   return (
@@ -102,6 +106,31 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <AdminSecrets />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 13: Templates + Instances */}
+            <Route
+              path="/templates"
+              element={
+                <ProtectedRoute>
+                  <Templates />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/instances"
+              element={
+                <ProtectedRoute>
+                  <Instances />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/instances/:instanceId"
+              element={
+                <ProtectedRoute>
+                  <InstanceDetail />
                 </ProtectedRoute>
               }
             />
