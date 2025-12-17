@@ -58,6 +58,8 @@ import {
   runListCommand,
   runApproveCommand,
 } from './commands/run.js';
+import { doctorCommand } from './commands/doctor.js';
+import { diagnoseCommand } from './commands/diagnose.js';
 
 const program = new Command();
 
@@ -407,6 +409,41 @@ runCmd
   });
 
 // =============================================================================
+// Operator Commands (Phase 8)
+// =============================================================================
+
+// Doctor command - environment health check
+program
+  .command('doctor')
+  .description('Check environment health and configuration')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await doctorCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Diagnose command - debug a specific run
+program
+  .command('diagnose <run-id>')
+  .description('Diagnose a specific run for troubleshooting')
+  .option('-v, --verbose', 'Show detailed output including audit events')
+  .option('-l, --limit <n>', 'Number of audit events to show', parseInt)
+  .option('--json', 'Output as JSON')
+  .action(async (runId, options) => {
+    try {
+      await diagnoseCommand(runId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
 // Utility Commands
 // =============================================================================
 
@@ -508,6 +545,10 @@ Run Management:
   gwi run list                  List recent runs
   gwi run status <run-id>       Show run status and details
   gwi run approve <run-id>      Approve run for commit/push
+
+Operator Tools:
+  gwi doctor                    Check environment health
+  gwi diagnose <run-id>         Debug a specific run
 
 Environment:
   GWI_STORAGE    Storage backend (sqlite, turso, postgres, firestore, memory)

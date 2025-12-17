@@ -31,16 +31,28 @@ jobs:
         run: npm run build
 
       - name: ARV - Forbidden Patterns
+        id: forbidden
         run: npm run arv:lint
 
       - name: ARV - Contract Tests
+        id: contracts
         run: npm run arv:contracts
 
       - name: ARV - Golden Tests
+        id: goldens
         run: npm run arv:goldens
 
       - name: ARV - Smoke Tests
+        id: smoke
         run: npm run arv:smoke
+
+      - name: ARV - Connector Supply Chain
+        id: connectors
+        run: npx tsx scripts/arv/connector-supply-chain.ts
+
+      - name: ARV - Reliability Gate
+        id: reliability
+        run: npx tsx scripts/arv/reliability-gate.ts
 
       - name: Summary
         if: always()
@@ -49,7 +61,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Forbidden Patterns | ${{ steps.forbidden.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Contract Tests | ${{ steps.contracts.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Golden Tests | ${{ steps.goldens.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Smoke Tests | ${{ steps.smoke.outcome || 'passed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forbidden Patterns | ${{ steps.forbidden.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract Tests | ${{ steps.contracts.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Golden Tests | ${{ steps.goldens.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ steps.smoke.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Connector Supply Chain | ${{ steps.connectors.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reliability Gate | ${{ steps.reliability.outcome }} |" >> $GITHUB_STEP_SUMMARY
