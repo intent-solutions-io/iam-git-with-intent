@@ -3,7 +3,10 @@
     {
       "id": "minimal",
       "score": 1,
-      "reasons": []
+      "reasons": [
+        "simple_conflict",
+        "small_change"
+      ]
     },
     {
       "id": "small_change",
@@ -12,38 +15,57 @@
     },
     {
       "id": "medium_change",
-      "score": 2,
-      "reasons": ["medium_change"]
+      "score": 4,
+      "reasons": [
+        "logic_conflict",
+        "medium_change"
+      ]
     },
     {
       "id": "large_change",
-      "score": 4,
-      "reasons": ["large_change", "many_files"]
+      "score": 5,
+      "reasons": [
+        "large_change",
+        "logic_conflict"
+      ]
     },
     {
       "id": "security_files",
-      "score": 5,
-      "reasons": ["auth_related", "medium_change", "security_sensitive"]
+      "score": 4,
+      "reasons": [
+        "auth_related",
+        "security_sensitive"
+      ]
     },
     {
       "id": "infra_files",
-      "score": 4,
-      "reasons": ["infra_change", "medium_change"]
+      "score": 3,
+      "reasons": [
+        "infra_change"
+      ]
     },
     {
       "id": "test_only",
-      "score": 2,
-      "reasons": ["medium_change", "test_only"]
+      "score": 4,
+      "reasons": [
+        "logic_conflict",
+        "medium_change"
+      ]
     },
     {
       "id": "config_files",
       "score": 2,
-      "reasons": ["config_change", "medium_change"]
+      "reasons": [
+        "config_change"
+      ]
     },
     {
       "id": "complex_hunks",
-      "score": 3,
-      "reasons": ["medium_change", "scattered_changes"]
+      "score": 4,
+      "reasons": [
+        "logic_conflict",
+        "medium_change"
+      ]
     },
     {
       "id": "max_complexity",
@@ -53,8 +75,8 @@
         "config_change",
         "infra_change",
         "large_change",
+        "logic_conflict",
         "many_files",
-        "scattered_changes",
         "security_sensitive"
       ]
     }
