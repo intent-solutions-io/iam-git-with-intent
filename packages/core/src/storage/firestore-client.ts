@@ -160,6 +160,8 @@ export const COLLECTIONS = {
   APPROVALS: 'gwi_approvals',
   /** Phase 11: Audit events */
   AUDIT_EVENTS: 'gwi_audit_events',
+  /** Phase 12: Connector configs (subcollection under tenants) */
+  CONNECTOR_CONFIGS: 'connector_configs',
 } as const;
 
 // =============================================================================

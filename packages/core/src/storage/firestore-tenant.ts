@@ -18,6 +18,7 @@ import type {
   Tenant,
   TenantRepo,
   TenantStore,
+  TenantConnectorConfig,
   SaaSRun,
   RunType,
   RunStatus,
@@ -594,5 +595,86 @@ export class FirestoreTenantStore implements TenantStore {
     }
 
     return updated;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 12: Connector Config Management
+  // ---------------------------------------------------------------------------
+
+  private connectorConfigsRef(tenantId: string): CollectionReference {
+    return this.tenantDoc(tenantId).collection(COLLECTIONS.CONNECTOR_CONFIGS);
+  }
+
+  private connectorConfigDoc(tenantId: string, connectorId: string): DocumentReference {
+    return this.connectorConfigsRef(tenantId).doc(connectorId);
+  }
+
+  async getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null> {
+    const snapshot = await this.connectorConfigDoc(tenantId, connectorId).get();
+
+    if (!snapshot.exists) {
+      return null;
+    }
+
+    const data = snapshot.data() as Record<string, unknown>;
+    return {
+      connectorId: data.connectorId as string,
+      tenantId: data.tenantId as string,
+      enabled: data.enabled as boolean,
+      baseUrl: data.baseUrl as string | undefined,
+      timeouts: data.timeouts as TenantConnectorConfig['timeouts'],
+      rateLimit: data.rateLimit as TenantConnectorConfig['rateLimit'],
+      secretRefs: (data.secretRefs || {}) as Record<string, string>,
+      config: (data.config || {}) as Record<string, unknown>,
+      updatedAt: timestampToDate(data.updatedAt as Timestamp)!,
+      updatedBy: data.updatedBy as string,
+    };
+  }
+
+  async setConnectorConfig(tenantId: string, config: TenantConnectorConfig): Promise<TenantConnectorConfig> {
+    const docData = {
+      connectorId: config.connectorId,
+      tenantId: tenantId,
+      enabled: config.enabled,
+      baseUrl: config.baseUrl,
+      timeouts: config.timeouts,
+      rateLimit: config.rateLimit,
+      secretRefs: config.secretRefs,
+      config: config.config,
+      updatedAt: Timestamp.now(),
+      updatedBy: config.updatedBy,
+    };
+
+    await this.connectorConfigDoc(tenantId, config.connectorId).set(docData, { merge: true });
+
+    return {
+      ...config,
+      tenantId,
+      updatedAt: new Date(),
+    };
+  }
+
+  async listConnectorConfigs(tenantId: string): Promise<TenantConnectorConfig[]> {
+    const snapshot = await this.connectorConfigsRef(tenantId).get();
+
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        connectorId: data.connectorId as string,
+        tenantId: data.tenantId as string,
+        enabled: data.enabled as boolean,
+        baseUrl: data.baseUrl as string | undefined,
+        timeouts: data.timeouts as TenantConnectorConfig['timeouts'],
+        rateLimit: data.rateLimit as TenantConnectorConfig['rateLimit'],
+        secretRefs: (data.secretRefs || {}) as Record<string, string>,
+        config: (data.config || {}) as Record<string, unknown>,
+        updatedAt: timestampToDate(data.updatedAt as Timestamp)!,
+        updatedBy: data.updatedBy as string,
+      };
+    });
+  }
+
+  async deleteConnectorConfig(tenantId: string, connectorId: string): Promise<void> {
+    await this.connectorConfigDoc(tenantId, connectorId).delete();
   }
 }

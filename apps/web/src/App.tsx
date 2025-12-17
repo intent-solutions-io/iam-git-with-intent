@@ -17,6 +17,11 @@ import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Onboarding } from './pages/Onboarding';
 import { InviteAccept } from './pages/InviteAccept';
+// Phase 12: Admin pages
+import { AdminPolicy } from './pages/AdminPolicy';
+import { AdminConnectors } from './pages/AdminConnectors';
+import { AdminConnectorConfig } from './pages/AdminConnectorConfig';
+import { AdminSecrets } from './pages/AdminSecrets';
 
 export function App() {
   return (
@@ -64,6 +69,39 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <Settings />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 12: Admin routes */}
+            <Route
+              path="/admin/policy"
+              element={
+                <ProtectedRoute>
+                  <AdminPolicy />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/connectors"
+              element={
+                <ProtectedRoute>
+                  <AdminConnectors />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/connectors/:connectorId"
+              element={
+                <ProtectedRoute>
+                  <AdminConnectorConfig />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/secrets"
+              element={
+                <ProtectedRoute>
+                  <AdminSecrets />
                 </ProtectedRoute>
               }
             />

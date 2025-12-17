@@ -1828,6 +1828,375 @@ app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, re
 });
 
 // =============================================================================
+// Routes: Policy (Phase 12)
+// =============================================================================
+
+/**
+ * Phase 12: Policy validation schema
+ * Based on PolicyDocument from @gwi/core/tenancy
+ */
+const PolicyRuleSchema = z.object({
+  id: z.string(),
+  description: z.string().optional(),
+  effect: z.enum(['allow', 'deny']),
+  priority: z.number().default(0),
+  conditions: z.object({
+    tenants: z.array(z.string()).optional(),
+    actors: z.array(z.string()).optional(),
+    actorTypes: z.array(z.enum(['human', 'service', 'github_app'])).optional(),
+    sources: z.array(z.enum(['cli', 'web', 'api', 'github_action', 'webhook'])).optional(),
+    connectors: z.array(z.string()).optional(),
+    tools: z.array(z.string()).optional(),
+    policyClasses: z.array(z.enum(['READ', 'WRITE_NON_DESTRUCTIVE', 'DESTRUCTIVE'])).optional(),
+    resources: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+const PolicyDocumentSchema = z.object({
+  version: z.string().default('1.0'),
+  name: z.string(),
+  description: z.string().optional(),
+  defaultReadBehavior: z.enum(['allow', 'deny']).default('allow'),
+  defaultWriteBehavior: z.enum(['allow', 'deny']).default('deny'),
+  defaultDestructiveBehavior: z.literal('deny').default('deny'),
+  rules: z.array(PolicyRuleSchema),
+});
+
+/**
+ * GET /tenants/:tenantId/policy - Get tenant policy (VIEWER+)
+ *
+ * Phase 12: Returns the tenant's policy document with metadata.
+ */
+app.get('/tenants/:tenantId/policy', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const store = getStore();
+    const tenant = await store.getTenant(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    if (!tenant.policy) {
+      // Return default policy structure
+      return res.json({
+        policy: null,
+        message: 'No custom policy configured. Using default deny-by-default behavior.',
+        defaults: {
+          defaultReadBehavior: 'allow',
+          defaultWriteBehavior: 'deny',
+          defaultDestructiveBehavior: 'deny',
+        },
+      });
+    }
+
+    res.json({
+      policy: tenant.policy.document,
+      version: tenant.policy.version,
+      updatedAt: tenant.policy.updatedAt,
+      updatedBy: tenant.policy.updatedBy,
+      valid: tenant.policy.valid,
+      validationErrors: tenant.policy.validationErrors,
+    });
+  } catch (error) {
+    console.error('Failed to get policy:', error);
+    res.status(500).json({
+      error: 'Failed to get policy',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * PUT /tenants/:tenantId/policy - Update tenant policy (ADMIN+)
+ *
+ * Phase 12: Validates and saves the policy document.
+ */
+app.put('/tenants/:tenantId/policy', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  const parseResult = PolicyDocumentSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid policy document',
+      validationErrors: parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`),
+    });
+  }
+
+  try {
+    const store = getStore();
+    const tenant = await store.getTenant(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    // Determine new version
+    const currentVersion = tenant.policy?.version ?? 0;
+    const newVersion = currentVersion + 1;
+
+    const policyUpdate = {
+      document: parseResult.data,
+      version: newVersion,
+      updatedAt: new Date(),
+      updatedBy: req.context!.userId,
+      valid: true,
+      validationErrors: undefined,
+    };
+
+    await store.updateTenant(tenantId, { policy: policyUpdate });
+
+    console.log(JSON.stringify({
+      type: 'policy_updated',
+      tenantId,
+      version: newVersion,
+      updatedBy: req.context!.userId,
+      rulesCount: parseResult.data.rules.length,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      message: 'Policy updated successfully',
+      version: newVersion,
+      policy: parseResult.data,
+    });
+  } catch (error) {
+    console.error('Failed to update policy:', error);
+    res.status(500).json({
+      error: 'Failed to update policy',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /tenants/:tenantId/policy/validate - Validate a policy document (VIEWER+)
+ *
+ * Phase 12: Validates without saving. Returns normalized policy and any errors.
+ */
+app.post('/tenants/:tenantId/policy/validate', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const parseResult = PolicyDocumentSchema.safeParse(req.body);
+
+  if (!parseResult.success) {
+    return res.json({
+      valid: false,
+      errors: parseResult.error.errors.map(e => ({
+        path: e.path.join('.'),
+        message: e.message,
+        code: e.code,
+      })),
+      normalized: null,
+    });
+  }
+
+  // Return the normalized/validated policy
+  res.json({
+    valid: true,
+    errors: [],
+    normalized: parseResult.data,
+    summary: {
+      rulesCount: parseResult.data.rules.length,
+      allowRules: parseResult.data.rules.filter(r => r.effect === 'allow').length,
+      denyRules: parseResult.data.rules.filter(r => r.effect === 'deny').length,
+      defaultReadBehavior: parseResult.data.defaultReadBehavior,
+      defaultWriteBehavior: parseResult.data.defaultWriteBehavior,
+    },
+  });
+});
+
+// =============================================================================
+// Routes: Connector Config (Phase 12)
+// =============================================================================
+
+/**
+ * Phase 12: Connector config validation schema
+ */
+const ConnectorConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  baseUrl: z.string().url().optional(),
+  timeouts: z.object({
+    connectMs: z.number().min(1000).max(60000).default(5000),
+    readMs: z.number().min(1000).max(300000).default(30000),
+  }).default({ connectMs: 5000, readMs: 30000 }),
+  rateLimit: z.object({
+    requestsPerMinute: z.number().min(1).max(1000).optional(),
+    requestsPerHour: z.number().min(1).max(10000).optional(),
+  }).optional(),
+  secretRefs: z.record(z.string()).default({}),
+  config: z.record(z.unknown()).default({}),
+});
+
+/**
+ * GET /tenants/:tenantId/connectors - List connector configs (VIEWER+)
+ *
+ * Phase 12: Returns all connector configurations for the tenant.
+ */
+app.get('/tenants/:tenantId/connectors', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const store = getStore();
+    const configs = await store.listConnectorConfigs(tenantId);
+
+    res.json({
+      connectors: configs.map(c => ({
+        connectorId: c.connectorId,
+        enabled: c.enabled,
+        baseUrl: c.baseUrl,
+        timeouts: c.timeouts,
+        rateLimit: c.rateLimit,
+        // Never expose secret values, only refs
+        secretRefKeys: Object.keys(c.secretRefs),
+        hasCustomConfig: Object.keys(c.config).length > 0,
+        updatedAt: c.updatedAt,
+        updatedBy: c.updatedBy,
+      })),
+      count: configs.length,
+    });
+  } catch (error) {
+    console.error('Failed to list connectors:', error);
+    res.status(500).json({
+      error: 'Failed to list connector configs',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /tenants/:tenantId/connectors/:connectorId/config - Get connector config (VIEWER+)
+ *
+ * Phase 12: Returns configuration for a specific connector.
+ */
+app.get('/tenants/:tenantId/connectors/:connectorId/config', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const { tenantId, connectorId } = req.params;
+
+  try {
+    const store = getStore();
+    const config = await store.getConnectorConfig(tenantId, connectorId);
+
+    if (!config) {
+      return res.status(404).json({
+        error: 'Connector config not found',
+        connectorId,
+        message: 'No configuration exists for this connector. Use PUT to create one.',
+      });
+    }
+
+    res.json({
+      connectorId: config.connectorId,
+      enabled: config.enabled,
+      baseUrl: config.baseUrl,
+      timeouts: config.timeouts,
+      rateLimit: config.rateLimit,
+      // Never expose secret values, only refs
+      secretRefs: Object.fromEntries(
+        Object.entries(config.secretRefs).map(([key, ref]) => [key, `${ref.substring(0, 4)}...`])
+      ),
+      config: config.config,
+      updatedAt: config.updatedAt,
+      updatedBy: config.updatedBy,
+    });
+  } catch (error) {
+    console.error('Failed to get connector config:', error);
+    res.status(500).json({
+      error: 'Failed to get connector config',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * PUT /tenants/:tenantId/connectors/:connectorId/config - Update connector config (ADMIN+)
+ *
+ * Phase 12: Creates or updates connector configuration.
+ */
+app.put('/tenants/:tenantId/connectors/:connectorId/config', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId, connectorId } = req.params;
+
+  const parseResult = ConnectorConfigSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    return res.status(400).json({
+      error: 'Invalid connector config',
+      details: parseResult.error.errors,
+    });
+  }
+
+  try {
+    const store = getStore();
+    const input = parseResult.data;
+
+    const config = await store.setConnectorConfig(tenantId, {
+      connectorId,
+      tenantId,
+      enabled: input.enabled,
+      baseUrl: input.baseUrl,
+      timeouts: input.timeouts,
+      rateLimit: input.rateLimit,
+      secretRefs: input.secretRefs,
+      config: input.config,
+      updatedAt: new Date(),
+      updatedBy: req.context!.userId,
+    });
+
+    console.log(JSON.stringify({
+      type: 'connector_config_updated',
+      tenantId,
+      connectorId,
+      enabled: config.enabled,
+      updatedBy: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      message: 'Connector config updated successfully',
+      connectorId: config.connectorId,
+      enabled: config.enabled,
+      updatedAt: config.updatedAt,
+    });
+  } catch (error) {
+    console.error('Failed to update connector config:', error);
+    res.status(500).json({
+      error: 'Failed to update connector config',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * DELETE /tenants/:tenantId/connectors/:connectorId/config - Delete connector config (ADMIN+)
+ *
+ * Phase 12: Removes connector configuration (reverts to defaults).
+ */
+app.delete('/tenants/:tenantId/connectors/:connectorId/config', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId, connectorId } = req.params;
+
+  try {
+    const store = getStore();
+    await store.deleteConnectorConfig(tenantId, connectorId);
+
+    console.log(JSON.stringify({
+      type: 'connector_config_deleted',
+      tenantId,
+      connectorId,
+      deletedBy: req.context!.userId,
+      timestamp: new Date().toISOString(),
+    }));
+
+    res.json({
+      message: 'Connector config deleted',
+      connectorId,
+    });
+  } catch (error) {
+    console.error('Failed to delete connector config:', error);
+    res.status(500).json({
+      error: 'Failed to delete connector config',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
 // Routes: Workflows (Phase 13)
 // =============================================================================
 

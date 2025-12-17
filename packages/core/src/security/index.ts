@@ -557,3 +557,515 @@ export interface TenantBetaStatus {
   /** Beta features enabled for this tenant */
   betaFeatures: BetaFeature[];
 }
+
+// =============================================================================
+// Secret Provider (Phase 12)
+// =============================================================================
+
+/**
+ * Secret reference format: provider://path/to/secret
+ * Examples:
+ * - env://GITHUB_TOKEN (environment variable)
+ * - gcp://projects/my-project/secrets/my-secret/versions/latest
+ * - dev://api_key (local dev file)
+ */
+export type SecretRef = string;
+
+/**
+ * Secret provider interface for resolving secret references
+ */
+export interface SecretProvider {
+  /** Provider name for identification */
+  readonly name: string;
+
+  /**
+   * Get a secret value by reference
+   * Returns null if secret not found
+   */
+  get(ref: SecretRef): Promise<string | null>;
+
+  /**
+   * Set/update a secret (admin-only path)
+   * May throw if provider is read-only
+   */
+  set(ref: SecretRef, value: string): Promise<void>;
+
+  /**
+   * Check if a secret exists
+   */
+  exists(ref: SecretRef): Promise<boolean>;
+
+  /**
+   * List available secret refs (returns refs, not values)
+   */
+  list(): Promise<SecretRef[]>;
+
+  /**
+   * Delete a secret
+   */
+  delete(ref: SecretRef): Promise<void>;
+}
+
+/**
+ * Dev secret provider that stores secrets in local files
+ *
+ * WARNING: This is for development only. Secrets are stored in plain text.
+ * Never use in production.
+ *
+ * Location: .gwi/secrets/{ref}.secret
+ */
+export class DevSecretProvider implements SecretProvider {
+  readonly name = 'dev';
+  private secretsDir: string;
+
+  constructor(baseDir: string = process.cwd()) {
+    this.secretsDir = `${baseDir}/.gwi/secrets`;
+    console.warn(
+      '[DevSecretProvider] WARNING: Using development secret provider. ' +
+      'Secrets are stored in plain text. DO NOT USE IN PRODUCTION.'
+    );
+  }
+
+  async get(ref: SecretRef): Promise<string | null> {
+    const path = this.refToPath(ref);
+    try {
+      const fs = await import('fs/promises');
+      const content = await fs.readFile(path, 'utf-8');
+      return content.trim();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async set(ref: SecretRef, value: string): Promise<void> {
+    const fs = await import('fs/promises');
+    const path = this.refToPath(ref);
+    const dir = path.substring(0, path.lastIndexOf('/'));
+
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path, value, { mode: 0o600 });
+
+    console.log(`[DevSecretProvider] Secret stored: ${this.redactRef(ref)}`);
+  }
+
+  async exists(ref: SecretRef): Promise<boolean> {
+    const path = this.refToPath(ref);
+    try {
+      const fs = await import('fs/promises');
+      await fs.access(path);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async list(): Promise<SecretRef[]> {
+    try {
+      const fs = await import('fs/promises');
+      const files = await fs.readdir(this.secretsDir, { recursive: true });
+      return files
+        .filter((f): f is string => typeof f === 'string' && f.endsWith('.secret'))
+        .map(f => `dev://${f.replace('.secret', '')}`);
+    } catch {
+      return [];
+    }
+  }
+
+  async delete(ref: SecretRef): Promise<void> {
+    const fs = await import('fs/promises');
+    const path = this.refToPath(ref);
+    await fs.unlink(path);
+    console.log(`[DevSecretProvider] Secret deleted: ${this.redactRef(ref)}`);
+  }
+
+  private refToPath(ref: SecretRef): string {
+    // Handle both formats: "dev://key" and plain "key"
+    const key = ref.startsWith('dev://') ? ref.substring(6) : ref;
+    return `${this.secretsDir}/${key}.secret`;
+  }
+
+  private redactRef(ref: SecretRef): string {
+    const key = ref.startsWith('dev://') ? ref.substring(6) : ref;
+    return `dev://${key.substring(0, 4)}***`;
+  }
+}
+
+/**
+ * Environment variable secret provider
+ *
+ * Refs: env://VARIABLE_NAME
+ * Read-only: cannot set secrets via this provider
+ */
+export class EnvSecretProvider implements SecretProvider {
+  readonly name = 'env';
+
+  async get(ref: SecretRef): Promise<string | null> {
+    const varName = ref.startsWith('env://') ? ref.substring(6) : ref;
+    return process.env[varName] ?? null;
+  }
+
+  async set(_ref: SecretRef, _value: string): Promise<void> {
+    throw new Error('EnvSecretProvider is read-only. Cannot set environment variables.');
+  }
+
+  async exists(ref: SecretRef): Promise<boolean> {
+    const varName = ref.startsWith('env://') ? ref.substring(6) : ref;
+    return varName in process.env;
+  }
+
+  async list(): Promise<SecretRef[]> {
+    // Only list common secret-like variables, not all env vars
+    const secretVars = [
+      'GITHUB_TOKEN',
+      'ANTHROPIC_API_KEY',
+      'GOOGLE_AI_API_KEY',
+      'STRIPE_SECRET_KEY',
+      'STRIPE_WEBHOOK_SECRET',
+    ];
+    return secretVars
+      .filter(v => v in process.env)
+      .map(v => `env://${v}`);
+  }
+
+  async delete(_ref: SecretRef): Promise<void> {
+    throw new Error('EnvSecretProvider is read-only. Cannot delete environment variables.');
+  }
+}
+
+/**
+ * GCP Secret Manager provider
+ *
+ * Refs: gcp://projects/{project}/secrets/{name}/versions/{version}
+ * Or short form: gcp://{secret-name} (uses default project and latest version)
+ */
+export class GCPSecretProvider implements SecretProvider {
+  readonly name = 'gcp';
+  private projectId: string;
+  private client: unknown | null = null;
+
+  constructor(projectId?: string) {
+    this.projectId = projectId || process.env.GCP_PROJECT_ID || '';
+  }
+
+  private async getClient(): Promise<unknown> {
+    if (!this.client) {
+      try {
+        // Dynamic import with type assertion to avoid TS module resolution
+        const secretManager = await import('@google-cloud/secret-manager' as string);
+        const SecretManagerServiceClient = secretManager.SecretManagerServiceClient;
+        this.client = new SecretManagerServiceClient();
+      } catch (error) {
+        throw new Error(
+          'GCP Secret Manager client not available. ' +
+          'Install @google-cloud/secret-manager or use DevSecretProvider for development.'
+        );
+      }
+    }
+    return this.client;
+  }
+
+  async get(ref: SecretRef): Promise<string | null> {
+    const secretName = this.parseRef(ref);
+
+    try {
+      const client = await this.getClient() as {
+        accessSecretVersion: (request: { name: string }) => Promise<[{ payload?: { data?: Uint8Array | string } }]>;
+      };
+      const [response] = await client.accessSecretVersion({ name: secretName });
+      const payload = response.payload?.data;
+
+      if (!payload) {
+        return null;
+      }
+
+      if (typeof payload === 'string') {
+        return payload;
+      }
+      // Handle Uint8Array (Buffer-like)
+      return new TextDecoder().decode(payload);
+    } catch (error) {
+      const err = error as { code?: number };
+      if (err.code === 5) {
+        // NOT_FOUND
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async set(ref: SecretRef, value: string): Promise<void> {
+    const parts = this.parseRefParts(ref);
+    const client = await this.getClient() as {
+      createSecret: (request: {
+        parent: string;
+        secretId: string;
+        secret: { replication: { automatic: Record<string, never> } };
+      }) => Promise<unknown>;
+      addSecretVersion: (request: {
+        parent: string;
+        payload: { data: Uint8Array };
+      }) => Promise<unknown>;
+    };
+
+    // Create secret if it doesn't exist
+    try {
+      await client.createSecret({
+        parent: `projects/${parts.project}`,
+        secretId: parts.secretName,
+        secret: {
+          replication: {
+            automatic: {},
+          },
+        },
+      });
+    } catch (error) {
+      const err = error as { code?: number };
+      // ALREADY_EXISTS is ok
+      if (err.code !== 6) {
+        throw error;
+      }
+    }
+
+    // Add new version
+    await client.addSecretVersion({
+      parent: `projects/${parts.project}/secrets/${parts.secretName}`,
+      payload: {
+        data: new TextEncoder().encode(value),
+      },
+    });
+
+    console.log(`[GCPSecretProvider] Secret version added: ${this.redactRef(ref)}`);
+  }
+
+  async exists(ref: SecretRef): Promise<boolean> {
+    const result = await this.get(ref);
+    return result !== null;
+  }
+
+  async list(): Promise<SecretRef[]> {
+    if (!this.projectId) {
+      return [];
+    }
+
+    try {
+      const client = await this.getClient() as {
+        listSecrets: (request: { parent: string }) => Promise<[Array<{ name?: string }>]>;
+      };
+      const [secrets] = await client.listSecrets({
+        parent: `projects/${this.projectId}`,
+      });
+
+      return secrets.map(s => {
+        const name = s.name?.split('/').pop() || '';
+        return `gcp://${name}`;
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  async delete(ref: SecretRef): Promise<void> {
+    const parts = this.parseRefParts(ref);
+    const client = await this.getClient() as {
+      deleteSecret: (request: { name: string }) => Promise<void>;
+    };
+
+    await client.deleteSecret({
+      name: `projects/${parts.project}/secrets/${parts.secretName}`,
+    });
+
+    console.log(`[GCPSecretProvider] Secret deleted: ${this.redactRef(ref)}`);
+  }
+
+  private parseRef(ref: SecretRef): string {
+    // Full format: gcp://projects/{project}/secrets/{name}/versions/{version}
+    if (ref.includes('/projects/')) {
+      return ref.replace('gcp://', '');
+    }
+
+    // Short format: gcp://{secret-name}
+    const secretName = ref.startsWith('gcp://') ? ref.substring(6) : ref;
+    return `projects/${this.projectId}/secrets/${secretName}/versions/latest`;
+  }
+
+  private parseRefParts(ref: SecretRef): { project: string; secretName: string; version: string } {
+    const fullPath = this.parseRef(ref);
+    const parts = fullPath.match(/projects\/([^/]+)\/secrets\/([^/]+)(?:\/versions\/([^/]+))?/);
+
+    if (!parts) {
+      throw new Error(`Invalid GCP secret ref: ${ref}`);
+    }
+
+    return {
+      project: parts[1],
+      secretName: parts[2],
+      version: parts[3] || 'latest',
+    };
+  }
+
+  private redactRef(ref: SecretRef): string {
+    const parts = this.parseRefParts(ref);
+    return `gcp://***/${parts.secretName.substring(0, 4)}***`;
+  }
+}
+
+/**
+ * Composite secret provider that routes to the appropriate provider based on ref prefix
+ */
+export class CompositeSecretProvider implements SecretProvider {
+  readonly name = 'composite';
+  private providers: Map<string, SecretProvider>;
+  private defaultProvider: SecretProvider;
+
+  constructor(providers: SecretProvider[], defaultProvider?: SecretProvider) {
+    this.providers = new Map();
+    for (const p of providers) {
+      this.providers.set(p.name, p);
+    }
+    this.defaultProvider = defaultProvider || providers[0];
+  }
+
+  private getProviderForRef(ref: SecretRef): SecretProvider {
+    // Parse provider prefix: "gcp://..." or "env://..." or "dev://..."
+    const match = ref.match(/^([a-z]+):\/\//);
+    if (match) {
+      const providerName = match[1];
+      const provider = this.providers.get(providerName);
+      if (provider) {
+        return provider;
+      }
+    }
+    return this.defaultProvider;
+  }
+
+  async get(ref: SecretRef): Promise<string | null> {
+    return this.getProviderForRef(ref).get(ref);
+  }
+
+  async set(ref: SecretRef, value: string): Promise<void> {
+    return this.getProviderForRef(ref).set(ref, value);
+  }
+
+  async exists(ref: SecretRef): Promise<boolean> {
+    return this.getProviderForRef(ref).exists(ref);
+  }
+
+  async list(): Promise<SecretRef[]> {
+    const allRefs: SecretRef[] = [];
+    for (const provider of this.providers.values()) {
+      const refs = await provider.list();
+      allRefs.push(...refs);
+    }
+    return allRefs;
+  }
+
+  async delete(ref: SecretRef): Promise<void> {
+    return this.getProviderForRef(ref).delete(ref);
+  }
+}
+
+// =============================================================================
+// Secret Provider Singleton
+// =============================================================================
+
+let secretProviderInstance: SecretProvider | null = null;
+
+/**
+ * Get the secret provider based on environment
+ *
+ * Production: GCP Secret Manager (when GCP_PROJECT_ID is set)
+ * Development: Dev file-based provider with env fallback
+ */
+export function getSecretProvider(): SecretProvider {
+  if (secretProviderInstance) {
+    return secretProviderInstance;
+  }
+
+  const isProduction = process.env.NODE_ENV === 'production' ||
+    process.env.GWI_STORE_BACKEND === 'firestore';
+
+  if (isProduction && process.env.GCP_PROJECT_ID) {
+    // Production: Use GCP Secret Manager with env fallback
+    secretProviderInstance = new CompositeSecretProvider([
+      new GCPSecretProvider(process.env.GCP_PROJECT_ID),
+      new EnvSecretProvider(),
+    ]);
+  } else {
+    // Development: Use dev file provider with env fallback
+    secretProviderInstance = new CompositeSecretProvider([
+      new DevSecretProvider(),
+      new EnvSecretProvider(),
+    ], new EnvSecretProvider()); // Default to env for unqualified refs
+  }
+
+  return secretProviderInstance;
+}
+
+/**
+ * Reset secret provider singleton (for testing)
+ */
+export function resetSecretProvider(): void {
+  secretProviderInstance = null;
+}
+
+/**
+ * Resolve secret refs in a config object
+ * Replaces all values that look like secret refs with their actual values
+ * IMPORTANT: Never log the output of this function
+ */
+export async function resolveSecretRefs(
+  config: Record<string, unknown>,
+  secretRefs: Record<string, string>
+): Promise<Record<string, unknown>> {
+  const provider = getSecretProvider();
+  const resolved: Record<string, unknown> = { ...config };
+
+  for (const [key, ref] of Object.entries(secretRefs)) {
+    const value = await provider.get(ref);
+    if (value !== null) {
+      resolved[key] = value;
+    }
+  }
+
+  return resolved;
+}
+
+/**
+ * Redact secret values from an object for safe logging
+ * Replaces any string values that look like secrets with [REDACTED]
+ */
+export function redactSecrets(obj: Record<string, unknown>): Record<string, unknown> {
+  const secretPatterns = [
+    /^sk[-_]/i,          // Stripe keys
+    /^ghp_/i,            // GitHub PAT
+    /^gho_/i,            // GitHub OAuth
+    /^whsec_/i,          // Webhook secrets
+    /^AIza/i,            // Google API keys
+    /^sk-ant-/i,         // Anthropic keys
+    /^xoxb-/i,           // Slack bot tokens
+    /^xoxp-/i,           // Slack user tokens
+  ];
+
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === 'string') {
+      const looksLikeSecret = secretPatterns.some(p => p.test(value)) ||
+        key.toLowerCase().includes('secret') ||
+        key.toLowerCase().includes('token') ||
+        key.toLowerCase().includes('password') ||
+        key.toLowerCase().includes('apikey');
+
+      result[key] = looksLikeSecret ? '[REDACTED]' : value;
+    } else if (typeof value === 'object' && value !== null) {
+      result[key] = redactSecrets(value as Record<string, unknown>);
+    } else {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}

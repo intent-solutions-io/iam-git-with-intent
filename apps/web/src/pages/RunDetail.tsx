@@ -31,6 +31,16 @@ interface AuditEvent {
   why?: string;
 }
 
+/** Phase 12: Policy evaluation result for tool invocation */
+interface PolicyDecision {
+  toolName: string;
+  effect: 'allow' | 'deny';
+  reason: string;
+  ruleId?: string;
+  policyClass: 'READ' | 'WRITE_NON_DESTRUCTIVE' | 'DESTRUCTIVE';
+  timestamp: Date;
+}
+
 interface Run {
   id: string;
   type: 'resolve' | 'autopilot' | 'issue_to_pr' | 'triage' | 'review';
@@ -44,6 +54,8 @@ interface Run {
   error?: string;
   createdAt: Date;
   completedAt?: Date;
+  /** Phase 12: Policy evaluation outcomes */
+  policyDecisions?: PolicyDecision[];
 }
 
 export function RunDetail() {
@@ -339,6 +351,47 @@ export function RunDetail() {
         </div>
       )}
 
+      {/* Phase 12: Policy Decisions */}
+      {run.policyDecisions && run.policyDecisions.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="font-semibold text-gray-900">Policy Decisions</h2>
+          </div>
+          <div className="divide-y divide-gray-200">
+            {run.policyDecisions.map((decision, idx) => (
+              <div key={idx} className="p-4 flex items-start gap-3">
+                <div
+                  className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                    decision.effect === 'allow' ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-medium text-gray-900">
+                      {decision.toolName}
+                    </code>
+                    <PolicyClassBadge policyClass={decision.policyClass} />
+                    <span
+                      className={`px-2 py-0.5 text-xs rounded-full ${
+                        decision.effect === 'allow'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {decision.effect}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">{decision.reason}</p>
+                  {decision.ruleId && (
+                    <p className="text-xs text-gray-400 mt-0.5">Rule: {decision.ruleId}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Audit Timeline */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-4 border-b border-gray-200">
@@ -479,6 +532,27 @@ function ChangeActionBadge({ action }: { action: ProposedChange['action'] }) {
   return (
     <span className={`px-2 py-0.5 text-xs font-medium rounded ${styles[action]}`}>
       {action}
+    </span>
+  );
+}
+
+/** Phase 12: Policy class badge */
+function PolicyClassBadge({ policyClass }: { policyClass: PolicyDecision['policyClass'] }) {
+  const styles: Record<string, string> = {
+    READ: 'bg-blue-100 text-blue-800',
+    WRITE_NON_DESTRUCTIVE: 'bg-yellow-100 text-yellow-800',
+    DESTRUCTIVE: 'bg-red-100 text-red-800',
+  };
+
+  const labels: Record<string, string> = {
+    READ: 'Read',
+    WRITE_NON_DESTRUCTIVE: 'Write',
+    DESTRUCTIVE: 'Destructive',
+  };
+
+  return (
+    <span className={`px-2 py-0.5 text-xs font-medium rounded ${styles[policyClass]}`}>
+      {labels[policyClass]}
     </span>
   );
 }

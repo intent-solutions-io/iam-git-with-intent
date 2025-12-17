@@ -18,6 +18,7 @@ import type {
   RunStore,
   Tenant,
   TenantRepo,
+  TenantConnectorConfig,
   TenantStore,
   SaaSRun,
   User,
@@ -189,6 +190,7 @@ export class InMemoryTenantStore implements TenantStore {
   private tenants = new Map<string, Tenant>();
   private repos = new Map<string, TenantRepo[]>();
   private runs = new Map<string, SaaSRun[]>();
+  private connectorConfigs = new Map<string, TenantConnectorConfig[]>();
 
   // Tenant CRUD
   async createTenant(tenant: Omit<Tenant, 'createdAt' | 'updatedAt'>): Promise<Tenant> {
@@ -318,6 +320,42 @@ export class InMemoryTenantStore implements TenantStore {
     runs[index] = updated;
     this.runs.set(tenantId, runs);
     return updated;
+  }
+
+  // Phase 12: Connector Config management
+  async getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null> {
+    const configs = this.connectorConfigs.get(tenantId) ?? [];
+    return configs.find(c => c.connectorId === connectorId) ?? null;
+  }
+
+  async setConnectorConfig(tenantId: string, config: TenantConnectorConfig): Promise<TenantConnectorConfig> {
+    const configs = this.connectorConfigs.get(tenantId) ?? [];
+    const index = configs.findIndex(c => c.connectorId === config.connectorId);
+
+    const fullConfig: TenantConnectorConfig = {
+      ...config,
+      tenantId,
+      updatedAt: now(),
+    };
+
+    if (index === -1) {
+      configs.push(fullConfig);
+    } else {
+      configs[index] = fullConfig;
+    }
+
+    this.connectorConfigs.set(tenantId, configs);
+    return fullConfig;
+  }
+
+  async listConnectorConfigs(tenantId: string): Promise<TenantConnectorConfig[]> {
+    return this.connectorConfigs.get(tenantId) ?? [];
+  }
+
+  async deleteConnectorConfig(tenantId: string, connectorId: string): Promise<void> {
+    const configs = this.connectorConfigs.get(tenantId) ?? [];
+    const filtered = configs.filter(c => c.connectorId !== connectorId);
+    this.connectorConfigs.set(tenantId, filtered);
   }
 }
 

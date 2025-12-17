@@ -180,6 +180,9 @@ export interface Tenant {
   // Settings
   settings: TenantSettings;
 
+  // Phase 12: Policy-as-Code
+  policy?: TenantPolicy;
+
   // Usage
   runsThisMonth: number;
   lastRunAt?: Date;
@@ -187,6 +190,58 @@ export interface Tenant {
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Phase 12: Tenant policy wrapper
+ * Stores the PolicyDocument plus metadata
+ */
+export interface TenantPolicy {
+  /** The policy document itself */
+  document: unknown; // PolicyDocument from tenancy module
+  /** Version number (incremented on each update) */
+  version: number;
+  /** Last updated timestamp */
+  updatedAt: Date;
+  /** Who last updated the policy */
+  updatedBy: string;
+  /** Validation status */
+  valid: boolean;
+  /** Validation errors if any */
+  validationErrors?: string[];
+}
+
+/**
+ * Phase 12: Tenant connector configuration
+ * Stored tenant-scoped configuration for each connector
+ */
+export interface TenantConnectorConfig {
+  /** Connector ID */
+  connectorId: string;
+  /** Tenant ID */
+  tenantId: string;
+  /** Whether this connector is enabled */
+  enabled: boolean;
+  /** Base URL override (if applicable) */
+  baseUrl?: string;
+  /** Timeout settings */
+  timeouts: {
+    connectMs: number;
+    readMs: number;
+  };
+  /** Rate limit settings */
+  rateLimit?: {
+    requestsPerMinute?: number;
+    requestsPerHour?: number;
+  };
+  /** Secret references (NOT raw secrets) */
+  secretRefs: Record<string, string>;
+  /** Additional connector-specific config */
+  config: Record<string, unknown>;
+  /** Last updated */
+  updatedAt: Date;
+  /** Updated by */
+  updatedBy: string;
 }
 
 /**
@@ -546,6 +601,12 @@ export interface TenantStore {
     limit?: number;
   }): Promise<SaaSRun[]>;
   updateRun(tenantId: string, runId: string, update: Partial<SaaSRun>): Promise<SaaSRun>;
+
+  // Phase 12: Connector Config management
+  getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null>;
+  setConnectorConfig(tenantId: string, config: TenantConnectorConfig): Promise<TenantConnectorConfig>;
+  listConnectorConfigs(tenantId: string): Promise<TenantConnectorConfig[]>;
+  deleteConnectorConfig(tenantId: string, connectorId: string): Promise<void>;
 }
 
 /**
