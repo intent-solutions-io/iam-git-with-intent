@@ -17,7 +17,7 @@
 | Status | FINAL |
 | Related Issues/PRs | N/A |
 | Commit(s) | `54f1e6e` |
-| Beads | N/A (beads CLI not available in this session) |
+| Beads | `git-with-intent-r1r` (closed), `git-with-intent-258` (epic: Phase 2 E2E Workflow), `git-with-intent-0x4` (closed: Design minimal canonical workflow) |
 | AgentFS | agent id: `gwi` / mount: `agents/gwi` / db: `.agentfs/gwi.db` |
 
 ---
