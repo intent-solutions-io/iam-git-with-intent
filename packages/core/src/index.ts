@@ -56,3 +56,6 @@ export * from './connectors/index.js';
 
 // Multi-tenancy exports (Phase 5: SaaS multi-tenancy + policy-as-code)
 export * from './tenancy/index.js';
+
+// Reliability exports (Phase 7: Operator-grade hardening)
+export * from './reliability/index.js';
