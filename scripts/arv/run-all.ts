@@ -100,6 +100,11 @@ async function main(): Promise<void> {
       command: 'npx',
       args: ['tsx', join(__dirname, 'reliability-gate.ts')],
     },
+    {
+      name: 'Docs Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'docs-gate.ts')],
+    },
   ];
 
   const results: CheckResult[] = [];

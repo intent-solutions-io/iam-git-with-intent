@@ -60,6 +60,19 @@ import {
 } from './commands/run.js';
 import { doctorCommand } from './commands/doctor.js';
 import { diagnoseCommand } from './commands/diagnose.js';
+import {
+  connectorSearchCommand,
+  connectorInfoCommand,
+  connectorInstallCommand,
+  connectorUninstallCommand,
+  connectorListCommand,
+  connectorAddKeyCommand,
+  connectorListKeysCommand,
+  connectorRemoveKeyCommand,
+  connectorPublishCommand,
+  connectorOutdatedCommand,
+  connectorUpdateCommand,
+} from './commands/connector.js';
 
 const program = new Command();
 
@@ -437,6 +450,179 @@ program
   .action(async (runId, options) => {
     try {
       await diagnoseCommand(runId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Connector Commands (Phase 9)
+// =============================================================================
+
+const connectorCmd = program
+  .command('connector')
+  .description('Manage connectors from remote registries');
+
+connectorCmd
+  .command('search <query>')
+  .description('Search for connectors in the registry')
+  .option('--registry <url>', 'Custom registry URL')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('-l, --limit <n>', 'Max results', parseInt)
+  .action(async (query, options) => {
+    try {
+      await connectorSearchCommand(query, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('info <connector-id>')
+  .description('Get connector information')
+  .option('--registry <url>', 'Custom registry URL')
+  .option('--json', 'Output as JSON')
+  .option('--all-versions', 'Show all versions')
+  .action(async (connectorId, options) => {
+    try {
+      await connectorInfoCommand(connectorId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('install <spec>')
+  .description('Install a connector (e.g., github@1.0.0)')
+  .option('--registry <url>', 'Custom registry URL')
+  .option('--skip-signature', 'Skip signature verification (not recommended)')
+  .option('-f, --force', 'Force reinstall if already installed')
+  .option('--json', 'Output as JSON')
+  .action(async (spec, options) => {
+    try {
+      await connectorInstallCommand(spec, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('uninstall <spec>')
+  .description('Uninstall a connector (e.g., github@1.0.0)')
+  .option('--json', 'Output as JSON')
+  .action(async (spec, options) => {
+    try {
+      await connectorUninstallCommand(spec, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('list')
+  .description('List installed connectors')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (options) => {
+    try {
+      await connectorListCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('add-key <key-id> <public-key>')
+  .description('Add a trusted signing key')
+  .option('--description <text>', 'Key description')
+  .option('--expires <date>', 'Expiration date (ISO format)')
+  .option('--json', 'Output as JSON')
+  .action(async (keyId, publicKey, options) => {
+    try {
+      await connectorAddKeyCommand(keyId, publicKey, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('list-keys')
+  .description('List trusted signing keys')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await connectorListKeysCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+connectorCmd
+  .command('remove-key <key-id>')
+  .description('Remove a trusted signing key')
+  .option('--json', 'Output as JSON')
+  .action(async (keyId, options) => {
+    try {
+      await connectorRemoveKeyCommand(keyId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Phase 10: Publish command
+connectorCmd
+  .command('publish')
+  .description('Publish a connector to a registry')
+  .option('--registry <url>', 'Registry URL', 'http://localhost:3456')
+  .option('--path <dir>', 'Connector directory', process.cwd())
+  .option('--key <keyId>', 'Signing key ID (required)')
+  .option('--dry-run', 'Show what would be published without uploading')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await connectorPublishCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Phase 10: Outdated command
+connectorCmd
+  .command('outdated')
+  .description('Check for connector updates')
+  .option('--registry <url>', 'Custom registry URL')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await connectorOutdatedCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Phase 10: Update command
+connectorCmd
+  .command('update <spec>')
+  .description('Update a connector (e.g., github or github@2.0.0)')
+  .option('--registry <url>', 'Custom registry URL')
+  .option('--skip-signature', 'Skip signature verification (not recommended)')
+  .option('--dry-run', 'Show what would be updated without installing')
+  .option('--json', 'Output as JSON')
+  .action(async (spec, options) => {
+    try {
+      await connectorUpdateCommand(spec, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);

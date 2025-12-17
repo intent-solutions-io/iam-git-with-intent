@@ -87,5 +87,72 @@ export {
   loadAllConnectors,
   loadConnector,
   unloadConnector,
-  listInstalledConnectors,
+  listInstalledConnectors as listLoadedConnectors,
 } from './loader.js';
+
+// Remote registry (Phase 9)
+export {
+  type ConnectorSearchEntry,
+  type RegistrySearchResult,
+  type ConnectorVersionInfo,
+  type ConnectorInfo,
+  type SignatureFile,
+  type SearchOptions,
+  RegistryError,
+  RemoteRegistryClient,
+  setDefaultRegistryUrl,
+  getDefaultRegistryUrl,
+  createRemoteRegistry,
+} from './remote-registry.js';
+
+// Tarball packaging (Phase 9)
+export {
+  type TarballResult,
+  type ExtractResult,
+  createTarball,
+  extractTarball,
+  computeTarballChecksum,
+  verifyTarballChecksum,
+  isValidTarball,
+} from './tarball.js';
+
+// Signature verification (Phase 9)
+export {
+  type SignatureFile as SignatureFileType,
+  type TrustedKey,
+  type TrustedKeysConfig,
+  type SignatureVerificationResult,
+  verifySignature,
+  loadTrustedKeys,
+  saveTrustedKeys,
+  addTrustedKey,
+  removeTrustedKey,
+  listTrustedKeys,
+  getDefaultTrustedKeys,
+  getTrustedKeysPath,
+  bytesToBase64,
+  createSignatureFile,
+} from './signature.js';
+
+// Installer (Phase 9)
+export {
+  type InstallReceipt,
+  type InstallOptions,
+  type InstallResult,
+  type UninstallResult,
+  type CacheEntry,
+  getGwiDataDir,
+  getConnectorInstallDir,
+  getCacheDir,
+  getConnectorPath,
+  installConnector,
+  uninstallConnector,
+  listInstalledConnectors,
+  getInstallReceipt,
+  cacheTarball,
+  getCachedTarball,
+  clearCache,
+  pinConnectorVersion,
+  getPinnedVersion,
+  unpinConnectorVersion,
+} from './installer.js';

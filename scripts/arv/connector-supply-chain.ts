@@ -2,12 +2,14 @@
  * ARV: Connector Supply Chain Gate
  *
  * Phase 6: Validates all installed connectors in the local registry.
+ * Phase 9: Extended to verify signatures for remote installs.
  *
  * Checks:
  * - Manifest schema validation
  * - Checksum verification
  * - Conformance tests
  * - Forbidden patterns (no filesystem access outside allowed paths)
+ * - Signature verification (for remote installs, Phase 9)
  *
  * @module arv/connector-supply-chain
  */
@@ -43,6 +45,19 @@ interface ConnectorManifest {
   dependencies?: Record<string, string>;
 }
 
+interface InstallReceipt {
+  version: string;
+  connectorId: string;
+  connectorVersion: string;
+  installedAt: string;
+  installedFrom: 'registry' | 'local' | 'tarball';
+  registryUrl?: string;
+  tarballChecksum: string;
+  entrypointChecksum: string;
+  signatureVerified: boolean;
+  signatureKeyId?: string;
+}
+
 interface ValidationResult {
   id: string;
   version: string;
@@ -54,6 +69,11 @@ interface ValidationResult {
   conformanceValid: boolean;
   conformanceErrors: string[];
   forbiddenPatterns: string[];
+  // Phase 9: Signature verification
+  signatureValid: boolean;
+  signatureError?: string;
+  signatureKeyId?: string;
+  installReceipt?: InstallReceipt;
   passed: boolean;
 }
 
@@ -261,8 +281,31 @@ async function scanRegistry(registryPath: string): Promise<SupplyChainReport> {
       conformanceValid: false,
       conformanceErrors: [],
       forbiddenPatterns: [],
+      signatureValid: true, // Default true for local installs
       passed: false,
     };
+
+    // Phase 9: Check for install receipt (remote installs)
+    const receiptPath = join(entryPath, 'install-receipt.json');
+    if (existsSync(receiptPath)) {
+      try {
+        const receiptJson = await readFile(receiptPath, 'utf-8');
+        const receipt = JSON.parse(receiptJson) as InstallReceipt;
+        result.installReceipt = receipt;
+
+        // For registry installs, signature MUST be verified
+        if (receipt.installedFrom === 'registry') {
+          result.signatureValid = receipt.signatureVerified;
+          result.signatureKeyId = receipt.signatureKeyId;
+          if (!receipt.signatureVerified) {
+            result.signatureError = 'Registry connector missing valid signature';
+          }
+        }
+      } catch (err) {
+        result.signatureError = `Failed to read install receipt: ${err}`;
+        result.signatureValid = false;
+      }
+    }
 
     report.totalConnectors++;
 
@@ -314,11 +357,12 @@ async function scanRegistry(registryPath: string): Promise<SupplyChainReport> {
       result.forbiddenPatterns = await detectForbiddenPatterns(entrypointPath);
     }
 
-    // Overall pass/fail
+    // Overall pass/fail (Phase 9: signature required for registry installs)
     result.passed =
       result.manifestValid &&
       result.checksumValid &&
       result.conformanceValid &&
+      result.signatureValid &&
       result.forbiddenPatterns.length === 0;
 
     if (result.passed) {
@@ -377,6 +421,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         }
         if (result.forbiddenPatterns.length > 0) {
           console.log(`     Forbidden: ${result.forbiddenPatterns.join(', ')}`);
+        }
+        if (!result.signatureValid) {
+          console.log(`     Signature: ${result.signatureError || 'Invalid or missing'}`);
+        } else if (result.signatureKeyId) {
+          console.log(`     Signature: verified (${result.signatureKeyId})`);
         }
       }
     }
