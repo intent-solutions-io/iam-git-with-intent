@@ -6,11 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## SESSION BOOT (MANDATORY)
 
-**Before writing any code, you MUST:**
+**You MUST start by invoking the foreman subagent to route the task.**
+
+The foreman will create/update Beads tasks before implementation. All work happens inside the AgentFS mount.
+
+### Quick Boot Sequence
+
+```bash
+npm run hooks:preflight     # Validate setup
+npm run agentfs:mount       # Mount filesystem
+cd agents/gwi               # Enter mount
+bd onboard                  # First time only
+bd ready                    # Pick work
+# Invoke foreman subagent
+```
+
+### Then:
 
 1. **Read context capsules**:
    - `000-docs/044-DR-GUID-agent-engine-context.md`
    - `000-docs/045-DR-CHKL-agent-engine-compliance.md`
+   - `docs/context-capsule.md`
 
 2. **Print a Constraints Recap** (10-20 bullets max):
    - Deployment target (Vertex AI Agent Engine)
@@ -26,6 +42,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - What tests will be added/modified
    - Which ARV checks apply
    - How to verify the change
+
+### Subagents
+
+Route tasks through the foreman (`.claude/agents/foreman.md`) which delegates to:
+- **planner.md** - PRDs, epics, Beads tasks
+- **engine-core.md** - Run bundle, schemas, policy
+- **connector-engineer.md** - Tool SDKs, integrations
+- **reviewer.md** - ARV, security, drift
+- **docs-filer.md** - Documentation, 000-docs
+- **ops-arv.md** - Agent Engine patterns
 
 ### Hard Requirements
 
@@ -108,11 +134,33 @@ apps/gateway, apps/github-webhook → @gwi/core
 
 **These tools are non-negotiable for internal development work:**
 
-- **AgentFS**: All agent state and audit trails go here. Initialize with `npm run agentfs:init`.
-- **Beads**: All task tracking (no markdown TODOs). Use `bd create`, `bd close`, `bd ready`.
+- **AgentFS**: All agent state and artifacts. Uses FUSE mount on Linux.
+- **Beads**: All task tracking. **No markdown TODOs**—use Beads; reference bead IDs in PRs/commits.
 - **Reference**: See `bobs-brain` repo for canonical Agent Engine deployment + ARV + drift control.
 
+#### Session Boot: AgentFS FUSE (Linux)
+
+```bash
+npm run agentfs:install   # Install AgentFS CLI
+npm run agentfs:init      # Create .agentfs/gwi.db
+npm run agentfs:mount     # Mount at ./agents/gwi
+
+# Start Claude Code from inside the mount
+cd agents/gwi
+claude
+```
+
 Verify setup: `npm run tools:verify`
+
+#### AgentFS Commands
+
+```bash
+npm run agentfs:install   # Install CLI
+npm run agentfs:init      # Initialize database
+npm run agentfs:mount     # Mount FUSE filesystem
+npm run agentfs:umount    # Unmount
+npm run agentfs:inspect   # Show DB contents
+```
 
 ---
 

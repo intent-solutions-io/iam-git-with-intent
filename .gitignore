@@ -43,11 +43,17 @@ Thumbs.db
 .gwi/
 .engine/
 
-# AgentFS databases (local state, not committed)
-.agentfs/*.db
+# AgentFS (local state and mount points)
+.agentfs/
+agents/
 
-# Beads local cache (source of truth is .beads/issues.jsonl which IS committed)
+# Beads local-only files (issues.jsonl IS committed)
 .beads/*.db
+.beads/*.db-*
+.beads/bd.sock
+.beads/bd.pipe
+.beads/.exclusive-lock
+.git/beads-worktrees/
 
 # Test artifacts
 __snapshots__/
