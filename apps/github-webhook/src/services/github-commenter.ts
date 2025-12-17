@@ -1,8 +1,17 @@
 /**
  * GitHub Commenter Service
  *
- * Phase 11: Posts 5W comments (Who, What, When, Where, Why) back to GitHub.
+ * Phase 11: Posts Intent Receipt comments back to GitHub.
  * Used for run status updates: started, awaiting approval, applied, failed.
+ *
+ * Intent Receipt format:
+ * - Intent: What action was performed
+ * - Change Summary: Brief description of changes
+ * - Actor: Who/what triggered the action
+ * - When: Timestamp
+ * - Scope: Resources affected
+ * - Policy/Approval: Policy status
+ * - Evidence: Supporting context
  *
  * @module @gwi/github-webhook/services
  */
@@ -10,6 +19,22 @@
 import { Octokit } from '@octokit/rest';
 import { createAppAuth } from '@octokit/auth-app';
 
+/**
+ * Intent Receipt for GitHub comments
+ */
+export interface IntentReceiptComment {
+  intent: string;
+  changeSummary: string;
+  actor: string;
+  when: string;
+  scope: string;
+  policyApproval: string;
+  evidence: string;
+}
+
+/**
+ * @deprecated Use IntentReceiptComment instead
+ */
 export interface Comment5W {
   who: string;
   what: string;
@@ -102,7 +127,7 @@ export class GitHubCommenter {
   }
 
   /**
-   * Format a 5W comment for GitHub
+   * Format an Intent Receipt comment for GitHub
    */
   private formatComment(
     commentType: CommentType,
@@ -110,10 +135,10 @@ export class GitHubCommenter {
     additionalContext?: string
   ): string {
     const titles: Record<CommentType, string> = {
-      run_started: 'GWI Run Started',
-      awaiting_approval: 'GWI Awaiting Approval',
-      changes_applied: 'GWI Changes Applied',
-      run_failed: 'GWI Run Failed',
+      run_started: 'Intent Receipt: Run Started',
+      awaiting_approval: 'Intent Receipt: Awaiting Approval',
+      changes_applied: 'Intent Receipt: Changes Applied',
+      run_failed: 'Intent Receipt: Run Failed',
     };
 
     const emojis: Record<CommentType, string> = {
@@ -125,14 +150,14 @@ export class GitHubCommenter {
 
     let body = `## ${emojis[commentType]} ${titles[commentType]}\n\n`;
 
-    // 5W section
-    body += `| | |\n`;
+    // Intent Receipt section (backward-compatible with 5W data)
+    body += `| Field | Value |\n`;
     body += `|---|---|\n`;
-    body += `| **Who** | ${details.who} |\n`;
-    body += `| **What** | ${details.what} |\n`;
+    body += `| **Intent** | ${details.what} |\n`;
+    body += `| **Actor** | ${details.who} |\n`;
     body += `| **When** | ${details.when} |\n`;
-    body += `| **Where** | ${details.where} |\n`;
-    body += `| **Why** | ${details.why} |\n`;
+    body += `| **Scope** | ${details.where} |\n`;
+    body += `| **Evidence** | ${details.why} |\n`;
 
     // Additional context if provided
     if (additionalContext) {
@@ -147,7 +172,7 @@ export class GitHubCommenter {
   }
 
   /**
-   * Create 5W details for run started
+   * Create Intent Receipt for run started
    */
   static runStarted(
     runId: string,
@@ -165,7 +190,7 @@ export class GitHubCommenter {
   }
 
   /**
-   * Create 5W details for awaiting approval
+   * Create Intent Receipt for awaiting approval
    */
   static awaitingApproval(
     runId: string,
@@ -182,7 +207,7 @@ export class GitHubCommenter {
   }
 
   /**
-   * Create 5W details for changes applied
+   * Create Intent Receipt for changes applied
    */
   static changesApplied(
     runId: string,
@@ -199,7 +224,7 @@ export class GitHubCommenter {
   }
 
   /**
-   * Create 5W details for run failed
+   * Create Intent Receipt for run failed
    */
   static runFailed(
     runId: string,

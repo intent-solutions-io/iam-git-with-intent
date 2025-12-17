@@ -437,7 +437,13 @@ export interface AuditEvent {
   timestamp: Date;
   actor?: string;            // userId or 'system' or 'webhook'
   details: Record<string, unknown>;
-  /** 5W fields for GitHub comments */
+  /** Intent Receipt fields for audit trail and GitHub comments */
+  intent?: string;
+  changeSummary?: string;
+  scope?: string;
+  policyApproval?: string;
+  evidenceText?: string;
+  /** @deprecated Legacy 5W fields - use Intent Receipt fields */
   who?: string;
   what?: string;
   when?: string;

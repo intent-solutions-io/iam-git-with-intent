@@ -1,15 +1,16 @@
 /**
- * Comment Formatter - Standard "Why/What/Who/When/Where" Template
+ * Comment Formatter - Intent Receipt Template
  *
  * Phase 2: Provides consistent formatting for GitHub comments and check runs.
  *
- * All GWI-generated comments follow the 5W structure:
- * - Why: Rationale for the action
- * - What: Summary of changes or findings
- * - Who: Actor (bot identity + triggering user)
+ * All GWI-generated comments follow the Intent Receipt structure:
+ * - Intent: What action was performed
+ * - Change Summary: Summary of changes or findings
+ * - Actor: Bot identity + triggering user
  * - When: Timestamp + run ID
- * - Where: Files/targets affected
- * - Evidence: Test results, artifact links
+ * - Scope: Files/targets affected
+ * - Policy/Approval: Policy status
+ * - Evidence: Test results, artifact links, reasoning
  *
  * @module @gwi/integrations/github/comment-formatter
  */
@@ -21,7 +22,7 @@ import { z } from 'zod';
 // =============================================================================
 
 /**
- * Comment metadata for 5W format
+ * Comment metadata for Intent Receipt format
  */
 export const CommentMetadata = z.object({
   // Why
@@ -99,7 +100,7 @@ export type CheckRunSummary = z.infer<typeof CheckRunSummary>;
 // =============================================================================
 
 /**
- * Format a comment using the 5W template
+ * Format a comment using the Intent Receipt template
  */
 export function formatComment(metadata: CommentMetadata): string {
   const lines: string[] = [];

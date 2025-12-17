@@ -1,7 +1,7 @@
 /**
  * Comment Formatter Tests
  *
- * Tests for the 5W comment formatting standard.
+ * Tests for the Intent Receipt comment formatting standard.
  */
 
 import { describe, it, expect } from 'vitest';

@@ -28,14 +28,43 @@ export type NotificationEvent =
   | 'run_failed';
 
 /**
- * 5W evidence for notifications
+ * Intent Receipt - Standardized audit evidence for all GWI actions
+ *
+ * Every action in GWI produces an Intent Receipt with these fields:
+ * - Intent: What action was requested/performed
+ * - Change Summary: Brief description of changes made
+ * - Actor: Who/what triggered the action
+ * - When: ISO timestamp
+ * - Scope/Targets: Resources affected (repo, PR, files)
+ * - Policy/Approval: Policy rules applied and approval status
+ * - Evidence: Supporting context and reasoning
+ */
+export interface IntentReceipt {
+  /** What action was requested/performed */
+  intent: string;
+  /** Brief description of changes made */
+  changeSummary: string;
+  /** Who/what triggered the action (user ID, scheduler, webhook) */
+  actor: string;
+  /** ISO timestamp of when action occurred */
+  when: string;
+  /** Resources affected (repo, PR, files, etc.) */
+  scope: string;
+  /** Policy rules applied and approval status */
+  policyApproval: string;
+  /** Supporting context, reasoning, and linked artifacts */
+  evidence: string;
+}
+
+/**
+ * @deprecated Use IntentReceipt instead. Kept for backward compatibility.
  */
 export interface FiveWEvidence {
-  who: string;      // Who triggered/performed the action
-  what: string;     // What action was taken
-  when: string;     // ISO timestamp
-  where: string;    // Resource location (repo, PR, etc.)
-  why: string;      // Reason/trigger for the action
+  who: string;
+  what: string;
+  when: string;
+  where: string;
+  why: string;
 }
 
 /**
@@ -48,7 +77,10 @@ export interface NotificationPayload {
   instanceId?: string;
   templateRef?: string;
   status: string;
-  evidence: FiveWEvidence;
+  /** Intent Receipt with standardized audit evidence (preferred) */
+  intentReceipt?: IntentReceipt;
+  /** @deprecated Use intentReceipt instead - kept for backward compatibility */
+  evidence?: FiveWEvidence;
   links: {
     runUrl?: string;
     prUrl?: string;
@@ -100,6 +132,65 @@ export interface NotificationConnector {
    * Validate configuration
    */
   validateConfig(config: NotificationChannelConfig): { valid: boolean; errors: string[] };
+}
+
+// =============================================================================
+// Intent Receipt Helpers
+// =============================================================================
+
+/**
+ * Get Intent Receipt from payload, converting from legacy FiveWEvidence if needed
+ */
+export function getIntentReceipt(payload: NotificationPayload): IntentReceipt {
+  if (payload.intentReceipt) {
+    return payload.intentReceipt;
+  }
+
+  // Convert from legacy FiveWEvidence
+  if (payload.evidence) {
+    return {
+      intent: payload.evidence.what,
+      changeSummary: payload.evidence.what,
+      actor: payload.evidence.who,
+      when: payload.evidence.when,
+      scope: payload.evidence.where,
+      policyApproval: 'N/A (legacy format)',
+      evidence: payload.evidence.why,
+    };
+  }
+
+  // Fallback
+  return {
+    intent: payload.event,
+    changeSummary: `Run ${payload.runId} - ${payload.status}`,
+    actor: 'unknown',
+    when: payload.timestamp.toISOString(),
+    scope: payload.instanceId || payload.runId,
+    policyApproval: 'N/A',
+    evidence: '',
+  };
+}
+
+/**
+ * Create an Intent Receipt for a run action
+ */
+export function createIntentReceipt(options: {
+  intent: string;
+  changeSummary: string;
+  actor: string;
+  scope: string;
+  policyApproval?: string;
+  evidence?: string;
+}): IntentReceipt {
+  return {
+    intent: options.intent,
+    changeSummary: options.changeSummary,
+    actor: options.actor,
+    when: new Date().toISOString(),
+    scope: options.scope,
+    policyApproval: options.policyApproval || 'Pending',
+    evidence: options.evidence || '',
+  };
 }
 
 // =============================================================================
@@ -236,6 +327,9 @@ export class SlackNotificationConnector implements NotificationConnector {
       const color = this.getEventColor(payload.event);
       const icon = this.getEventIcon(payload.event);
 
+      // Get Intent Receipt (handles both new and legacy formats)
+      const receipt = getIntentReceipt(payload);
+
       const slackPayload = {
         channel,
         attachments: [
@@ -246,24 +340,38 @@ export class SlackNotificationConnector implements NotificationConnector {
                 type: 'header',
                 text: {
                   type: 'plain_text',
-                  text: `${icon} ${this.getEventTitle(payload.event)}`,
+                  text: `${icon} Intent Receipt: ${this.getEventTitle(payload.event)}`,
                   emoji: true,
                 },
               },
               {
                 type: 'section',
                 fields: [
-                  { type: 'mrkdwn', text: `*Who:*\n${payload.evidence.who}` },
-                  { type: 'mrkdwn', text: `*What:*\n${payload.evidence.what}` },
-                  { type: 'mrkdwn', text: `*When:*\n${payload.evidence.when}` },
-                  { type: 'mrkdwn', text: `*Where:*\n${payload.evidence.where}` },
+                  { type: 'mrkdwn', text: `*Intent:*\n${receipt.intent}` },
+                  { type: 'mrkdwn', text: `*Actor:*\n${receipt.actor}` },
+                  { type: 'mrkdwn', text: `*When:*\n${receipt.when}` },
+                  { type: 'mrkdwn', text: `*Scope:*\n${receipt.scope}` },
                 ],
               },
               {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `*Why:* ${payload.evidence.why}`,
+                  text: `*Change Summary:* ${receipt.changeSummary}`,
+                },
+              },
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Policy/Approval:* ${receipt.policyApproval}`,
+                },
+              },
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Evidence:* ${receipt.evidence}`,
                 },
               },
               {

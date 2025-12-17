@@ -267,7 +267,7 @@ export class TenantLinker {
   /**
    * Create a run for a webhook event
    *
-   * Phase 11: Also posts 5W comment to GitHub and creates audit event.
+   * Phase 11: Also posts Intent Receipt comment to GitHub and creates audit event.
    */
   async createRun(
     tenantContext: TenantContext,
@@ -351,11 +351,11 @@ export class TenantLinker {
       console.error('Failed to create audit event:', err);
     }
 
-    // Phase 11: Post 5W comment to GitHub (best effort)
+    // Phase 11: Post Intent Receipt comment to GitHub (best effort)
     if (webhookContext.repository) {
       try {
         const commenter = getGitHubCommenter();
-        const fiveW = GitHubCommenter.runStarted(
+        const intentReceipt = GitHubCommenter.runStarted(
           created.id,
           runType,
           webhookContext.sender?.login || 'webhook',
@@ -368,7 +368,7 @@ export class TenantLinker {
           webhookContext.repository.name,
           prInfo.number,
           'run_started',
-          fiveW,
+          intentReceipt,
           `Run ID: \`${created.id}\`\nView status in the [GWI Dashboard](${process.env.WEB_APP_URL || 'https://gwi.dev'}/runs/${created.id})`
         );
       } catch (err) {

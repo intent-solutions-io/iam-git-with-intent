@@ -4,9 +4,13 @@
 |-------|-------|
 | Document ID | 084-AA-AACR-phase-13-workflow-catalog |
 | Created | 2025-12-17 01:45 CST |
+| Updated | 2025-12-17 01:57 CST |
 | Author | Claude Code (foreman) |
 | Status | COMPLETE |
-| Phase | 13 |
+| Phase | 13 (+ 13.1 cleanup patch) |
+| Beads | Epic: `git-with-intent-yqe`, Tasks: `.1`, `.2`, `.3` |
+| AgentFS | Mount: `gwi`, DB: `.agentfs/gwi.db` |
+| Commit | `74b7dc2` (Phase 13), `0e940ae` (13.1 cleanup) |
 
 ---
 
@@ -16,7 +20,7 @@ Phase 13 implements the **Workflow Catalog** system for Git With Intent, enablin
 - Browse a catalog of workflow templates
 - Create configured instances of templates
 - Run workflows on-demand or via cron schedules
-- Receive notifications (webhook, Slack, email) with 5W evidence
+- Receive notifications (webhook, Slack, email) with Intent Receipt audit trail
 
 All workflows are tenant-scoped, policy-checked, and auditable.
 
@@ -184,14 +188,16 @@ Instance and schedule stores use in-memory implementation. This simplifies devel
 
 Webhooks are signed using HMAC-SHA256 with tenant's webhook secret. Signature is in `X-GWI-Signature` header for verification.
 
-### 4.3 5W Evidence Model
+### 4.3 Intent Receipt Model
 
-Every notification includes:
-- **Who**: User ID or "scheduler" or "webhook"
-- **What**: Action description
+Every notification includes a standardized Intent Receipt:
+- **Intent**: What action was requested/performed
+- **Change Summary**: Brief description of changes made
+- **Actor**: User ID, "scheduler", or "webhook"
 - **When**: ISO timestamp
-- **Where**: Resource location (repo, PR, instance)
-- **Why**: Trigger reason
+- **Scope**: Resources affected (repo, PR, instance)
+- **Policy/Approval**: Policy rules applied and approval status
+- **Evidence**: Supporting context and reasoning
 
 ### 4.4 Rate Limiting
 
@@ -252,11 +258,16 @@ Notifications are rate-limited per tenant:
 
 ## 9. Artifacts
 
-- Commit: `feat: phase 13 workflow templates scheduler and notifications`
-- Documents:
-  - `docs/phase-13-adr.md` (pending)
-  - `docs/phase-13-aar.md` (this document)
+- **Commit (Phase 13)**: `74b7dc2` - `feat: phase 13 workflow templates scheduler and notifications`
+- **Commit (13.1 cleanup)**: pending - `docs: phase 13 filing + intent receipt standardization`
+- **Documents**:
+  - `000-docs/084-AA-AACR-phase-13-workflow-catalog.md` (this document)
+- **Beads**:
+  - Epic: `git-with-intent-yqe` - Phase 13.1 cleanup
+  - Task `.1`: Move docs into 000-docs flat
+  - Task `.2`: Rename 5W to Intent Receipt everywhere
+  - Task `.3`: AAR metadata backfill
 
 ---
 
-*Phase 13 complete. Workflow Catalog operational.*
+*Phase 13 + 13.1 cleanup complete. Workflow Catalog operational with Intent Receipt standardization.*
