@@ -53,6 +53,11 @@ import {
   configResetCommand,
   configListCommand,
 } from './commands/config.js';
+import {
+  runStatusCommand,
+  runListCommand,
+  runApproveCommand,
+} from './commands/run.js';
 
 const program = new Command();
 
@@ -351,6 +356,57 @@ configCmd
   });
 
 // =============================================================================
+// Run Commands
+// =============================================================================
+
+const runCmd = program
+  .command('run')
+  .description('Manage run artifacts and approvals');
+
+runCmd
+  .command('status <run-id>')
+  .description('Show run status and details')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (runId, options) => {
+    try {
+      await runStatusCommand(runId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+runCmd
+  .command('list')
+  .description('List recent runs')
+  .option('--json', 'Output as JSON')
+  .option('-l, --limit <n>', 'Limit number of runs', parseInt)
+  .action(async (options) => {
+    try {
+      await runListCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+runCmd
+  .command('approve <run-id>')
+  .description('Approve run for commit/push operations')
+  .option('--scope <scopes...>', 'Approval scope (commit, push, open_pr, merge)')
+  .option('-m, --comment <text>', 'Approval comment')
+  .option('--json', 'Output as JSON')
+  .action(async (runId, options) => {
+    try {
+      await runApproveCommand(runId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
 // Utility Commands
 // =============================================================================
 
@@ -447,6 +503,11 @@ Configuration:
   gwi config get <key>          Get a config value
   gwi config list               List all keys
   gwi config reset              Reset to defaults
+
+Run Management:
+  gwi run list                  List recent runs
+  gwi run status <run-id>       Show run status and details
+  gwi run approve <run-id>      Approve run for commit/push
 
 Environment:
   GWI_STORAGE    Storage backend (sqlite, turso, postgres, firestore, memory)
