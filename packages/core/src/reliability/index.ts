@@ -122,6 +122,7 @@ export {
   CircuitBreaker,
   getCircuitBreaker,
   resetAllCircuitBreakers,
+  getAllCircuitBreakerStats, // Phase 30.1: For metrics export
 
   // Combined
   ResilientExecutor,

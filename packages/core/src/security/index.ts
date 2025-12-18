@@ -1337,3 +1337,78 @@ export function createGitHubSignatureHeader(
   const signature = createHmacSignature(payload, secret, 'sha256');
   return `sha256=${signature}`;
 }
+
+// =============================================================================
+// RBAC Enforcement (Phase 24)
+// =============================================================================
+
+export {
+  // Types
+  type RBACRole,
+  type RBACAction,
+  type RBACContext,
+  type RBACCheckResult,
+  type RBACAuditEventType,
+  type RBACAuditEventData,
+
+  // Role hierarchy
+  RBAC_ROLE_HIERARCHY,
+  RBAC_PERMISSIONS,
+
+  // Functions
+  hasMinimumRBACRole,
+  canPerformRBAC,
+  requireRole,
+  requirePermission,
+  requireTenant,
+  requireTenantPermission,
+
+  // Middleware
+  expressRequireRole,
+  expressRequirePermission,
+  expressRequireAuth,
+
+  // High-risk actions
+  HIGH_RISK_ACTIONS,
+  isHighRiskAction,
+  enforceHighRiskAction,
+} from './rbac.js';
+
+// =============================================================================
+// Security Audit (Phase 24)
+// =============================================================================
+
+export * from './audit/index.js';
+
+// =============================================================================
+// Secrets Posture (Phase 24)
+// =============================================================================
+
+export {
+  // Patterns
+  SECRET_PATTERNS,
+  SECRET_KEY_PATTERNS,
+  SENSITIVE_ENV_VARS,
+
+  // Types
+  type SecretScanResult,
+  type SecretFinding,
+
+  // Scanning
+  scanForSecrets,
+  scanObjectForSecrets,
+
+  // Redaction
+  redactSecret,
+  redactObjectSecrets,
+  redactStringSecrets,
+
+  // Guardrails
+  SecretLeakageError,
+  assertNoSecrets,
+  withRedactedSecrets,
+
+  // Safe utilities
+  safeStringify,
+  getSafeEnvVars,
+} from './secrets.js';

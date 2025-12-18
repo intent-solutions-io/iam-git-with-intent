@@ -695,3 +695,28 @@ export function getCircuitBreaker(
 export function resetAllCircuitBreakers(): void {
   circuitBreakers.clear();
 }
+
+/**
+ * Get all registered circuit breakers and their stats
+ *
+ * Phase 30.1: For metrics export
+ */
+export function getAllCircuitBreakerStats(): Map<string, {
+  state: CircuitState;
+  stateNumeric: number; // 0=closed, 1=open, 2=half-open
+  failures: number;
+  successCount: number;
+  lastFailureTime: number;
+}> {
+  const stats = new Map();
+  for (const [name, breaker] of circuitBreakers) {
+    const breakerStats = breaker.getStats();
+    stats.set(name, {
+      ...breakerStats,
+      stateNumeric:
+        breakerStats.state === 'closed' ? 0 :
+        breakerStats.state === 'open' ? 1 : 2,
+    });
+  }
+  return stats;
+}

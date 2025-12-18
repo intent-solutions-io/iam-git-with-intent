@@ -107,3 +107,6 @@ export * from './metering/index.js';
 
 // Marketplace exports (Phase 29: Connector Marketplace)
 export * from './marketplace/index.js';
+
+// Identity exports (Phase 31: Enterprise SSO & SCIM)
+export * from './identity/index.js';

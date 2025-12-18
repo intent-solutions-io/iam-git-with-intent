@@ -424,24 +424,73 @@ async function tryLoadIoredis(): Promise<{ default: unknown } | null> {
 }
 
 /**
- * Create a Redis rate limit store if REDIS_URL is configured,
- * otherwise fall back to in-memory store.
+ * Options for createRateLimitStore factory
+ */
+export interface CreateRateLimitStoreOptions {
+  /** Firestore client for fallback (optional) */
+  firestore?: unknown;
+  /** Custom fallback store */
+  fallbackStore?: RateLimitStore;
+  /** Disable Firestore fallback even if available */
+  disableFirestore?: boolean;
+}
+
+/**
+ * Create a rate limit store with automatic fallback chain.
+ *
+ * Fallback priority:
+ * 1. Redis (if REDIS_URL configured and ioredis available)
+ * 2. Firestore (if firestore client provided)
+ * 3. In-memory (always available)
  *
  * Note: Requires ioredis package to be installed for Redis support.
- * If ioredis is not available, falls back to in-memory store.
+ * If ioredis is not available, falls back to next option.
  *
- * @param fallbackStore - Store to use when Redis unavailable
- * @returns Rate limit store (Redis or in-memory)
+ * @param options - Configuration options
+ * @returns Rate limit store (Redis, Firestore, or in-memory)
  */
 export async function createRateLimitStore(
-  fallbackStore?: RateLimitStore
+  options?: CreateRateLimitStoreOptions | RateLimitStore
 ): Promise<RateLimitStore> {
+  // Handle legacy signature where first arg was fallbackStore
+  const opts: CreateRateLimitStoreOptions =
+    options && 'increment' in options
+      ? { fallbackStore: options as RateLimitStore }
+      : (options as CreateRateLimitStoreOptions) ?? {};
+
   const redisUrl = process.env.REDIS_URL;
+  const { InMemoryRateLimitStore } = await import('./index.js');
+
+  // Create the base in-memory store
+  const memoryStore = opts.fallbackStore ?? new InMemoryRateLimitStore();
+
+  // Try to create Firestore fallback if available
+  let firestoreFallback: RateLimitStore | undefined;
+  if (opts.firestore && !opts.disableFirestore) {
+    try {
+      const { FirestoreRateLimitStore } = await import('./firestore-store.js');
+      firestoreFallback = new FirestoreRateLimitStore({
+        firestore: opts.firestore as import('./firestore-store.js').FirestoreClientLike,
+        fallbackStore: memoryStore,
+      });
+      logger.info('Firestore rate limit store available as fallback');
+    } catch (error) {
+      logger.warn('Failed to initialize Firestore rate limit store', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // The fallback chain: Firestore → In-memory
+  const fallbackStore = firestoreFallback ?? memoryStore;
 
   if (!redisUrl) {
+    if (firestoreFallback) {
+      logger.info('REDIS_URL not configured, using Firestore rate limiting');
+      return firestoreFallback;
+    }
     logger.info('REDIS_URL not configured, using in-memory rate limiting');
-    const { InMemoryRateLimitStore } = await import('./index.js');
-    return fallbackStore ?? new InMemoryRateLimitStore();
+    return memoryStore;
   }
 
   try {
@@ -449,9 +498,8 @@ export async function createRateLimitStore(
     const ioredis = await tryLoadIoredis();
 
     if (!ioredis) {
-      logger.warn('ioredis not installed, using in-memory rate limiting');
-      const { InMemoryRateLimitStore } = await import('./index.js');
-      return fallbackStore ?? new InMemoryRateLimitStore();
+      logger.warn('ioredis not installed, using fallback rate limiting');
+      return fallbackStore;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -485,22 +533,19 @@ export async function createRateLimitStore(
     logger.info('Redis rate limit store initialized', {
       host: client.options?.host,
       port: client.options?.port,
+      fallback: firestoreFallback ? 'firestore' : 'memory',
     });
-
-    // Create in-memory fallback if not provided
-    const { InMemoryRateLimitStore } = await import('./index.js');
-    const memoryFallback = fallbackStore ?? new InMemoryRateLimitStore();
 
     return new RedisRateLimitStore({
       client,
-      fallbackStore: memoryFallback,
+      fallbackStore,
     });
   } catch (error) {
-    logger.warn('Failed to connect to Redis, using in-memory rate limiting', {
+    logger.warn('Failed to connect to Redis, using fallback rate limiting', {
       error: error instanceof Error ? error.message : String(error),
+      fallback: firestoreFallback ? 'firestore' : 'memory',
     });
 
-    const { InMemoryRateLimitStore } = await import('./index.js');
-    return fallbackStore ?? new InMemoryRateLimitStore();
+    return fallbackStore;
   }
 }

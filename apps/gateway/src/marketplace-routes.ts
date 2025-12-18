@@ -17,13 +17,21 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { Storage } from '@google-cloud/storage';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import yaml from 'js-yaml';
 import type {
   PublishedConnector,
   MarketplaceSearchOptions,
   ConnectorCapability,
 } from '@gwi/core';
-import { getMarketplaceService, PublishRequestSchema } from '@gwi/core';
+import { getMarketplaceService, PublishRequestSchema, getAllCircuitBreakerStats } from '@gwi/core';
 import { z } from 'zod';
+
+// ESM __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const router = Router();
 
@@ -696,6 +704,160 @@ router.post('/v1/connectors/:id/:version/download', async (req, res) => {
     });
   }
 });
+
+// =============================================================================
+// OpenAPI Specification Endpoint
+// =============================================================================
+
+// Load OpenAPI spec at startup
+let openApiSpec: string | null = null;
+let openApiJson: object | null = null;
+
+function loadOpenApiSpec(): void {
+  try {
+    const specPath = join(__dirname, '..', 'openapi.yaml');
+    openApiSpec = readFileSync(specPath, 'utf-8');
+    openApiJson = yaml.load(openApiSpec) as object;
+    console.log('OpenAPI spec loaded from', specPath);
+  } catch (error) {
+    console.warn('Could not load OpenAPI spec:', error instanceof Error ? error.message : error);
+  }
+}
+
+// Load spec on module initialization
+loadOpenApiSpec();
+
+/**
+ * GET /v1/openapi - Get OpenAPI specification
+ *
+ * Returns the OpenAPI specification for the marketplace API.
+ * Use Accept header to request YAML or JSON format.
+ */
+router.get('/v1/openapi', (_req, res) => {
+  if (!openApiSpec || !openApiJson) {
+    return res.status(503).json({
+      error: 'OpenAPI spec not available',
+      message: 'The OpenAPI specification could not be loaded',
+    });
+  }
+
+  // Check Accept header for format preference
+  const acceptHeader = _req.headers.accept || 'application/yaml';
+
+  if (acceptHeader.includes('application/json')) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.json(openApiJson);
+  }
+
+  // Default to YAML
+  res.setHeader('Content-Type', 'application/yaml');
+  return res.send(openApiSpec);
+});
+
+// =============================================================================
+// Metrics Endpoint (Phase 30.1)
+// =============================================================================
+
+/**
+ * GET /v1/ops/metrics - Prometheus metrics endpoint
+ *
+ * Returns operational metrics in Prometheus text format.
+ * Protected by GWI_METRICS_ENABLED environment variable.
+ *
+ * Metrics:
+ * - gwi_ratelimit_allowed_total: Total allowed requests
+ * - gwi_ratelimit_rejected_total: Total rejected (rate limited) requests
+ * - gwi_circuit_breaker_state: Circuit breaker state (0=closed, 1=open, 2=half-open)
+ * - gwi_circuit_breaker_failures: Current failure count
+ */
+router.get('/v1/ops/metrics', (_req, res) => {
+  // Check if metrics are enabled
+  const metricsEnabled = process.env.GWI_METRICS_ENABLED === 'true';
+  if (!metricsEnabled) {
+    return res.status(403).json({
+      error: 'Metrics disabled',
+      message: 'Set GWI_METRICS_ENABLED=true to enable metrics endpoint',
+    });
+  }
+
+  const lines: string[] = [];
+
+  // =========================================================================
+  // Rate Limit Metrics
+  // =========================================================================
+
+  lines.push('# HELP gwi_ratelimit_allowed_total Total allowed requests');
+  lines.push('# TYPE gwi_ratelimit_allowed_total counter');
+  lines.push(`gwi_ratelimit_allowed_total{scope="marketplace:search"} ${rateLimitMetrics.get('marketplace:search:allowed') ?? 0}`);
+  lines.push(`gwi_ratelimit_allowed_total{scope="marketplace:publish"} ${rateLimitMetrics.get('marketplace:publish:allowed') ?? 0}`);
+  lines.push(`gwi_ratelimit_allowed_total{scope="marketplace:download"} ${rateLimitMetrics.get('marketplace:download:allowed') ?? 0}`);
+
+  lines.push('');
+  lines.push('# HELP gwi_ratelimit_rejected_total Total rejected requests');
+  lines.push('# TYPE gwi_ratelimit_rejected_total counter');
+  lines.push(`gwi_ratelimit_rejected_total{scope="marketplace:search"} ${rateLimitMetrics.get('marketplace:search:rejected') ?? 0}`);
+  lines.push(`gwi_ratelimit_rejected_total{scope="marketplace:publish"} ${rateLimitMetrics.get('marketplace:publish:rejected') ?? 0}`);
+  lines.push(`gwi_ratelimit_rejected_total{scope="marketplace:download"} ${rateLimitMetrics.get('marketplace:download:rejected') ?? 0}`);
+
+  // =========================================================================
+  // Circuit Breaker Metrics
+  // =========================================================================
+
+  const circuitBreakerStats = getAllCircuitBreakerStats();
+
+  lines.push('');
+  lines.push('# HELP gwi_circuit_breaker_state Circuit breaker state (0=closed, 1=open, 2=half-open)');
+  lines.push('# TYPE gwi_circuit_breaker_state gauge');
+  for (const [name, stats] of circuitBreakerStats) {
+    lines.push(`gwi_circuit_breaker_state{name="${name}"} ${stats.stateNumeric}`);
+  }
+
+  lines.push('');
+  lines.push('# HELP gwi_circuit_breaker_failures Current failure count in window');
+  lines.push('# TYPE gwi_circuit_breaker_failures gauge');
+  for (const [name, stats] of circuitBreakerStats) {
+    lines.push(`gwi_circuit_breaker_failures{name="${name}"} ${stats.failures}`);
+  }
+
+  lines.push('');
+  lines.push('# HELP gwi_circuit_breaker_success_count Consecutive successes in half-open state');
+  lines.push('# TYPE gwi_circuit_breaker_success_count gauge');
+  for (const [name, stats] of circuitBreakerStats) {
+    lines.push(`gwi_circuit_breaker_success_count{name="${name}"} ${stats.successCount}`);
+  }
+
+  // =========================================================================
+  // Info metric
+  // =========================================================================
+
+  lines.push('');
+  lines.push('# HELP gwi_info Gateway info');
+  lines.push('# TYPE gwi_info gauge');
+  lines.push(`gwi_info{version="${process.env.APP_VERSION ?? '0.1.0'}",env="${process.env.DEPLOYMENT_ENV ?? 'dev'}"} 1`);
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(lines.join('\n') + '\n');
+});
+
+// Rate limit metrics tracking (in-memory counters)
+const rateLimitMetrics = new Map<string, number>();
+
+/**
+ * Increment rate limit metric counter
+ * @param scope - Rate limit scope (e.g., "marketplace:search")
+ * @param allowed - Whether the request was allowed
+ */
+export function recordRateLimitMetric(scope: string, allowed: boolean): void {
+  const key = `${scope}:${allowed ? 'allowed' : 'rejected'}`;
+  rateLimitMetrics.set(key, (rateLimitMetrics.get(key) ?? 0) + 1);
+}
+
+/**
+ * Reset all rate limit metrics (for testing)
+ */
+export function resetRateLimitMetrics(): void {
+  rateLimitMetrics.clear();
+}
 
 // =============================================================================
 // Helpers

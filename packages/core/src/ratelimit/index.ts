@@ -21,7 +21,16 @@ export {
   createRateLimitStore,
   type RedisClientLike,
   type RedisRateLimitStoreOptions,
+  type CreateRateLimitStoreOptions,
 } from './redis-store.js';
+
+// Re-export Firestore store (Phase 30.1)
+export {
+  FirestoreRateLimitStore,
+  createFirestoreRateLimitStore,
+  type FirestoreClientLike,
+  type FirestoreRateLimitStoreOptions,
+} from './firestore-store.js';
 
 // =============================================================================
 // Rate Limit Configuration

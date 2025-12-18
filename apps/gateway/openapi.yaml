@@ -1,0 +1,1574 @@
+openapi: 3.1.0
+info:
+  title: Git With Intent Marketplace API
+  description: |
+    Connector marketplace API for Git With Intent.
+
+    This API provides endpoints for:
+    - Searching and discovering connectors
+    - Downloading connector packages
+    - Publishing new connector versions
+    - Managing connector lifecycle (deprecation)
+
+    ## Authentication
+
+    Most read operations are public. Write operations require authentication via:
+    - `x-user-id` header: User identifier
+    - `x-api-key` header: API key for programmatic access
+
+    ## Rate Limiting
+
+    All endpoints are rate limited. See headers:
+    - `X-RateLimit-Limit`: Max requests per window
+    - `X-RateLimit-Remaining`: Remaining requests
+    - `X-RateLimit-Reset`: Unix timestamp when window resets
+
+  version: 1.0.0
+  contact:
+    name: Git With Intent Support
+    url: https://gitwithintent.com/support
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://gateway.gitwithintent.com
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Search
+    description: Connector discovery and search
+  - name: Connectors
+    description: Connector information and downloads
+  - name: Publishing
+    description: Connector publishing and lifecycle
+  - name: Operations
+    description: Operational endpoints
+  - name: SSO
+    description: Single Sign-On (OIDC and SAML)
+  - name: SCIM
+    description: SCIM 2.0 user and group provisioning
+
+paths:
+  /v1/search:
+    get:
+      operationId: searchConnectors
+      summary: Search connectors
+      description: Search for connectors by query, capabilities, or categories
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          description: Search query string
+          schema:
+            type: string
+        - name: capabilities
+          in: query
+          description: Filter by capabilities (comma-separated)
+          schema:
+            type: string
+            example: "auth,cloud"
+        - name: categories
+          in: query
+          description: Filter by categories (comma-separated)
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: sortBy
+          in: query
+          description: Sort field
+          schema:
+            type: string
+            enum: [downloads, updated, name]
+            default: downloads
+        - name: sortOrder
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors/{id}:
+    get:
+      operationId: getConnector
+      summary: Get connector info
+      description: Get detailed information about a connector including all versions
+      tags: [Connectors]
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+      responses:
+        '200':
+          description: Connector details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors/{id}/{version}:
+    get:
+      operationId: getVersion
+      summary: Get version metadata
+      description: Get metadata for a specific connector version
+      tags: [Connectors]
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: Version metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionDetails'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors/{id}/{version}/tarball:
+    get:
+      operationId: downloadTarball
+      summary: Download tarball
+      description: Download the gzipped tarball for a connector version
+      tags: [Connectors]
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: Connector tarball
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="my-connector-1.0.0.tar.gz"'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors/{id}/{version}/signature:
+    get:
+      operationId: downloadSignature
+      summary: Download signature
+      description: Download the cryptographic signature for a connector version
+      tags: [Connectors]
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: Signature file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignatureFile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors:
+    post:
+      operationId: publishMetadata
+      summary: Publish connector metadata
+      description: |
+        Publish connector metadata when tarball is already uploaded to GCS.
+        For CLI usage, prefer POST /v1/publish which handles tarball upload.
+      tags: [Publishing]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishMetadataRequest'
+      responses:
+        '201':
+          description: Published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/publish:
+    post:
+      operationId: publishFull
+      summary: Publish connector with tarball
+      description: |
+        Full publish endpoint that accepts tarball as base64 and handles
+        GCS upload server-side. This is the recommended endpoint for CLI usage.
+
+        Rate limited to 10 publishes per 15 minutes per publisher.
+        Maximum tarball size: 50MB.
+      tags: [Publishing]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublishFullRequest'
+      responses:
+        '201':
+          description: Published successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishFullResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: Tarball too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TarballTooLargeError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors/{id}/{version}/deprecate:
+    post:
+      operationId: deprecateVersion
+      summary: Deprecate a version
+      description: Mark a connector version as deprecated with a reason
+      tags: [Publishing]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+        - $ref: '#/components/parameters/Version'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  description: Reason for deprecation
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: Deprecated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  id:
+                    type: string
+                  version:
+                    type: string
+                  reason:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/connectors/{id}/{version}/download:
+    post:
+      operationId: trackDownload
+      summary: Track download
+      description: Explicitly track a download for metrics (optional, downloads are also tracked on tarball access)
+      tags: [Connectors]
+      parameters:
+        - $ref: '#/components/parameters/ConnectorId'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: Download tracked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  id:
+                    type: string
+                  version:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/openapi:
+    get:
+      operationId: getOpenApiSpec
+      summary: Get OpenAPI specification
+      description: Returns this OpenAPI specification
+      tags: [Operations]
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/yaml:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+
+  /v1/ops/metrics:
+    get:
+      operationId: getMetrics
+      summary: Get Prometheus metrics
+      description: |
+        Returns operational metrics in Prometheus text format.
+        Protected by GWI_METRICS_ENABLED environment variable.
+      tags: [Operations]
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP ratelimit_allowed_total Total allowed requests
+                  # TYPE ratelimit_allowed_total counter
+                  ratelimit_allowed_total{scope="search"} 1234
+        '403':
+          description: Metrics disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==========================================================================
+  # SSO Endpoints (Phase 31)
+  # ==========================================================================
+
+  /v1/sso/oidc/start:
+    post:
+      operationId: startOidcLogin
+      summary: Start OIDC login flow
+      description: |
+        Initiates OIDC authentication with PKCE. Returns authorization URL
+        for redirect. The state parameter is stored server-side.
+      tags: [SSO]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OidcStartRequest'
+      responses:
+        '200':
+          description: Authorization URL for redirect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OidcStartResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: IdP configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/sso/oidc/callback:
+    post:
+      operationId: handleOidcCallback
+      summary: Handle OIDC callback
+      description: |
+        Handles the OIDC authorization callback. Validates state, exchanges
+        code for tokens, validates ID token using JWKS, and returns session.
+      tags: [SSO]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OidcCallbackRequest'
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SsoAuthResponse'
+        '400':
+          description: Invalid state or code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/sso/saml/start:
+    post:
+      operationId: startSamlLogin
+      summary: Start SAML login flow
+      description: |
+        Initiates SAML SP-initiated SSO. Returns a URL with SAMLRequest
+        for redirect to the IdP.
+      tags: [SSO]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SamlStartRequest'
+      responses:
+        '200':
+          description: SAML request URL for redirect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SamlStartResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: IdP configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/sso/saml/acs:
+    post:
+      operationId: handleSamlAcs
+      summary: SAML Assertion Consumer Service
+      description: |
+        Handles SAML assertions from the IdP. Validates signature using
+        x509 certificate, extracts claims, and returns session.
+      tags: [SSO]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [SAMLResponse]
+              properties:
+                SAMLResponse:
+                  type: string
+                  description: Base64-encoded SAML response
+                RelayState:
+                  type: string
+                  description: RelayState from original request
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SsoAuthResponse'
+        '400':
+          description: Invalid SAML response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Assertion validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/sso/saml/metadata:
+    get:
+      operationId: getSamlSpMetadata
+      summary: Get SAML SP metadata
+      description: |
+        Returns SAML Service Provider metadata XML for IdP configuration.
+      tags: [SSO]
+      parameters:
+        - name: orgId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SP metadata XML
+          content:
+            application/xml:
+              schema:
+                type: string
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # ==========================================================================
+  # SCIM 2.0 Endpoints (Phase 31)
+  # ==========================================================================
+
+  /scim/v2/Users:
+    get:
+      operationId: listScimUsers
+      summary: List SCIM users
+      description: |
+        List users with optional filtering and pagination.
+        SCIM 2.0 compliant (RFC 7644).
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimFilter'
+        - $ref: '#/components/parameters/ScimStartIndex'
+        - $ref: '#/components/parameters/ScimCount'
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimListResponse'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createScimUser
+      summary: Create SCIM user
+      description: Create a new user via SCIM provisioning
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/ScimUser'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimUser'
+          headers:
+            Location:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ScimBadRequest'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '409':
+          description: User already exists
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /scim/v2/Users/{id}:
+    get:
+      operationId: getScimUser
+      summary: Get SCIM user
+      description: Get a user by ID
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimUser'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceScimUser
+      summary: Replace SCIM user
+      description: Replace all attributes of a user
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/ScimUser'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimUser'
+        '400':
+          $ref: '#/components/responses/ScimBadRequest'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: patchScimUser
+      summary: Patch SCIM user
+      description: Update specific attributes of a user using SCIM PATCH operations
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/ScimPatchRequest'
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimUser'
+        '400':
+          $ref: '#/components/responses/ScimBadRequest'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteScimUser
+      summary: Delete SCIM user
+      description: Delete a user
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      responses:
+        '204':
+          description: User deleted
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /scim/v2/Groups:
+    get:
+      operationId: listScimGroups
+      summary: List SCIM groups
+      description: List groups with optional filtering and pagination
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimFilter'
+        - $ref: '#/components/parameters/ScimStartIndex'
+        - $ref: '#/components/parameters/ScimCount'
+      responses:
+        '200':
+          description: List of groups
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimListResponse'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createScimGroup
+      summary: Create SCIM group
+      description: Create a new group
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/ScimGroup'
+      responses:
+        '201':
+          description: Group created
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimGroup'
+          headers:
+            Location:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ScimBadRequest'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /scim/v2/Groups/{id}:
+    get:
+      operationId: getScimGroup
+      summary: Get SCIM group
+      description: Get a group by ID
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      responses:
+        '200':
+          description: Group details
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimGroup'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceScimGroup
+      summary: Replace SCIM group
+      description: Replace all attributes of a group
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/ScimGroup'
+      responses:
+        '200':
+          description: Group updated
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimGroup'
+        '400':
+          $ref: '#/components/responses/ScimBadRequest'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: patchScimGroup
+      summary: Patch SCIM group
+      description: Update specific attributes of a group
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      requestBody:
+        required: true
+        content:
+          application/scim+json:
+            schema:
+              $ref: '#/components/schemas/ScimPatchRequest'
+      responses:
+        '200':
+          description: Group updated
+          content:
+            application/scim+json:
+              schema:
+                $ref: '#/components/schemas/ScimGroup'
+        '400':
+          $ref: '#/components/responses/ScimBadRequest'
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteScimGroup
+      summary: Delete SCIM group
+      description: Delete a group
+      tags: [SCIM]
+      security:
+        - ScimBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ScimResourceId'
+      responses:
+        '204':
+          description: Group deleted
+        '401':
+          $ref: '#/components/responses/ScimUnauthorized'
+        '404':
+          $ref: '#/components/responses/ScimNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    UserIdAuth:
+      type: apiKey
+      in: header
+      name: x-user-id
+      description: User identifier
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API key for programmatic access
+    ScimBearerAuth:
+      type: http
+      scheme: bearer
+      description: SCIM bearer token for provisioning
+
+  parameters:
+    ConnectorId:
+      name: id
+      in: path
+      required: true
+      description: Connector identifier
+      schema:
+        type: string
+        pattern: ^[a-z][a-z0-9-]*$
+        minLength: 1
+        maxLength: 64
+    Version:
+      name: version
+      in: path
+      required: true
+      description: Semantic version
+      schema:
+        type: string
+        pattern: ^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$
+        minLength: 1
+        maxLength: 32
+    ScimResourceId:
+      name: id
+      in: path
+      required: true
+      description: SCIM resource identifier
+      schema:
+        type: string
+    ScimFilter:
+      name: filter
+      in: query
+      description: SCIM filter expression
+      schema:
+        type: string
+    ScimStartIndex:
+      name: startIndex
+      in: query
+      description: 1-based index of first result
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    ScimCount:
+      name: count
+      in: query
+      description: Maximum number of results
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 100
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              message:
+                type: string
+
+    RateLimitError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            retryAfter:
+              type: integer
+              description: Seconds until rate limit resets
+
+    TarballTooLargeError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            maxSize:
+              type: integer
+              description: Maximum allowed size in bytes
+            actualSize:
+              type: integer
+              description: Actual size of tarball in bytes
+
+    SearchEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        latestVersion:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        downloads:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+
+    SearchResults:
+      type: object
+      properties:
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchEntry'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    ConnectorDetails:
+      type: object
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        author:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        latestVersion:
+          type: string
+        versions:
+          type: array
+          items:
+            type: string
+        totalDownloads:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    VersionDetails:
+      type: object
+      properties:
+        id:
+          type: string
+        version:
+          type: string
+        manifest:
+          type: object
+          description: Full connector manifest
+        tarballUrl:
+          type: string
+          format: uri
+        tarballChecksum:
+          type: string
+          description: SHA256 checksum of tarball
+        signatureUrl:
+          type: string
+          format: uri
+        publishedAt:
+          type: string
+          format: date-time
+        downloads:
+          type: integer
+
+    SignatureFile:
+      type: object
+      required: [version, keyId, algorithm, signature, checksum, signedAt]
+      properties:
+        version:
+          type: integer
+          description: Signature format version
+        keyId:
+          type: string
+          description: ID of the signing key
+        algorithm:
+          type: string
+          description: Signature algorithm (e.g., ed25519)
+        signature:
+          type: string
+          description: Base64-encoded signature
+        checksum:
+          type: string
+          description: SHA256 hex checksum of tarball
+          minLength: 64
+          maxLength: 64
+        signedAt:
+          type: string
+          format: date-time
+        payload:
+          type: string
+          description: Optional payload that was signed
+
+    ConnectorManifest:
+      type: object
+      required: [id, version, displayName, author, capabilities]
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9-]*$
+          minLength: 1
+          maxLength: 64
+        version:
+          type: string
+          pattern: ^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 1024
+        author:
+          type: string
+          minLength: 1
+          maxLength: 128
+        capabilities:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 20
+
+    PublishMetadataRequest:
+      type: object
+      required: [connectorId, version, manifest, signature, tarballChecksum]
+      properties:
+        connectorId:
+          type: string
+        version:
+          type: string
+        manifest:
+          $ref: '#/components/schemas/ConnectorManifest'
+        signature:
+          $ref: '#/components/schemas/SignatureFile'
+        tarballChecksum:
+          type: string
+        changelog:
+          type: string
+        releaseNotes:
+          type: string
+        prerelease:
+          type: boolean
+          default: false
+
+    PublishFullRequest:
+      type: object
+      required: [manifest, tarball, signature]
+      properties:
+        manifest:
+          $ref: '#/components/schemas/ConnectorManifest'
+        tarball:
+          type: string
+          description: Base64-encoded gzipped tarball
+          maxLength: 73400320  # 55MB base64 limit
+        signature:
+          $ref: '#/components/schemas/SignatureFile'
+
+    PublishResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        version:
+          type: object
+          description: Published version details
+
+    PublishFullResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        connectorId:
+          type: string
+        version:
+          type: string
+        checksum:
+          type: string
+        tarballUrl:
+          type: string
+          format: uri
+
+    # ==========================================================================
+    # SSO Schemas (Phase 31)
+    # ==========================================================================
+
+    OidcStartRequest:
+      type: object
+      required: [orgId, idpConfigId]
+      properties:
+        orgId:
+          type: string
+          description: Organization ID
+        idpConfigId:
+          type: string
+          description: IdP configuration ID
+        redirectUri:
+          type: string
+          format: uri
+          description: Override redirect URI (optional)
+
+    OidcStartResponse:
+      type: object
+      required: [authorizationUrl, state]
+      properties:
+        authorizationUrl:
+          type: string
+          format: uri
+          description: URL to redirect user to for authentication
+        state:
+          type: string
+          description: State parameter for CSRF protection
+
+    OidcCallbackRequest:
+      type: object
+      required: [code, state]
+      properties:
+        code:
+          type: string
+          description: Authorization code from IdP
+        state:
+          type: string
+          description: State parameter from start request
+
+    SamlStartRequest:
+      type: object
+      required: [orgId, idpConfigId]
+      properties:
+        orgId:
+          type: string
+          description: Organization ID
+        idpConfigId:
+          type: string
+          description: IdP configuration ID
+
+    SamlStartResponse:
+      type: object
+      required: [samlRequestUrl, relayState]
+      properties:
+        samlRequestUrl:
+          type: string
+          format: uri
+          description: URL with SAMLRequest to redirect to IdP
+        relayState:
+          type: string
+          description: RelayState for tracking request
+
+    SsoAuthResponse:
+      type: object
+      required: [success, userId, role]
+      properties:
+        success:
+          type: boolean
+        userId:
+          type: string
+          description: Internal user ID
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [OWNER, ADMIN, DEVELOPER, VIEWER]
+          description: Mapped internal role
+        accessToken:
+          type: string
+          description: Session access token
+        expiresAt:
+          type: string
+          format: date-time
+          description: Token expiration time
+
+    # ==========================================================================
+    # SCIM Schemas (Phase 31)
+    # ==========================================================================
+
+    ScimError:
+      type: object
+      required: [schemas, status, detail]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          example: ['urn:ietf:params:scim:api:messages:2.0:Error']
+        status:
+          type: string
+          description: HTTP status code as string
+        scimType:
+          type: string
+          description: SCIM error type
+          enum: [invalidValue, uniqueness, noTarget, invalidPath, invalidFilter, tooMany, mutability, sensitive, invalidSyntax, invalidVersion]
+        detail:
+          type: string
+          description: Human-readable error message
+
+    ScimMeta:
+      type: object
+      properties:
+        resourceType:
+          type: string
+          enum: [User, Group]
+        created:
+          type: string
+          format: date-time
+        lastModified:
+          type: string
+          format: date-time
+        location:
+          type: string
+          format: uri
+        version:
+          type: string
+
+    ScimName:
+      type: object
+      properties:
+        formatted:
+          type: string
+        familyName:
+          type: string
+        givenName:
+          type: string
+        middleName:
+          type: string
+
+    ScimEmail:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          format: email
+        type:
+          type: string
+          enum: [work, home, other]
+        primary:
+          type: boolean
+
+    ScimUser:
+      type: object
+      required: [schemas, userName]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          default: ['urn:ietf:params:scim:schemas:core:2.0:User']
+        id:
+          type: string
+          readOnly: true
+        externalId:
+          type: string
+          description: External ID from IdP
+        userName:
+          type: string
+          description: Unique username
+        name:
+          $ref: '#/components/schemas/ScimName'
+        displayName:
+          type: string
+        emails:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScimEmail'
+        active:
+          type: boolean
+          default: true
+        meta:
+          $ref: '#/components/schemas/ScimMeta'
+
+    ScimGroupMember:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: string
+          description: User ID
+        display:
+          type: string
+          description: Display name
+        $ref:
+          type: string
+          format: uri
+          description: URI reference to user
+
+    ScimGroup:
+      type: object
+      required: [schemas, displayName]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          default: ['urn:ietf:params:scim:schemas:core:2.0:Group']
+        id:
+          type: string
+          readOnly: true
+        externalId:
+          type: string
+          description: External ID from IdP
+        displayName:
+          type: string
+          description: Group name
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScimGroupMember'
+        meta:
+          $ref: '#/components/schemas/ScimMeta'
+
+    ScimListResponse:
+      type: object
+      required: [schemas, totalResults]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          default: ['urn:ietf:params:scim:api:messages:2.0:ListResponse']
+        totalResults:
+          type: integer
+          description: Total number of results
+        startIndex:
+          type: integer
+          description: 1-based index of first result
+        itemsPerPage:
+          type: integer
+          description: Number of results in this page
+        Resources:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/ScimUser'
+              - $ref: '#/components/schemas/ScimGroup'
+
+    ScimPatchOp:
+      type: object
+      required: [op]
+      properties:
+        op:
+          type: string
+          enum: [add, remove, replace]
+        path:
+          type: string
+          description: Attribute path
+        value:
+          description: Value to set (for add/replace)
+
+    ScimPatchRequest:
+      type: object
+      required: [schemas, Operations]
+      properties:
+        schemas:
+          type: array
+          items:
+            type: string
+          default: ['urn:ietf:params:scim:api:messages:2.0:PatchOp']
+        Operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScimPatchOp'
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Access denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitError'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ScimUnauthorized:
+      description: SCIM authentication failed
+      content:
+        application/scim+json:
+          schema:
+            $ref: '#/components/schemas/ScimError'
+    ScimBadRequest:
+      description: SCIM request validation failed
+      content:
+        application/scim+json:
+          schema:
+            $ref: '#/components/schemas/ScimError'
+    ScimNotFound:
+      description: SCIM resource not found
+      content:
+        application/scim+json:
+          schema:
+            $ref: '#/components/schemas/ScimError'
