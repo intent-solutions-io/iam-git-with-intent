@@ -566,6 +566,10 @@ async function handleIssueCommentEvent(
 
 /**
  * Handle issues events
+ *
+ * Phase 34: Enhanced autopilot support
+ * - Supports both 'gwi-auto-code' and 'gwi:autopilot' labels
+ * - Handles opened and labeled actions
  */
 async function handleIssueEvent(
   payload: Record<string, unknown>,
@@ -581,11 +585,16 @@ async function handleIssueEvent(
   const issue = payload.issue as Record<string, unknown>;
   const labels = (issue.labels as Array<Record<string, unknown>>) || [];
 
-  // Check for gwi-auto-code label
-  const hasAutoCodeLabel = labels.some(l => l.name === 'gwi-auto-code');
-  if (!hasAutoCodeLabel) {
-    return { status: 'skipped', skipped: true, reason: 'Missing gwi-auto-code label' };
+  // Phase 34: Support multiple trigger labels
+  const triggerLabels = ['gwi-auto-code', 'gwi:autopilot', 'gwi:auto'];
+  const hasAutopilotLabel = labels.some(l => triggerLabels.includes(l.name as string));
+  if (!hasAutopilotLabel) {
+    return { status: 'skipped', skipped: true, reason: 'Missing autopilot trigger label' };
   }
+
+  // Phase 34: Extract the specific label for workflow context
+  const matchedLabel = labels.find(l => triggerLabels.includes(l.name as string));
+  const triggerLabel = matchedLabel?.name as string;
 
   // Check tenant context
   if (!tenantCtx) {
@@ -622,8 +631,8 @@ async function handleIssueEvent(
     { number: issue.number as number, url: issue.html_url as string }
   );
 
-  // Trigger issue-to-code workflow
-  const workflowId = await triggerWorkflow('issue-to-code', {
+  // Phase 34: Trigger autopilot workflow with enhanced context
+  const workflowId = await triggerWorkflow('autopilot', {
     tenantId: tenantCtx.tenant.id,
     repoId: tenantCtx.repo?.id,
     runId: run.id,
@@ -633,8 +642,13 @@ async function handleIssueEvent(
       body: issue.body,
       url: issue.html_url,
       labels: labels.map(l => l.name),
+      author: (issue.user as Record<string, unknown>)?.login,
+      createdAt: issue.created_at,
     },
+    triggerLabel,
     delivery,
+    repoFullName: webhookCtx.repository?.fullName,
+    installationId: webhookCtx.installationId,
   });
 
   return {

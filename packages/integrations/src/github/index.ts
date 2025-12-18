@@ -451,6 +451,40 @@ export class GitHubClient {
       updatedAt: new Date(issue.updated_at),
     };
   }
+
+  /**
+   * Create a Pull Request
+   *
+   * Phase 34: Creates a new pull request on GitHub.
+   *
+   * @param options - PR creation options
+   * @returns Created PR details
+   */
+  async createPR(options: {
+    owner: string;
+    repo: string;
+    title: string;
+    body: string;
+    head: string;
+    base: string;
+    draft?: boolean;
+  }): Promise<{ number: number; url: string; sha: string }> {
+    const { data: pr } = await this.octokit.rest.pulls.create({
+      owner: options.owner,
+      repo: options.repo,
+      title: options.title,
+      body: options.body,
+      head: options.head,
+      base: options.base,
+      draft: options.draft ?? false,
+    });
+
+    return {
+      number: pr.number,
+      url: pr.html_url,
+      sha: pr.head.sha,
+    };
+  }
 }
 
 /**

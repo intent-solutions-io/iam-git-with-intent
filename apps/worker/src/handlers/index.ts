@@ -2,6 +2,7 @@
  * Worker Job Handlers
  *
  * Phase 17: Production workflow handlers with engine integration.
+ * Phase 35: Added autopilot handlers for Issue → PR workflow.
  *
  * These handlers bridge the gap between the job queue and the
  * workflow execution engine.
@@ -11,6 +12,7 @@
 
 import type { WorkerJob, JobContext, JobResult } from '../processor.js';
 import { createEngine, type Engine } from '@gwi/engine';
+import { autopilotHandlers } from './autopilot.js';
 import {
   getTenantStore,
   getLogger,
@@ -709,6 +711,8 @@ export const handlers: Record<string, (job: WorkerJob, context: JobContext) => P
   'signal:process': handleSignalProcess,
   'candidate:generate': handleCandidateGenerate,
   'health:check': handleHealthCheck,
+  // Phase 35: Autopilot handlers
+  ...autopilotHandlers,
 };
 
 /**

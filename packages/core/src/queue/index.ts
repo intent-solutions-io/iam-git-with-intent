@@ -508,3 +508,16 @@ export function createCandidateJob(
 
 // Export types for external use
 export { InMemoryJobQueue };
+
+// Phase 34: Export durable job store
+export {
+  FirestoreJobStore,
+  getFirestoreJobStore,
+  resetFirestoreJobStore,
+  createDurableJob,
+  DEFAULT_HEARTBEAT_INTERVAL,
+  type DurableJob,
+  type JobStatus,
+  type JobClaimOptions,
+  type JobCompletionOptions,
+} from './firestore-job-store.js';

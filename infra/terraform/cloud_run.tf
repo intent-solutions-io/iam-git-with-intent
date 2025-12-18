@@ -429,6 +429,14 @@ resource "google_project_iam_member" "gwi_worker_pubsub_publisher" {
   member  = "serviceAccount:${google_service_account.gwi_worker[0].email}"
 }
 
+# Phase 35: GWI Worker - Secret Manager access (for GitHub App credentials)
+resource "google_project_iam_member" "gwi_worker_secrets" {
+  count   = var.gwi_worker_image != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.gwi_worker[0].email}"
+}
+
 # GWI Worker Cloud Run Service
 resource "google_cloud_run_service" "gwi_worker" {
   count    = var.gwi_worker_image != "" ? 1 : 0
@@ -504,6 +512,28 @@ resource "google_cloud_run_service" "gwi_worker" {
           value = "8080"
         }
 
+        # Phase 35: GitHub App credentials for autopilot workspace isolation
+        env {
+          name  = "GITHUB_APP_ID"
+          value = var.github_app_id
+        }
+
+        env {
+          name = "GITHUB_PRIVATE_KEY"
+          value_from {
+            secret_key_ref {
+              name = var.github_private_key_secret
+              key  = "latest"
+            }
+          }
+        }
+
+        # Workspace directory for autopilot jobs
+        env {
+          name  = "GWI_WORKSPACE_DIR"
+          value = "/tmp/gwi-workspaces"
+        }
+
         # Resource limits (workers need more resources)
         resources {
           limits = {
@@ -573,6 +603,7 @@ resource "google_cloud_run_service" "gwi_worker" {
     google_service_account.gwi_worker,
     google_project_iam_member.gwi_worker_firestore,
     google_project_iam_member.gwi_worker_pubsub_subscriber,
+    google_project_iam_member.gwi_worker_secrets,
   ]
 }
 
