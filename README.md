@@ -1,142 +1,120 @@
 # Git With Intent
 
-> AI-powered CLI for GitHub PR workflows: triage, conflict resolution, and issue-to-code generation.
+AI-powered CLI for GitHub PR workflows. Handles merge conflicts, generates code from issues, and automates the tedious parts of PR management.
 
-**"Git with purpose. Ship with confidence."**
+**Status:** Active development. Core functionality works, rough edges remain.
 
 ---
 
-## What It Does Today
+## What This Actually Does
 
-| Command | What It Does |
-|---------|--------------|
-| `gwi triage <pr-url>` | Analyze PR complexity, score conflicts (1-10) |
-| `gwi plan <pr-url>` | Generate resolution plan |
-| `gwi resolve <pr-url>` | Full AI-powered conflict resolution |
-| `gwi autopilot <pr-url>` | End-to-end: triage → plan → resolve → review |
-| `gwi issue-to-code <issue-url>` | Generate code from GitHub issue |
+Most AI coding tools focus on writing new code. GWI focuses on the messy middle: merge conflicts, PR triage, and turning issues into working PRs.
+
+| Command | Purpose |
+|---------|---------|
+| `gwi triage <pr-url>` | Score PR complexity (1-10), identify conflicts |
+| `gwi plan <pr-url>` | Generate resolution strategy |
+| `gwi resolve <pr-url>` | AI-powered conflict resolution |
+| `gwi review <pr-url>` | Generate review summary |
+| `gwi issue-to-code <issue-url>` | Turn GitHub issue into code |
+| `gwi autopilot <pr-url>` | Full pipeline: triage → plan → resolve → review |
 | `gwi run list` | List recent runs |
-| `gwi run status <id>` | Show run status and details |
-| `gwi run approve <id>` | Approve run for commit/push |
+| `gwi run status <id>` | Check run details |
+| `gwi run approve <id>` | Approve changes for commit |
+
+---
+
+## How It Differs From Other Tools
+
+### vs GitHub Copilot
+Copilot writes code inline. GWI operates at the PR level - it reads the full context of a PR, understands what changed across multiple files, and resolves conflicts that span branches. Different problem space.
+
+### vs Dependabot / Renovate
+Those handle dependency updates. GWI handles arbitrary PRs with conflicts, including feature branches where humans made conflicting changes. Dependabot can't reason about semantic conflicts in business logic.
+
+### vs Generic AI Chat
+You could paste diffs into ChatGPT. GWI automates the workflow: fetches PR data, parses conflicts, generates patches in the right format, and can commit results. It's the difference between a tool and a workflow.
+
+### The Actual Innovation
+1. **Deterministic scoring** - Complexity scores (1-10) are reproducible, not vibes
+2. **Approval gating** - Changes require explicit approval before commit, with SHA256 hash binding
+3. **Audit trail** - Every run produces artifacts you can review and reproduce
+4. **Multi-agent routing** - Simple PRs get fast models, complex ones get stronger models
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Build
 npm run build
 
-# Set up credentials
 export GITHUB_TOKEN=ghp_...
 export ANTHROPIC_API_KEY=sk-ant-...  # or GOOGLE_AI_API_KEY
 
-# Triage a PR
+# Try it
 gwi triage https://github.com/owner/repo/pull/123
-
-# Full resolution with approval
-gwi resolve https://github.com/owner/repo/pull/123
 ```
 
 ---
 
-## Safety and Approval Gates
+## Safety Model
 
-GWI classifies operations by risk level:
+GWI won't push code without approval. Operations are classified by risk:
 
-| Operation | Risk | Approval Required |
-|-----------|------|-------------------|
-| Read PR/issue data | Safe | No |
-| Post comments, labels | Safe | No |
-| Generate patch (no write) | Safe | No |
-| **Commit changes** | Gated | **Yes** |
-| **Push to remote** | Gated | **Yes** |
-| **Create/update PR** | Gated | **Yes** |
-| **Merge PR** | Gated | **Yes** |
+| Operation | Risk Level |
+|-----------|------------|
+| Read PR data, post comments | Safe (auto) |
+| Generate patch locally | Safe (auto) |
+| Commit changes | Gated (requires approval) |
+| Push to remote | Gated (requires approval) |
+| Merge PR | Gated (requires approval) |
 
-**Approval binding**: Each approval is bound to a SHA256 hash of the proposed changes. If the patch changes, the approval is invalidated.
+Approvals are hash-bound. If the patch changes after you approve, the approval is invalidated.
 
 ```bash
-# Check what would be approved
-gwi run status <run-id>
-
-# Approve with hash binding
-gwi run approve <run-id>
+gwi run status <run-id>   # See what would be committed
+gwi run approve <run-id>  # Approve with hash binding
 ```
 
 ---
 
-## Run Artifacts and Auditability
+## Run Artifacts
 
-Every run produces a bundle at `.gwi/runs/<runId>/`:
+Every run creates a bundle at `.gwi/runs/<runId>/`:
 
 ```
 .gwi/runs/550e8400.../
-├── run.json          # Run context, state, config
-├── triage.json       # Complexity score, route decision
-├── plan.json         # Execution plan
-├── plan.md           # Human-readable plan
+├── run.json          # Run metadata
+├── triage.json       # Complexity score
+├── plan.json         # Resolution plan
 ├── patch.diff        # Proposed changes
 ├── review.json       # Review findings
-├── approval.json     # Approval record (if approved)
-└── audit.log         # Append-only JSONL audit trail
+├── approval.json     # Approval record
+└── audit.log         # JSONL audit trail
 ```
 
-**Audit log format** (each line is JSON):
-```json
-{"timestamp":"2025-12-16T12:00:00Z","runId":"550e8400...","actor":"agent","action":"state_transition","details":{"from":"queued","to":"triaged"}}
-```
-
----
-
-## Capabilities Modes
-
-| Mode | What's Allowed | Use Case |
-|------|----------------|----------|
-| `comment-only` | Read, comment, label | Analysis only |
-| `patch-only` | Generate patch.diff | Propose for review |
-| `commit-after-approval` | All, with approval | Full automation |
+You can replay, audit, or debug any run from these artifacts.
 
 ---
 
 ## Architecture
 
 ```
-┌───────────────────────────────────────────────────┐
-│                    CLI / API                       │
-│         gwi triage, resolve, autopilot            │
-└───────────────────────────────────────────────────┘
-                        │
-┌───────────────────────────────────────────────────┐
-│                 WORKFLOW LAYER                     │
-│   Orchestrator → Triage → Coder → Resolver →      │
-│                                    Reviewer       │
-└───────────────────────────────────────────────────┘
-                        │
-┌───────────────────────────────────────────────────┐
-│                  ENGINE CORE                       │
-│  Run State │ Artifacts │ Scoring │ Approvals     │
-│  Machine   │ (.gwi/)   │ (1-10)  │ (hash-bound)  │
-└───────────────────────────────────────────────────┘
-                        │
-┌───────────────────────────────────────────────────┐
-│                   CONNECTORS                       │
-│              GitHub │ Filesystem                  │
-└───────────────────────────────────────────────────┘
+CLI (gwi commands)
+       │
+Workflow Layer (Orchestrator → Triage → Coder → Resolver → Reviewer)
+       │
+Engine Core (Run State, Artifacts, Scoring, Approvals)
+       │
+Connectors (GitHub API, Filesystem)
 ```
 
-**Agents:**
-
-| Agent | Model | Purpose |
-|-------|-------|---------|
-| Orchestrator | Gemini Flash | Route work, manage workflows |
-| Triage | Gemini Flash | Score complexity, recommend route |
-| Coder | Claude Sonnet | Generate code from issues |
-| Resolver | Claude Sonnet/Opus | Resolve merge conflicts |
-| Reviewer | Claude Sonnet | Quality check, security scan |
+**Agent routing:**
+- Simple PRs → Gemini Flash (fast, cheap)
+- Complex PRs → Claude Sonnet/Opus (better reasoning)
+- Code generation → Claude Sonnet
+- Conflict resolution → Claude Sonnet or Opus depending on complexity
 
 ---
 
@@ -145,108 +123,87 @@ Every run produces a bundle at `.gwi/runs/<runId>/`:
 ```
 git-with-intent/
 ├── apps/
-│   ├── cli/              # CLI (gwi command)
-│   ├── api/              # SaaS API
-│   └── web/              # Web dashboard
+│   ├── cli/           # CLI tool (gwi command)
+│   ├── api/           # REST API
+│   ├── gateway/       # A2A gateway
+│   └── web/           # Dashboard (WIP)
 ├── packages/
-│   ├── core/             # Engine: runs, scoring, approvals
-│   ├── agents/           # Agent implementations
-│   ├── engine/           # Workflow orchestration
-│   └── integrations/     # GitHub client
-├── infra/terraform/      # Infrastructure as Code
-├── docs/                 # User documentation
-└── 000-docs/             # Internal docs, AARs
+│   ├── core/          # 68 modules: storage, scoring, billing, security, etc.
+│   ├── agents/        # Agent implementations
+│   ├── engine/        # Workflow orchestration
+│   └── integrations/  # GitHub client
+└── infra/terraform/   # Infrastructure as Code
 ```
+
+The `packages/core/` directory has grown significantly. Major subsystems:
+- **Storage** - Firestore/memory backends
+- **Billing** - Usage metering, quotas
+- **Security** - RBAC, audit logging, secrets management
+- **Reliability** - Rate limiting, circuit breakers, retry logic
+- **Forecasting** - Time series analysis (for usage prediction)
+- **Marketplace** - Plugin system (in development)
 
 ---
 
 ## Development
 
 ```bash
-# Install
 npm install
-
-# Build all packages
 npm run build
-
-# Run tests
-npm run test
-
-# Type check
+npm run test       # ~1700 tests
 npm run typecheck
-
-# Development mode
-npm run dev
 ```
 
----
+### ARV (Agent Readiness Verification)
 
-## Development Guardrails (ARV)
-
-**ARV (Agent Readiness Verification)** ensures code stays aligned with Agent Engine requirements.
+Pre-commit checks that enforce code standards:
 
 ```bash
-# Run all ARV checks (required before commit)
-npm run arv
-
-# Individual checks
-npm run arv:lint      # Forbidden patterns (deprecated ADK, hardcoded models)
-npm run arv:contracts # Schema validation (Zod contracts)
-npm run arv:goldens   # Deterministic output tests
-npm run arv:smoke     # Boot sanity check
+npm run arv           # All checks
+npm run arv:lint      # No deprecated patterns
+npm run arv:contracts # Schema validation
+npm run arv:smoke     # Boot check
 ```
-
-**What ARV checks:**
-- No deprecated ADK patterns (`google.adk.serving.fastapi`)
-- No hardcoded model names (use `MODELS` config)
-- All tool schemas validated
-- Scoring produces deterministic outputs
-- Runtime boots successfully
-
-**CI Gate**: ARV runs on every PR. Failures block merge.
-
-See `000-docs/044-DR-GUID-agent-engine-context.md` for full requirements.
 
 ---
 
 ## Environment Variables
 
-| Variable | Purpose | Required |
-|----------|---------|----------|
-| `GITHUB_TOKEN` | GitHub API access | Yes |
-| `ANTHROPIC_API_KEY` | Claude API | One AI key required |
-| `GOOGLE_AI_API_KEY` | Gemini API | One AI key required |
-| `GWI_STORE_BACKEND` | Storage (memory, firestore) | No |
-
----
-
-## Roadmap
-
-### Current (v0.2.x)
-- CLI workflows (triage, resolve, autopilot)
-- Issue-to-code generation
-- Run artifact bundles
-- Approval gating with hash binding
-- Deterministic complexity scoring
-
-### Planned (v0.3.x)
-- GitHub Actions runner
-- Webhook-triggered automation
-- Multi-tenant dashboard
-- Additional connectors (Slack, Jira)
-
----
-
-## Documentation
-
-| Document | Purpose |
+| Variable | Purpose |
 |----------|---------|
-| [Architecture Context](docs/context.md) | System architecture, substrate model |
-| [Contributor Guide](docs/contributing-orientation.md) | Where to add code |
-| [CLAUDE.md](CLAUDE.md) | Working contract for AI assistance |
+| `GITHUB_TOKEN` | GitHub API access |
+| `ANTHROPIC_API_KEY` | Claude API |
+| `GOOGLE_AI_API_KEY` | Gemini API |
+| `GWI_STORE_BACKEND` | `memory` or `firestore` |
+
+---
+
+## Current State
+
+**What works:**
+- CLI commands (triage, resolve, autopilot, issue-to-code)
+- Approval gating with hash binding
+- Run artifacts and audit trail
+- Firestore storage backend
+- 1700+ tests passing
+
+**What's rough:**
+- Error messages could be clearer
+- Some edge cases in conflict detection
+- Web dashboard is minimal
+- Documentation gaps
+
+**What's planned:**
+- GitHub Actions integration
+- Webhook-triggered automation
+- Better multi-repo support
 
 ---
 
 ## License
 
 MIT
+
+---
+
+*Work in progress. Not production-ready for all use cases.*
