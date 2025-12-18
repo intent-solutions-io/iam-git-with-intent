@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@gwi/core": "*",
-    "@gwi/agents": "*"
+    "@gwi/agents": "*",
+    "@gwi/integrations": "*"
   },
   "devDependencies": {
     "typescript": "^5.3.0",
