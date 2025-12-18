@@ -16,7 +16,7 @@
 | AgentFS | Agent ID: `gwi`, Mount: `.agentfs/`, DB: `.agentfs/gwi.db` |
 | AgentFS Evidence | Turso sync: `libsql://gwi-agentfs-jeremylongshore.aws-us-east-1.turso.io` |
 | Related Issues/PRs | N/A |
-| Commit(s) | uncommitted - Phase 26 implementation |
+| Commit(s) | 09d518b, 211edf2, 18ffa81, 895fa7a, db5632a, 8f3504b |
 
 ---
 
