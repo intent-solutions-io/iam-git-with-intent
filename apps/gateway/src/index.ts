@@ -4,10 +4,13 @@
  * R3: Cloud Run as gateway only (proxy to Agent Engine via REST)
  *
  * Phase 11: Added tenant verification for foreman endpoint.
+ * Phase 29: Added marketplace registry API for connector hosting.
+ *
  * The gateway can now:
  * 1. Route to Vertex AI Agent Engine (production)
  * 2. Call the local engine directly (development/testing)
  * 3. Verify tenant exists before processing runs
+ * 4. Serve connector marketplace registry API
  *
  * Endpoints:
  * - GET /health - Health check
@@ -15,6 +18,12 @@
  * - POST /a2a/:agent - Route to specific agent (Vertex AI)
  * - POST /a2a/foreman - Main foreman endpoint (uses local engine in dev)
  * - POST /api/workflows - Start workflow via orchestrator
+ * - GET /v1/search - Search connectors (marketplace)
+ * - GET /v1/connectors/:id - Get connector info (marketplace)
+ * - GET /v1/connectors/:id/:version - Get version metadata (marketplace)
+ * - GET /v1/connectors/:id/:version/tarball - Download tarball (marketplace)
+ * - GET /v1/connectors/:id/:version/signature - Download signature (marketplace)
+ * - POST /v1/connectors - Publish connector (marketplace, authenticated)
  */
 
 import express from 'express';
@@ -24,6 +33,7 @@ import { z } from 'zod';
 import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 import { getTenantStore } from '@gwi/core';
+import { marketplaceRouter } from './marketplace-routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -50,6 +60,9 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '1mb' }));
+
+// Mount marketplace routes (Phase 29: Connector Marketplace)
+app.use(marketplaceRouter);
 
 // Environment
 const config = {
@@ -153,6 +166,7 @@ app.get('/.well-known/agent.json', (_req, res) => {
       a2a: '/a2a',
       health: '/health',
       workflows: '/api/workflows',
+      marketplace: '/v1',
     },
     agents: Object.keys(agentEngines).map(name => ({
       name,
