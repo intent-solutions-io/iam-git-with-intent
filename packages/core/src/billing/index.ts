@@ -1068,3 +1068,22 @@ export {
   createEnforcementLog,
   shouldLogEnforcement,
 } from './enforcement.js';
+
+// =============================================================================
+// Phase 28: Metering Bridge (Stripe → Metering Sync)
+// =============================================================================
+
+export {
+  // Types
+  type TenantBillingState,
+  type BillingStateStorage,
+  type WebhookEventLog,
+  // Classes
+  InMemoryBillingStateStorage,
+  MeteringBridge,
+  // Functions
+  getMeteringBridge,
+  getBillingStateStorage,
+  setBillingStateStorage,
+  resetMeteringBridge,
+} from './metering-bridge.js';
