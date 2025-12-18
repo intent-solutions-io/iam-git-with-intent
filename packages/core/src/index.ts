@@ -110,3 +110,51 @@ export * from './marketplace/index.js';
 
 // Identity exports (Phase 31: Enterprise SSO & SCIM)
 export * from './identity/index.js';
+
+// Workspace Isolation exports (Phase 34: Autopilot)
+export * from './workspace-isolation.js';
+
+// Evidence exports (Phase 37: PR Review Automation)
+export * from './evidence/index.js';
+
+// Review exports (Phase 37: PR Review Automation)
+export * from './review/index.js';
+
+// Testing exports (Phase 38: E2E Testing Infrastructure)
+export * from './testing/index.js';
+
+// SDK Generation exports (Phase 39: SDK Generation from OpenAPI)
+export * from './sdk-gen/index.js';
+
+// Admin exports (Phase 40: Admin Dashboard UX)
+export * from './admin/index.js';
+
+// Compliance exports (Phase 41: Compliance & Audit)
+export * from './compliance/index.js';
+
+// Policy DSL exports (Phase 42: Policy-as-Code v2)
+export * from './policy-dsl/index.js';
+
+// Trust & Safety exports (Phase 43: Connector Security)
+export * from './trust-safety/index.js';
+
+// Disaster Recovery exports (Phase 44: DR & Business Continuity)
+export * from './disaster-recovery/index.js';
+
+// Quotas exports (Phase 45: Resource Management)
+export * from './quotas/index.js';
+
+// Observability v2 exports (Phase 46: Enhanced Monitoring)
+export * from './observability-v2/index.js';
+
+// Orchestration v2 exports (Phase 47: Agent Coordination)
+export * from './orchestration-v2/index.js';
+
+// Autopilot v2 exports (Phase 48: Autonomous Operation)
+export * from './autopilot-v2/index.js';
+
+// Supply Chain exports (Phase 49: Dependency Security)
+export * from './supply-chain/index.js';
+
+// Production Excellence exports (Phase 50: Production Readiness)
+export * from './production-excellence/index.js';
