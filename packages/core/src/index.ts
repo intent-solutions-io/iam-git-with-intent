@@ -101,3 +101,6 @@ export * from './llm/index.js';
 
 // Forensics exports (Phase 27: Replay & Forensics)
 export * from './forensics/index.js';
+
+// Metering exports (Phase 28: Usage Dashboard + Billing)
+export * from './metering/index.js';
