@@ -19,6 +19,9 @@ import type {
   ConnectorInstallation,
   MarketplaceSearchOptions,
   MarketplaceSearchResult,
+  PendingInstallRequestRecord,
+  Publisher,
+  PublisherKey,
 } from './types.js';
 
 // =============================================================================
@@ -32,6 +35,10 @@ export const MARKETPLACE_COLLECTIONS = {
   VERSIONS: 'gwi_marketplace_versions',
   /** Tenant installations (under gwi_tenants/{tenantId}/connector_installs) */
   INSTALLATIONS: 'connector_installs',
+  /** Pending install requests (under gwi_tenants/{tenantId}/install_requests) */
+  INSTALL_REQUESTS: 'install_requests',
+  /** Publishers registry */
+  PUBLISHERS: 'gwi_marketplace_publishers',
 } as const;
 
 // =============================================================================
@@ -65,6 +72,27 @@ export interface MarketplaceStore {
     updates: Partial<ConnectorInstallation>
   ): Promise<void>;
   deleteInstallation(tenantId: string, connectorId: string): Promise<void>;
+
+  // Pending install requests (Phase 30 fixup: Firestore persistence)
+  getInstallRequest(tenantId: string, requestId: string): Promise<PendingInstallRequestRecord | null>;
+  getInstallRequestByIdempotencyKey(tenantId: string, key: string): Promise<PendingInstallRequestRecord | null>;
+  listPendingInstallRequests(tenantId: string): Promise<PendingInstallRequestRecord[]>;
+  createInstallRequest(request: PendingInstallRequestRecord): Promise<void>;
+  updateInstallRequest(
+    tenantId: string,
+    requestId: string,
+    updates: Partial<PendingInstallRequestRecord>
+  ): Promise<void>;
+  deleteInstallRequest(tenantId: string, requestId: string): Promise<void>;
+
+  // Publishers (Phase 30 fixup: Key registry)
+  getPublisher(publisherId: string): Promise<Publisher | null>;
+  getPublisherByKeyId(keyId: string): Promise<Publisher | null>;
+  listPublishers(): Promise<Publisher[]>;
+  createPublisher(publisher: Publisher): Promise<void>;
+  updatePublisher(publisherId: string, updates: Partial<Publisher>): Promise<void>;
+  addPublisherKey(publisherId: string, key: PublisherKey): Promise<void>;
+  revokePublisherKey(publisherId: string, keyId: string, reason: string): Promise<void>;
 }
 
 // =============================================================================
@@ -339,6 +367,184 @@ export class FirestoreMarketplaceStore implements MarketplaceStore {
   }
 
   // ===========================================================================
+  // Pending Install Requests (Phase 30 fixup)
+  // ===========================================================================
+
+  async getInstallRequest(
+    tenantId: string,
+    requestId: string
+  ): Promise<PendingInstallRequestRecord | null> {
+    const doc = await this.db
+      .collection('gwi_tenants')
+      .doc(tenantId)
+      .collection(MARKETPLACE_COLLECTIONS.INSTALL_REQUESTS)
+      .doc(requestId)
+      .get();
+
+    if (!doc.exists) return null;
+    return this.installRequestFromFirestore(doc.data()!);
+  }
+
+  async getInstallRequestByIdempotencyKey(
+    tenantId: string,
+    key: string
+  ): Promise<PendingInstallRequestRecord | null> {
+    const snapshot = await this.db
+      .collection('gwi_tenants')
+      .doc(tenantId)
+      .collection(MARKETPLACE_COLLECTIONS.INSTALL_REQUESTS)
+      .where('idempotencyKey', '==', key)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return null;
+    return this.installRequestFromFirestore(snapshot.docs[0].data());
+  }
+
+  async listPendingInstallRequests(tenantId: string): Promise<PendingInstallRequestRecord[]> {
+    const snapshot = await this.db
+      .collection('gwi_tenants')
+      .doc(tenantId)
+      .collection(MARKETPLACE_COLLECTIONS.INSTALL_REQUESTS)
+      .where('status', '==', 'pending')
+      .orderBy('requestedAt', 'desc')
+      .get();
+
+    return snapshot.docs.map((doc) => this.installRequestFromFirestore(doc.data()));
+  }
+
+  async createInstallRequest(request: PendingInstallRequestRecord): Promise<void> {
+    await this.db
+      .collection('gwi_tenants')
+      .doc(request.tenantId)
+      .collection(MARKETPLACE_COLLECTIONS.INSTALL_REQUESTS)
+      .doc(request.id)
+      .set(this.installRequestToFirestore(request));
+  }
+
+  async updateInstallRequest(
+    tenantId: string,
+    requestId: string,
+    updates: Partial<PendingInstallRequestRecord>
+  ): Promise<void> {
+    const firestoreUpdates: Record<string, unknown> = {
+      ...updates,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    await this.db
+      .collection('gwi_tenants')
+      .doc(tenantId)
+      .collection(MARKETPLACE_COLLECTIONS.INSTALL_REQUESTS)
+      .doc(requestId)
+      .update(firestoreUpdates);
+  }
+
+  async deleteInstallRequest(tenantId: string, requestId: string): Promise<void> {
+    await this.db
+      .collection('gwi_tenants')
+      .doc(tenantId)
+      .collection(MARKETPLACE_COLLECTIONS.INSTALL_REQUESTS)
+      .doc(requestId)
+      .delete();
+  }
+
+  // ===========================================================================
+  // Publishers (Phase 30 fixup: Key registry)
+  // ===========================================================================
+
+  async getPublisher(publisherId: string): Promise<Publisher | null> {
+    const doc = await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .doc(publisherId)
+      .get();
+
+    if (!doc.exists) return null;
+    return this.publisherFromFirestore(doc.data()!);
+  }
+
+  async getPublisherByKeyId(keyId: string): Promise<Publisher | null> {
+    // Search through all publishers for the key ID
+    // Note: In production, consider a separate index collection for key lookups
+    const snapshot = await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .get();
+
+    for (const doc of snapshot.docs) {
+      const publisher = this.publisherFromFirestore(doc.data());
+      const hasKey = publisher.publicKeys.some((k) => k.keyId === keyId);
+      if (hasKey) return publisher;
+    }
+    return null;
+  }
+
+  async listPublishers(): Promise<Publisher[]> {
+    const snapshot = await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .orderBy('createdAt', 'desc')
+      .get();
+
+    return snapshot.docs.map((doc) => this.publisherFromFirestore(doc.data()));
+  }
+
+  async createPublisher(publisher: Publisher): Promise<void> {
+    await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .doc(publisher.id)
+      .set(this.publisherToFirestore(publisher));
+  }
+
+  async updatePublisher(publisherId: string, updates: Partial<Publisher>): Promise<void> {
+    const firestoreUpdates: Record<string, unknown> = {
+      ...updates,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .doc(publisherId)
+      .update(firestoreUpdates);
+  }
+
+  async addPublisherKey(publisherId: string, key: PublisherKey): Promise<void> {
+    await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .doc(publisherId)
+      .update({
+        publicKeys: FieldValue.arrayUnion(key),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+  }
+
+  async revokePublisherKey(publisherId: string, keyId: string, reason: string): Promise<void> {
+    const publisher = await this.getPublisher(publisherId);
+    if (!publisher) throw new Error(`Publisher ${publisherId} not found`);
+
+    const keyIndex = publisher.publicKeys.findIndex((k) => k.keyId === keyId);
+    if (keyIndex === -1) throw new Error(`Key ${keyId} not found`);
+
+    const key = publisher.publicKeys[keyIndex];
+    const revokedKey: PublisherKey = {
+      ...key,
+      status: 'revoked',
+      revokedAt: new Date().toISOString(),
+      revocationReason: reason,
+    };
+
+    // Remove from publicKeys, add to revokedKeys
+    const newPublicKeys = publisher.publicKeys.filter((k) => k.keyId !== keyId);
+
+    await this.db
+      .collection(MARKETPLACE_COLLECTIONS.PUBLISHERS)
+      .doc(publisherId)
+      .update({
+        publicKeys: newPublicKeys,
+        revokedKeys: FieldValue.arrayUnion(revokedKey),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+  }
+
+  // ===========================================================================
   // Firestore Converters
   // ===========================================================================
 
@@ -389,6 +595,44 @@ export class FirestoreMarketplaceStore implements MarketplaceStore {
       lastUsedAt: data.lastUsedAt ? timestampToDate(data.lastUsedAt as Timestamp)?.toISOString() : undefined,
     } as ConnectorInstallation;
   }
+
+  private installRequestToFirestore(request: PendingInstallRequestRecord): Record<string, unknown> {
+    return {
+      ...request,
+      requestedAt: Timestamp.fromDate(new Date(request.requestedAt)),
+      expiresAt: Timestamp.fromDate(new Date(request.expiresAt)),
+      createdAt: Timestamp.fromDate(new Date(request.createdAt)),
+      updatedAt: Timestamp.fromDate(new Date(request.updatedAt)),
+    };
+  }
+
+  private installRequestFromFirestore(data: Record<string, unknown>): PendingInstallRequestRecord {
+    return {
+      ...data,
+      requestedAt: timestampToDate(data.requestedAt as Timestamp)?.toISOString() ?? new Date().toISOString(),
+      expiresAt: timestampToDate(data.expiresAt as Timestamp)?.toISOString() ?? new Date().toISOString(),
+      createdAt: timestampToDate(data.createdAt as Timestamp)?.toISOString() ?? new Date().toISOString(),
+      updatedAt: timestampToDate(data.updatedAt as Timestamp)?.toISOString() ?? new Date().toISOString(),
+    } as PendingInstallRequestRecord;
+  }
+
+  private publisherToFirestore(publisher: Publisher): Record<string, unknown> {
+    return {
+      ...publisher,
+      createdAt: Timestamp.fromDate(new Date(publisher.createdAt)),
+      updatedAt: Timestamp.fromDate(new Date(publisher.updatedAt)),
+      verifiedAt: publisher.verifiedAt ? Timestamp.fromDate(new Date(publisher.verifiedAt)) : null,
+    };
+  }
+
+  private publisherFromFirestore(data: Record<string, unknown>): Publisher {
+    return {
+      ...data,
+      createdAt: timestampToDate(data.createdAt as Timestamp)?.toISOString() ?? new Date().toISOString(),
+      updatedAt: timestampToDate(data.updatedAt as Timestamp)?.toISOString() ?? new Date().toISOString(),
+      verifiedAt: data.verifiedAt ? timestampToDate(data.verifiedAt as Timestamp)?.toISOString() : undefined,
+    } as Publisher;
+  }
 }
 
 // =============================================================================
@@ -399,6 +643,9 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
   private connectors = new Map<string, PublishedConnector>();
   private versions = new Map<string, ConnectorVersion>();
   private installations = new Map<string, Map<string, ConnectorInstallation>>();
+  private installRequests = new Map<string, Map<string, PendingInstallRequestRecord>>();
+  private installRequestsByIdempotency = new Map<string, PendingInstallRequestRecord>();
+  private publishers = new Map<string, Publisher>();
 
   async getConnector(connectorId: string): Promise<PublishedConnector | null> {
     return this.connectors.get(connectorId) ?? null;
@@ -583,11 +830,134 @@ export class InMemoryMarketplaceStore implements MarketplaceStore {
     this.installations.get(tenantId)?.delete(connectorId);
   }
 
+  // ===========================================================================
+  // Pending Install Requests (Phase 30 fixup)
+  // ===========================================================================
+
+  async getInstallRequest(
+    tenantId: string,
+    requestId: string
+  ): Promise<PendingInstallRequestRecord | null> {
+    return this.installRequests.get(tenantId)?.get(requestId) ?? null;
+  }
+
+  async getInstallRequestByIdempotencyKey(
+    tenantId: string,
+    key: string
+  ): Promise<PendingInstallRequestRecord | null> {
+    const compoundKey = `${tenantId}:${key}`;
+    return this.installRequestsByIdempotency.get(compoundKey) ?? null;
+  }
+
+  async listPendingInstallRequests(tenantId: string): Promise<PendingInstallRequestRecord[]> {
+    const requests = this.installRequests.get(tenantId);
+    if (!requests) return [];
+    return Array.from(requests.values())
+      .filter((r) => r.status === 'pending')
+      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  }
+
+  async createInstallRequest(request: PendingInstallRequestRecord): Promise<void> {
+    if (!this.installRequests.has(request.tenantId)) {
+      this.installRequests.set(request.tenantId, new Map());
+    }
+    this.installRequests.get(request.tenantId)!.set(request.id, request);
+
+    // Index by idempotency key
+    const compoundKey = `${request.tenantId}:${request.idempotencyKey}`;
+    this.installRequestsByIdempotency.set(compoundKey, request);
+  }
+
+  async updateInstallRequest(
+    tenantId: string,
+    requestId: string,
+    updates: Partial<PendingInstallRequestRecord>
+  ): Promise<void> {
+    const request = this.installRequests.get(tenantId)?.get(requestId);
+    if (request) {
+      Object.assign(request, updates, { updatedAt: new Date().toISOString() });
+    }
+  }
+
+  async deleteInstallRequest(tenantId: string, requestId: string): Promise<void> {
+    const request = this.installRequests.get(tenantId)?.get(requestId);
+    if (request) {
+      const compoundKey = `${tenantId}:${request.idempotencyKey}`;
+      this.installRequestsByIdempotency.delete(compoundKey);
+    }
+    this.installRequests.get(tenantId)?.delete(requestId);
+  }
+
+  // ===========================================================================
+  // Publishers (Phase 30 fixup: Key registry)
+  // ===========================================================================
+
+  async getPublisher(publisherId: string): Promise<Publisher | null> {
+    return this.publishers.get(publisherId) ?? null;
+  }
+
+  async getPublisherByKeyId(keyId: string): Promise<Publisher | null> {
+    for (const publisher of this.publishers.values()) {
+      if (publisher.publicKeys.some((k) => k.keyId === keyId)) {
+        return publisher;
+      }
+    }
+    return null;
+  }
+
+  async listPublishers(): Promise<Publisher[]> {
+    return Array.from(this.publishers.values())
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async createPublisher(publisher: Publisher): Promise<void> {
+    this.publishers.set(publisher.id, publisher);
+  }
+
+  async updatePublisher(publisherId: string, updates: Partial<Publisher>): Promise<void> {
+    const publisher = this.publishers.get(publisherId);
+    if (publisher) {
+      Object.assign(publisher, updates, { updatedAt: new Date().toISOString() });
+    }
+  }
+
+  async addPublisherKey(publisherId: string, key: PublisherKey): Promise<void> {
+    const publisher = this.publishers.get(publisherId);
+    if (publisher) {
+      publisher.publicKeys.push(key);
+      publisher.updatedAt = new Date().toISOString();
+    }
+  }
+
+  async revokePublisherKey(publisherId: string, keyId: string, reason: string): Promise<void> {
+    const publisher = this.publishers.get(publisherId);
+    if (!publisher) throw new Error(`Publisher ${publisherId} not found`);
+
+    const keyIndex = publisher.publicKeys.findIndex((k) => k.keyId === keyId);
+    if (keyIndex === -1) throw new Error(`Key ${keyId} not found`);
+
+    const key = publisher.publicKeys[keyIndex];
+    const revokedKey: PublisherKey = {
+      ...key,
+      status: 'revoked',
+      revokedAt: new Date().toISOString(),
+      revocationReason: reason,
+    };
+
+    // Remove from publicKeys, add to revokedKeys
+    publisher.publicKeys.splice(keyIndex, 1);
+    publisher.revokedKeys.push(revokedKey);
+    publisher.updatedAt = new Date().toISOString();
+  }
+
   // Test helpers
   clear(): void {
     this.connectors.clear();
     this.versions.clear();
     this.installations.clear();
+    this.installRequests.clear();
+    this.installRequestsByIdempotency.clear();
+    this.publishers.clear();
   }
 }
 

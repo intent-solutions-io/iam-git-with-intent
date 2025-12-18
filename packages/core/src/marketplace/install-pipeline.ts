@@ -2,23 +2,27 @@
  * Connector Install Pipeline
  *
  * Phase 29: Policy-aware connector installation.
+ * Phase 30 fixup: Firestore-backed pending request persistence.
  *
  * Integrates with Phase 25 approval system to enforce:
  * - Tenant-level connector policies
  * - Capability-based approval requirements
  * - Audit trail for all installations
+ * - Persistent pending requests (survives restarts)
+ * - Idempotent request creation
  *
  * @module @gwi/core/marketplace/install-pipeline
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import type {
   SignedApproval,
   ApproverIdentity,
 } from '../approvals/types.js';
 import type { ConnectorCapability } from '../connectors/manifest.js';
 import { getMarketplaceService, type MarketplaceService } from './service.js';
-import type { ConnectorInstallation, InstallRequest } from './types.js';
+import { getMarketplaceStore, type MarketplaceStore } from './storage.js';
+import type { ConnectorInstallation, InstallRequest, PendingInstallRequestRecord } from './types.js';
 
 // =============================================================================
 // Install Policy Types
@@ -78,7 +82,9 @@ export interface InstallPipelineResult {
 }
 
 /**
- * Pending install request
+ * Pending install request (in-memory view with full approvals)
+ *
+ * @deprecated Use PendingInstallRequestRecord from types.ts for storage
  */
 export interface PendingInstallRequest {
   id: string;
@@ -117,11 +123,20 @@ export const DEFAULT_INSTALL_POLICY: Omit<ConnectorInstallPolicy, 'id' | 'tenant
 
 export class InstallPipeline {
   private service: MarketplaceService;
+  private store: MarketplaceStore;
   private policies: Map<string, ConnectorInstallPolicy> = new Map();
-  private pendingRequests: Map<string, PendingInstallRequest> = new Map();
 
-  constructor(service?: MarketplaceService) {
+  constructor(service?: MarketplaceService, store?: MarketplaceStore) {
     this.service = service ?? getMarketplaceService();
+    this.store = store ?? getMarketplaceStore();
+  }
+
+  /**
+   * Generate idempotency key for install request
+   */
+  private generateIdempotencyKey(tenantId: string, connectorId: string, version: string): string {
+    const data = `${tenantId}:${connectorId}:${version}`;
+    return createHash('sha256').update(data).digest('hex').slice(0, 32);
   }
 
   /**
@@ -220,22 +235,55 @@ export class InstallPipeline {
       };
     }
 
-    // Create pending request
-    const pendingRequest: PendingInstallRequest = {
+    // Generate idempotency key to prevent duplicate requests
+    const idempotencyKey = this.generateIdempotencyKey(tenantId, request.connectorId, version);
+
+    // Check for existing request with same idempotency key
+    const existingRequest = await this.store.getInstallRequestByIdempotencyKey(tenantId, idempotencyKey);
+    if (existingRequest) {
+      // Return existing request (idempotent behavior)
+      if (existingRequest.status === 'pending') {
+        return {
+          success: false,
+          requiresApproval: true,
+          approvalId: existingRequest.id,
+        };
+      } else if (existingRequest.status === 'approved') {
+        // Already approved, check if installation exists
+        const installation = await this.store.getInstallation(tenantId, request.connectorId);
+        if (installation) {
+          return { success: true, installation };
+        }
+      } else if (existingRequest.status === 'denied') {
+        return {
+          success: false,
+          blockedReason: existingRequest.denialReason || 'Request was previously denied',
+        };
+      }
+      // Expired request - allow creating new one below
+    }
+
+    // Create pending request (persisted to Firestore)
+    const now = new Date().toISOString();
+    const pendingRequest: PendingInstallRequestRecord = {
       id: randomUUID(),
       tenantId,
       connectorId: request.connectorId,
       version,
       requestedBy: requestedBy.id,
-      requestedAt: new Date().toISOString(),
+      requestedAt: now,
       requiredApprovals: policy.minApprovals,
-      currentApprovals: [],
+      currentApprovalCount: 0,
+      approvalIds: [],
       policyId: policy.id,
       status: 'pending',
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
+      idempotencyKey,
+      createdAt: now,
+      updatedAt: now,
     };
 
-    this.pendingRequests.set(pendingRequest.id, pendingRequest);
+    await this.store.createInstallRequest(pendingRequest);
 
     return {
       success: false,
@@ -248,10 +296,11 @@ export class InstallPipeline {
    * Approve a pending install request
    */
   async approveInstall(
+    tenantId: string,
     requestId: string,
     approval: SignedApproval
   ): Promise<InstallPipelineResult> {
-    const request = this.pendingRequests.get(requestId);
+    const request = await this.store.getInstallRequest(tenantId, requestId);
     if (!request) {
       return { success: false, error: 'Pending request not found' };
     }
@@ -262,16 +311,22 @@ export class InstallPipeline {
 
     // Check expiration
     if (new Date(request.expiresAt) < new Date()) {
-      request.status = 'expired';
+      await this.store.updateInstallRequest(tenantId, requestId, { status: 'expired' });
       return { success: false, error: 'Request has expired' };
     }
 
-    // Add approval
-    request.currentApprovals.push(approval);
+    // Add approval ID
+    const newApprovalCount = request.currentApprovalCount + 1;
+    const newApprovalIds = [...request.approvalIds, approval.approvalId];
 
     // Check if we have enough approvals
-    if (request.currentApprovals.length >= request.requiredApprovals) {
-      request.status = 'approved';
+    if (newApprovalCount >= request.requiredApprovals) {
+      // Update status to approved
+      await this.store.updateInstallRequest(tenantId, requestId, {
+        status: 'approved',
+        currentApprovalCount: newApprovalCount,
+        approvalIds: newApprovalIds,
+      });
 
       // Proceed with installation
       const result = await this.service.install(
@@ -288,8 +343,7 @@ export class InstallPipeline {
         return { success: false, error: result.error };
       }
 
-      // Clean up
-      this.pendingRequests.delete(requestId);
+      // Keep the request record for audit trail (don't delete)
 
       return {
         success: true,
@@ -297,7 +351,12 @@ export class InstallPipeline {
       };
     }
 
-    // Still needs more approvals
+    // Update approval count (still needs more approvals)
+    await this.store.updateInstallRequest(tenantId, requestId, {
+      currentApprovalCount: newApprovalCount,
+      approvalIds: newApprovalIds,
+    });
+
     return {
       success: false,
       requiresApproval: true,
@@ -308,13 +367,20 @@ export class InstallPipeline {
   /**
    * Deny a pending install request
    */
-  denyInstall(requestId: string, reason: string): InstallPipelineResult {
-    const request = this.pendingRequests.get(requestId);
+  async denyInstall(tenantId: string, requestId: string, reason: string): Promise<InstallPipelineResult> {
+    const request = await this.store.getInstallRequest(tenantId, requestId);
     if (!request) {
       return { success: false, error: 'Pending request not found' };
     }
 
-    request.status = 'denied';
+    if (request.status !== 'pending') {
+      return { success: false, error: `Request is ${request.status}` };
+    }
+
+    await this.store.updateInstallRequest(tenantId, requestId, {
+      status: 'denied',
+      denialReason: reason,
+    });
 
     return {
       success: false,
@@ -325,9 +391,15 @@ export class InstallPipeline {
   /**
    * Get pending requests for a tenant
    */
-  getPendingRequests(tenantId: string): PendingInstallRequest[] {
-    return Array.from(this.pendingRequests.values())
-      .filter(r => r.tenantId === tenantId && r.status === 'pending');
+  async getPendingRequests(tenantId: string): Promise<PendingInstallRequestRecord[]> {
+    return this.store.listPendingInstallRequests(tenantId);
+  }
+
+  /**
+   * Get a specific install request
+   */
+  async getInstallRequest(tenantId: string, requestId: string): Promise<PendingInstallRequestRecord | null> {
+    return this.store.getInstallRequest(tenantId, requestId);
   }
 
   /**

@@ -259,6 +259,143 @@ export const InstallRequestSchema = z.object({
 export type InstallRequest = z.infer<typeof InstallRequestSchema>;
 
 // =============================================================================
+// Pending Install Request Schema (Phase 30 fixup: Firestore persistence)
+// =============================================================================
+
+/**
+ * Pending connector install request (requires approval)
+ */
+export const PendingInstallRequestSchema = z.object({
+  /** Request ID */
+  id: z.string(),
+
+  /** Tenant ID */
+  tenantId: z.string(),
+
+  /** Connector ID */
+  connectorId: z.string(),
+
+  /** Version to install */
+  version: z.string(),
+
+  /** Requested by user ID */
+  requestedBy: z.string(),
+
+  /** Request timestamp */
+  requestedAt: z.string().datetime(),
+
+  /** Required number of approvals */
+  requiredApprovals: z.number().int().positive(),
+
+  /** Current approvals count */
+  currentApprovalCount: z.number().int().nonnegative().default(0),
+
+  /** Approval IDs */
+  approvalIds: z.array(z.string()).default([]),
+
+  /** Policy ID that triggered approval requirement */
+  policyId: z.string(),
+
+  /** Request status */
+  status: z.enum(['pending', 'approved', 'denied', 'expired']),
+
+  /** Denial reason (if denied) */
+  denialReason: z.string().optional(),
+
+  /** Expiration timestamp */
+  expiresAt: z.string().datetime(),
+
+  /** Idempotency key for deduplication */
+  idempotencyKey: z.string(),
+
+  /** Created timestamp */
+  createdAt: z.string().datetime(),
+
+  /** Updated timestamp */
+  updatedAt: z.string().datetime(),
+});
+export type PendingInstallRequestRecord = z.infer<typeof PendingInstallRequestSchema>;
+
+// =============================================================================
+// Publisher Schema (Phase 30 fixup: Key registry + revocation)
+// =============================================================================
+
+/**
+ * Publisher public key record
+ */
+export const PublisherKeySchema = z.object({
+  /** Key ID */
+  keyId: z.string(),
+
+  /** Public key (base64-encoded Ed25519) */
+  publicKey: z.string(),
+
+  /** Key status */
+  status: z.enum(['active', 'revoked', 'expired']),
+
+  /** Key fingerprint (SHA256 of public key) */
+  fingerprint: z.string(),
+
+  /** Created timestamp */
+  createdAt: z.string().datetime(),
+
+  /** Revoked timestamp (if revoked) */
+  revokedAt: z.string().datetime().optional(),
+
+  /** Revocation reason */
+  revocationReason: z.string().optional(),
+
+  /** Expiration timestamp */
+  expiresAt: z.string().datetime().optional(),
+});
+export type PublisherKey = z.infer<typeof PublisherKeySchema>;
+
+/**
+ * Publisher record in registry
+ */
+export const PublisherSchema = z.object({
+  /** Publisher ID (same as user ID or org ID) */
+  id: z.string(),
+
+  /** Display name */
+  displayName: z.string(),
+
+  /** Email */
+  email: z.string().email(),
+
+  /** Verified publisher flag */
+  verified: z.boolean().default(false),
+
+  /** Verification timestamp */
+  verifiedAt: z.string().datetime().optional(),
+
+  /** Active public keys */
+  publicKeys: z.array(PublisherKeySchema),
+
+  /** Revoked keys (kept for audit) */
+  revokedKeys: z.array(PublisherKeySchema).default([]),
+
+  /** Organization ID (if org publisher) */
+  organizationId: z.string().optional(),
+
+  /** URL to publisher page */
+  url: z.string().url().optional(),
+
+  /** Publisher status */
+  status: z.enum(['active', 'suspended', 'banned']).default('active'),
+
+  /** Suspension reason */
+  suspensionReason: z.string().optional(),
+
+  /** Created timestamp */
+  createdAt: z.string().datetime(),
+
+  /** Updated timestamp */
+  updatedAt: z.string().datetime(),
+});
+export type Publisher = z.infer<typeof PublisherSchema>;
+
+// =============================================================================
 // Categories
 // =============================================================================
 

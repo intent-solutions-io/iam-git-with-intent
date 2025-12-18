@@ -1,5 +1,6 @@
 /**
  * Phase 29: Marketplace Module
+ * Phase 30: Reliability fixups (persistent storage, publisher registry)
  *
  * Connector marketplace for publishing, discovering, and installing connectors.
  *
@@ -13,6 +14,9 @@ export {
   ConnectorInstallationSchema,
   PublishRequestSchema,
   InstallRequestSchema,
+  PendingInstallRequestSchema,
+  PublisherSchema,
+  PublisherKeySchema,
   MARKETPLACE_CATEGORIES,
   validatePublishedConnector,
   validateConnectorVersion,
@@ -21,6 +25,9 @@ export {
   type ConnectorInstallation,
   type PublishRequest,
   type InstallRequest,
+  type PendingInstallRequestRecord,
+  type Publisher,
+  type PublisherKey,
   type MarketplaceSearchOptions,
   type MarketplaceSearchResult,
   type MarketplaceCategory,
