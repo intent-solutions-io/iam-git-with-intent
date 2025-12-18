@@ -31,6 +31,8 @@ import { Queue } from './pages/Queue';
 import { QueueDetail } from './pages/QueueDetail';
 import { Candidates } from './pages/Candidates';
 import { CandidateDetail } from './pages/CandidateDetail';
+// Phase 28: Usage & Billing
+import { Usage } from './pages/Usage';
 
 export function App() {
   return (
@@ -169,6 +171,15 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <CandidateDetail />
+                </ProtectedRoute>
+              }
+            />
+            {/* Phase 28: Usage & Billing */}
+            <Route
+              path="/usage"
+              element={
+                <ProtectedRoute>
+                  <Usage />
                 </ProtectedRoute>
               }
             />

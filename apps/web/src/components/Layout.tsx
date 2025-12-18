@@ -38,6 +38,9 @@ export function Layout() {
                 <Link to="/runs" className="text-gray-600 hover:text-gray-900">
                   Runs
                 </Link>
+                <Link to="/usage" className="text-gray-600 hover:text-gray-900">
+                  Usage
+                </Link>
                 <Link
                   to="/settings"
                   className="text-gray-600 hover:text-gray-900"

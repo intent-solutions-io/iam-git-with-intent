@@ -224,3 +224,102 @@ export async function listMembers(tenantId: string): Promise<MembersResponse> {
 export function getGitHubInstallUrl(): string {
   return `${API_BASE_URL}/github/install`;
 }
+
+// =============================================================================
+// Phase 28: Usage & Billing
+// =============================================================================
+
+export interface UsageAggregate {
+  tenant_id: string;
+  period_start: string;
+  period_end: string;
+  total_runs: number;
+  total_llm_calls: number;
+  total_tokens: {
+    input: number;
+    output: number;
+    total: number;
+  };
+  total_latency_ms: number;
+  total_cost_usd: number;
+  by_provider: Record<string, { calls: number; tokens: number; cost_usd: number }>;
+  by_model: Record<string, { calls: number; tokens: number; cost_usd: number }>;
+  updated_at: string;
+}
+
+export interface PlanInfo {
+  id: string;
+  name: string;
+  tier: string;
+  price_usd: number;
+  token_limit: number;
+  run_limit: number;
+  rate_limit_rpm: number;
+  features: string[];
+}
+
+export interface PlanUsageStatus {
+  plan: PlanInfo;
+  token_usage_percent: number;
+  run_usage_percent: number;
+  soft_limit_reached: boolean;
+  hard_limit_reached: boolean;
+  tokens_remaining: number;
+  runs_remaining: number;
+  period_resets_at: string;
+}
+
+export interface UsageResponse {
+  aggregate: UsageAggregate;
+  status: PlanUsageStatus;
+}
+
+export async function getUsage(tenantId: string): Promise<UsageResponse> {
+  return apiFetch<UsageResponse>(`/tenants/${tenantId}/usage`);
+}
+
+export interface Invoice {
+  id: string;
+  number: string;
+  status: string;
+  totalInCents: number;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  paidAt?: string;
+  hostedInvoiceUrl?: string;
+}
+
+export interface InvoicesResponse {
+  invoices: Invoice[];
+}
+
+export async function listInvoices(tenantId: string): Promise<InvoicesResponse> {
+  return apiFetch<InvoicesResponse>(`/tenants/${tenantId}/invoices`);
+}
+
+export interface CheckoutResponse {
+  url: string;
+  sessionId: string;
+}
+
+export async function createCheckoutSession(
+  tenantId: string,
+  planId: string,
+  interval: 'monthly' | 'yearly'
+): Promise<CheckoutResponse> {
+  return apiFetch<CheckoutResponse>(`/tenants/${tenantId}/checkout`, {
+    method: 'POST',
+    body: { planId, interval },
+  });
+}
+
+export interface BillingPortalResponse {
+  url: string;
+}
+
+export async function createBillingPortalSession(tenantId: string): Promise<BillingPortalResponse> {
+  return apiFetch<BillingPortalResponse>(`/tenants/${tenantId}/billing-portal`, {
+    method: 'POST',
+  });
+}
