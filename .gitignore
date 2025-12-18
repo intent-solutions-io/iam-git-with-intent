@@ -45,7 +45,7 @@ Thumbs.db
 
 # AgentFS (local state and mount points)
 .agentfs/
-agents/
+/agents/
 
 # Beads local-only files (issues.jsonl IS committed)
 .beads/*.db
