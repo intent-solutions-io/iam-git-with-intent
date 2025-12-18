@@ -2,16 +2,22 @@
 /**
  * Metering Integration Gate - ARV Check
  *
- * Phase 22: Verifies metering, billing, and enforcement infrastructure.
+ * Phase 22 + 28: Verifies metering, billing, and enforcement infrastructure.
  *
- * Checks:
+ * Phase 22 Checks:
  * 1. Entitlements module exists with plan limits
  * 2. Usage module exists with event types
  * 3. Enforcement module exists with limit checking
  * 4. Metering store exists (Firestore + InMemory)
  * 5. Stripe webhook handler exists
  * 6. Exports are available from @gwi/core
- * 7. TypeScript compilation passes
+ *
+ * Phase 28 Checks:
+ * 7. MeteringEvent schema + service (provider-agnostic)
+ * 8. MeteringBridge (Stripe→Metering sync)
+ * 9. Usage dashboard UI page exists
+ * 10. Upgrade flow UI page exists
+ * 11. TypeScript compilation passes
  */
 
 import { execSync } from 'node:child_process';
@@ -53,7 +59,7 @@ function check(name: string, fn: () => boolean | string): void {
 // Gate Checks
 // =============================================================================
 
-console.log('🔬 Metering Integration Gate - ARV Check (Phase 22)');
+console.log('🔬 Metering Integration Gate - ARV Check (Phase 22 + 28)');
 console.log('─'.repeat(55));
 
 // Check 1: Entitlements module
@@ -301,7 +307,208 @@ check('Firestore collections defined', () => {
   return true;
 });
 
-// Check 9: TypeScript compilation
+// =============================================================================
+// Phase 28 Checks
+// =============================================================================
+
+// Check 9: MeteringEvent schema + service
+check('Phase 28: MeteringEvent schema', () => {
+  const typesPath = join(rootDir, 'packages/core/src/metering/types.ts');
+  if (!existsSync(typesPath)) {
+    return `Metering types not found at ${typesPath}`;
+  }
+
+  const content = readFileSync(typesPath, 'utf-8');
+
+  // Check for key exports
+  const requiredExports = [
+    'MeteringEventSchema',
+    'UsageAggregateSchema',
+    'PlanSchema',
+    'DEFAULT_PLANS',
+    'validateMeteringEvent',
+    'getPlanById',
+  ];
+
+  for (const exp of requiredExports) {
+    if (!content.includes(exp)) {
+      return `Missing export: ${exp}`;
+    }
+  }
+
+  // Check for provider-agnostic design (freeform strings)
+  if (!content.includes('provider: z.string()') || !content.includes('model: z.string()')) {
+    return 'Missing provider-agnostic design (provider/model should be freeform strings)';
+  }
+
+  console.log('  ✓ Phase 28 MeteringEvent schema is provider-agnostic');
+  return true;
+});
+
+// Check 10: MeteringService
+check('Phase 28: MeteringService', () => {
+  const servicePath = join(rootDir, 'packages/core/src/metering/service.ts');
+  if (!existsSync(servicePath)) {
+    return `Metering service not found at ${servicePath}`;
+  }
+
+  const content = readFileSync(servicePath, 'utf-8');
+
+  // Check for key class/functions
+  const required = [
+    'MeteringService',
+    'InMemoryMeteringStorage',
+    'recordLLMUsage',
+    'recordToolUsage',
+    'computeAggregate',
+    'checkLimits',
+    'isMeteringEnabled',
+  ];
+
+  for (const exp of required) {
+    if (!content.includes(exp)) {
+      return `Missing: ${exp}`;
+    }
+  }
+
+  console.log('  ✓ Phase 28 MeteringService with plan limits and checkLimits');
+  return true;
+});
+
+// Check 11: MeteringBridge
+check('Phase 28: MeteringBridge', () => {
+  const bridgePath = join(rootDir, 'packages/core/src/billing/metering-bridge.ts');
+  if (!existsSync(bridgePath)) {
+    return `Metering bridge not found at ${bridgePath}`;
+  }
+
+  const content = readFileSync(bridgePath, 'utf-8');
+
+  // Check for key exports
+  const required = [
+    'MeteringBridge',
+    'TenantBillingState',
+    'InMemoryBillingStateStorage',
+    'syncSubscriptionToMeteringPlan',
+    'createWebhookDeps',
+  ];
+
+  for (const exp of required) {
+    if (!content.includes(exp)) {
+      return `Missing: ${exp}`;
+    }
+  }
+
+  console.log('  ✓ Phase 28 MeteringBridge syncs Stripe→Metering');
+  return true;
+});
+
+// Check 12: Metering module exports
+check('Phase 28: Metering module exports', () => {
+  const indexPath = join(rootDir, 'packages/core/src/metering/index.ts');
+  if (!existsSync(indexPath)) {
+    return `Metering index not found at ${indexPath}`;
+  }
+
+  const content = readFileSync(indexPath, 'utf-8');
+
+  // Check for Phase 28 exports
+  const phase28Exports = [
+    'MeteringEventSchema',
+    'MeteringService',
+    'validateMeteringEvent',
+    'getPlanById',
+    'isMeteringEnabled',
+  ];
+
+  for (const exp of phase28Exports) {
+    if (!content.includes(exp)) {
+      return `Missing Phase 28 export: ${exp}`;
+    }
+  }
+
+  console.log('  ✓ Metering module exports Phase 28 schema and service');
+  return true;
+});
+
+// Check 13: Usage dashboard UI page
+check('Phase 28: Usage dashboard UI', () => {
+  const usagePath = join(rootDir, 'apps/web/src/pages/Usage.tsx');
+  if (!existsSync(usagePath)) {
+    return `Usage page not found at ${usagePath}`;
+  }
+
+  const content = readFileSync(usagePath, 'utf-8');
+
+  // Check for key components
+  const components = [
+    'PlanInfoCard',
+    'UsageSummaryCard',
+    'InvoiceHistoryTable',
+    'UsageBar',
+  ];
+
+  for (const comp of components) {
+    if (!content.includes(comp)) {
+      return `Missing UI component: ${comp}`;
+    }
+  }
+
+  console.log('  ✓ Phase 28 Usage dashboard has required components');
+  return true;
+});
+
+// Check 14: Upgrade flow UI page
+check('Phase 28: Upgrade flow UI', () => {
+  const upgradePath = join(rootDir, 'apps/web/src/pages/Upgrade.tsx');
+  if (!existsSync(upgradePath)) {
+    return `Upgrade page not found at ${upgradePath}`;
+  }
+
+  const content = readFileSync(upgradePath, 'utf-8');
+
+  // Check for key features
+  const features = [
+    'createCheckoutSession',
+    'success',
+    'canceled',
+    'monthly',
+    'yearly',
+    'PLANS',
+  ];
+
+  for (const feature of features) {
+    if (!content.includes(feature)) {
+      return `Missing feature: ${feature}`;
+    }
+  }
+
+  console.log('  ✓ Phase 28 Upgrade page has Stripe checkout integration');
+  return true;
+});
+
+// Check 15: Usage and Upgrade routes exist
+check('Phase 28: Routes configured', () => {
+  const appPath = join(rootDir, 'apps/web/src/App.tsx');
+  if (!existsSync(appPath)) {
+    return `App.tsx not found`;
+  }
+
+  const content = readFileSync(appPath, 'utf-8');
+
+  if (!content.includes('"/usage"')) {
+    return 'Missing /usage route';
+  }
+
+  if (!content.includes('"/upgrade"')) {
+    return 'Missing /upgrade route';
+  }
+
+  console.log('  ✓ Phase 28 routes configured (/usage, /upgrade)');
+  return true;
+});
+
+// Check 16: TypeScript compilation
 check('TypeScript compilation', () => {
   try {
     execSync('npm run typecheck 2>&1', {
