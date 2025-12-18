@@ -1,5 +1,5 @@
 # Staging Environment Configuration
-# terraform apply -var-file="envs/staging.tfvars"
+# tofu plan -var-file="envs/staging.tfvars"
 
 # Project Configuration
 project_id  = "bobs-brain-staging"

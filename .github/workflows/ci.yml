@@ -195,14 +195,26 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: '1.8.7'
+
+      - name: OpenTofu Format Check
+        working-directory: infra
+        run: tofu fmt -check -recursive
+
+      - name: OpenTofu Validate
+        working-directory: infra
+        run: |
+          tofu init -backend=false
+          tofu validate
 
       - name: Deploy Infrastructure
-        working-directory: infra/terraform
+        working-directory: infra
         run: |
-          terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
-          terraform apply -auto-approve \
+          tofu init
+          tofu apply -auto-approve \
             -var="environment=dev" \
             -var="project_id=${{ env.PROJECT_ID }}" \
             -var="gwi_api_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}" \
@@ -242,14 +254,26 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: '1.8.7'
+
+      - name: OpenTofu Format Check
+        working-directory: infra
+        run: tofu fmt -check -recursive
+
+      - name: OpenTofu Validate
+        working-directory: infra
+        run: |
+          tofu init -backend=false
+          tofu validate
 
       - name: Deploy Infrastructure
-        working-directory: infra/terraform
+        working-directory: infra
         run: |
-          terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
-          terraform apply -auto-approve \
+          tofu init
+          tofu apply -auto-approve \
             -var="environment=prod" \
             -var="project_id=${{ env.PROJECT_ID }}" \
             -var="gwi_api_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}" \

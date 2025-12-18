@@ -74,8 +74,8 @@ Route tasks through the foreman (`.claude/agents/foreman.md`) which delegates to
 
 ## SAFETY GUARDRAILS
 
-- **No direct gcloud deploys** - All infra goes through GitHub Actions + Terraform
-- **No deletion** of `000-docs/`, `.beads/`, `.claude/`, `infra/terraform/` without explicit instruction
+- **No direct gcloud deploys** - All infra goes through GitHub Actions + OpenTofu
+- **No deletion** of `000-docs/`, `.beads/`, `.claude/`, `infra/` without explicit instruction
 - **No secrets in code** - Use environment variables and Secret Manager
 - **Prefer small diffs** over wholesale rewrites
 
@@ -106,7 +106,7 @@ Route tasks through the foreman (`.claude/agents/foreman.md`) which delegates to
 - **Database**: Firestore (production), in-memory (dev)
 - **AI**: Anthropic SDK (Claude), Google AI SDK (Gemini)
 - **Payments**: Stripe
-- **Infrastructure**: Terraform → Cloud Run, GitHub Actions with WIF
+- **Infrastructure**: OpenTofu → Cloud Run, GitHub Actions with WIF
 
 ### Package Dependency Graph
 
@@ -176,7 +176,7 @@ npm run agentfs:inspect   # Show DB contents
 | `packages/agents/` | Agent implementations (Triage, Coder, Resolver, Reviewer) |
 | `packages/engine/` | Agent execution engine with hook system |
 | `packages/integrations/` | GitHub/GitLab integrations |
-| `infra/terraform/` | All infrastructure (SOURCE OF TRUTH) |
+| `infra/` | All infrastructure - OpenTofu (SOURCE OF TRUTH) |
 | `000-docs/` | Internal docs (flat, numbered: `NNN-CC-ABCD-*.md`) |
 
 ---
@@ -215,8 +215,8 @@ gwi autopilot <pr-url>   # Full pipeline
 
 ## CI/CD & INFRASTRUCTURE
 
-- **Terraform is source of truth** - All infra changes in `infra/terraform/`
-- **Deployment flow**: GitHub Actions → Terraform → Cloud Run (NOT direct `gcloud`)
+- **OpenTofu is source of truth** - All infra changes in `infra/`
+- **Deployment flow**: GitHub Actions → OpenTofu → Cloud Run (NOT direct `gcloud`)
 - **CI checks**: `scripts/ci/check_nodrift.sh`, `scripts/ci/check_arv.sh`
 - **Branches**: `main` → prod, `develop` → dev, `internal` → hard mode checks
 

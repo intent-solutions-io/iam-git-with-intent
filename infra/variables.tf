@@ -1,4 +1,4 @@
-# Git With Intent - Terraform Variables
+# Git With Intent - OpenTofu Variables
 # The baddest MF git tool - AI-powered DevOps automation
 
 variable "project_id" {
@@ -230,4 +230,62 @@ variable "gwi_worker_max_delivery_attempts" {
   description = "Maximum delivery attempts before sending to DLQ"
   type        = number
   default     = 5
+}
+
+# ============================================================================
+# Org Knowledge Hub Storage Configuration
+# ============================================================================
+
+variable "org_storage_enabled" {
+  description = "Enable org-wide knowledge hub storage bucket"
+  type        = bool
+  default     = false
+}
+
+variable "org_storage_bucket_name" {
+  description = "Name for org knowledge hub bucket"
+  type        = string
+  default     = "gwi-org-knowledge-hub"
+}
+
+variable "org_storage_location" {
+  description = "Location for org knowledge hub bucket"
+  type        = string
+  default     = "US"
+}
+
+variable "org_storage_writer_service_accounts" {
+  description = "Service accounts with write access to org knowledge hub"
+  type        = list(string)
+  default     = []
+}
+
+# ============================================================================
+# Agent Engine IDs (managed outside OpenTofu via ADK CLI/gcloud)
+# ============================================================================
+# Note: Vertex AI Agent Engine resources are not yet supported by the
+# Terraform/OpenTofu provider. These IDs are set after manual/CLI deployment.
+
+variable "orchestrator_engine_id" {
+  description = "Vertex AI Agent Engine ID for Orchestrator (set after ADK deploy)"
+  type        = string
+  default     = ""
+}
+
+variable "triage_engine_id" {
+  description = "Vertex AI Agent Engine ID for Triage agent"
+  type        = string
+  default     = ""
+}
+
+variable "resolver_engine_id" {
+  description = "Vertex AI Agent Engine ID for Resolver agent"
+  type        = string
+  default     = ""
+}
+
+variable "reviewer_engine_id" {
+  description = "Vertex AI Agent Engine ID for Reviewer agent"
+  type        = string
+  default     = ""
 }

@@ -61,3 +61,11 @@ __snapshots__/
 
 # Sandbox workspace (ephemeral, generated code artifacts)
 workspace/
+
+# OpenTofu / Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/.terraform.lock.hcl
+infra/*.tfplan
+*.backup

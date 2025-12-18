@@ -1,6 +1,5 @@
-# Git With Intent - Main Terraform Configuration
-# The baddest MF git tool for managing issues, PRs, merges
-# Minimal human in the loop - AI agents handle it all
+# Git With Intent - Main OpenTofu Configuration
+# AI-powered CLI for GitHub PR workflows
 #
 # Architecture:
 # - Vertex AI Agent Engine for agent runtime
@@ -8,7 +7,7 @@
 # - GitHub Webhook for PR/Issue events
 # - Cloud Trace/Monitoring for telemetry
 #
-# Note: Terraform and provider blocks are in provider.tf
+# Note: OpenTofu provider blocks are in provider.tf
 
 # Enable required APIs
 resource "google_project_service" "required_apis" {
@@ -38,7 +37,7 @@ locals {
     app         = var.app_name
     environment = var.environment
     version     = replace(var.app_version, ".", "-")
-    managed_by  = "terraform"
+    managed_by  = "opentofu"
   })
 
   # Agent SPIFFE IDs

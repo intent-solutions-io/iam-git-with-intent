@@ -132,7 +132,7 @@ git-with-intent/
 │   ├── agents/        # Agent implementations
 │   ├── engine/        # Workflow orchestration
 │   └── integrations/  # GitHub client
-└── infra/terraform/   # Infrastructure as Code
+└── infra/             # Infrastructure as Code (OpenTofu)
 ```
 
 The `packages/core/` directory has grown significantly. Major subsystems:

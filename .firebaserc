@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "git-with-intent"
+  },
+  "targets": {
+    "git-with-intent": {
+      "hosting": {
+        "web": [
+          "git-with-intent"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

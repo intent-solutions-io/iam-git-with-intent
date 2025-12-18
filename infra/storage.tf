@@ -215,9 +215,9 @@ output "org_storage_bucket_name" {
 }
 
 # ==============================================================================
-# IMPORTANT NOTES FOR TERRAFORM APPLY:
+# IMPORTANT NOTES FOR OPENTOFU APPLY:
 # ==============================================================================
-# 1. Do NOT run `terraform apply` from local; deployment is CI-controlled
+# 1. Do NOT run `tofu apply` from local; deployment is CI-controlled
 # 2. BigQuery is NOT enabled in LIVE1-GCS; future LIVE-BQ phase will add it
 # 3. Default org_storage_enabled = false; must explicitly enable per environment
 # 4. Bucket naming uses environment variable to avoid hard-coded project IDs

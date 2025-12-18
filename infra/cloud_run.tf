@@ -27,22 +27,22 @@ resource "google_cloud_run_service" "a2a_gateway" {
 
         env {
           name  = "ORCHESTRATOR_ENGINE_ID"
-          value = google_vertex_ai_reasoning_engine.orchestrator.id
+          value = var.orchestrator_engine_id
         }
 
         env {
           name  = "TRIAGE_ENGINE_ID"
-          value = google_vertex_ai_reasoning_engine.triage.id
+          value = var.triage_engine_id
         }
 
         env {
           name  = "RESOLVER_ENGINE_ID"
-          value = google_vertex_ai_reasoning_engine.resolver.id
+          value = var.resolver_engine_id
         }
 
         env {
           name  = "REVIEWER_ENGINE_ID"
-          value = google_vertex_ai_reasoning_engine.reviewer.id
+          value = var.reviewer_engine_id
         }
 
         env {
@@ -126,10 +126,7 @@ resource "google_cloud_run_service" "a2a_gateway" {
   depends_on = [
     google_service_account.a2a_gateway,
     google_project_iam_member.a2a_gateway_aiplatform,
-    google_vertex_ai_reasoning_engine.orchestrator,
-    google_vertex_ai_reasoning_engine.triage,
-    google_vertex_ai_reasoning_engine.resolver,
-    google_vertex_ai_reasoning_engine.reviewer,
+    # Agent Engine resources managed via ADK CLI/gcloud (not OpenTofu)
   ]
 }
 
@@ -163,7 +160,7 @@ resource "google_cloud_run_service" "github_webhook" {
 
         env {
           name  = "ORCHESTRATOR_ENGINE_ID"
-          value = google_vertex_ai_reasoning_engine.orchestrator.id
+          value = var.orchestrator_engine_id
         }
 
         env {
@@ -237,7 +234,7 @@ resource "google_cloud_run_service" "github_webhook" {
   depends_on = [
     google_service_account.github_webhook,
     google_project_iam_member.github_webhook_aiplatform,
-    google_vertex_ai_reasoning_engine.orchestrator,
+    # Agent Engine resources managed via ADK CLI/gcloud (not OpenTofu)
   ]
 }
 
@@ -552,17 +549,7 @@ resource "google_cloud_run_service" "gwi_worker" {
           period_seconds        = 10
           failure_threshold     = 3
         }
-
-        # Readiness probe
-        readiness_probe {
-          http_get {
-            path = "/ready"
-          }
-          initial_delay_seconds = 5
-          timeout_seconds       = 3
-          period_seconds        = 5
-          failure_threshold     = 3
-        }
+        # Note: readiness_probe not supported in Cloud Run v1 API
       }
 
       # Workers process one job at a time per container
@@ -658,7 +645,7 @@ resource "google_pubsub_subscription" "gwi_worker_dlq_sub" {
   project = var.project_id
 
   # Keep failed messages for 14 days for investigation
-  message_retention_duration = "1209600s"  # 14 days
+  message_retention_duration = "1209600s" # 14 days
 
   # No expiration - keep subscription alive
   expiration_policy {

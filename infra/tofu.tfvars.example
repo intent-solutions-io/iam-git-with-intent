@@ -1,5 +1,5 @@
-# Git With Intent - Terraform Configuration
-# Copy to terraform.tfvars and fill in values
+# Git With Intent - OpenTofu Configuration
+# Copy to your envs/*.tfvars and fill in values
 
 # Required
 project_id  = "your-gcp-project-id"

@@ -1,5 +1,5 @@
 # Git With Intent - Dev Environment
-# terraform apply -var-file="envs/dev.tfvars"
+# tofu plan -var-file="envs/dev.tfvars"
 
 # Project Configuration
 project_id  = "git-with-intent-dev"
@@ -25,10 +25,10 @@ github_webhook_secret_id = "gwi-github-webhook-secret"
 agent_spiffe_id = "spiffe://intent.solutions/agent/gwi"
 
 # Model Configuration
-triage_model          = "gemini-2.0-flash"
-resolver_model        = "claude-sonnet-4-20250514"
+triage_model           = "gemini-2.0-flash"
+resolver_model         = "claude-sonnet-4-20250514"
 resolver_complex_model = "claude-opus-4-20250514"
-reviewer_model        = "claude-sonnet-4-20250514"
+reviewer_model         = "claude-sonnet-4-20250514"
 
 # Networking
 allow_public_access = true
@@ -40,5 +40,5 @@ enable_telemetry = true
 labels = {
   environment = "dev"
   team        = "platform"
-  managed-by  = "terraform"
+  managed-by  = "opentofu"
 }

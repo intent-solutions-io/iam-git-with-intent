@@ -324,6 +324,71 @@ resource "google_monitoring_alert_policy" "webhook_error_rate" {
 }
 
 # ============================================================================
+# Budget Alerts
+# ============================================================================
+
+variable "monthly_budget_amount" {
+  description = "Monthly budget amount in USD"
+  type        = number
+  default     = 100
+}
+
+variable "enable_budget_alerts" {
+  description = "Enable budget alert notifications (requires billing_account_id)"
+  type        = bool
+  default     = false
+}
+
+resource "google_billing_budget" "monthly_budget" {
+  count = var.enable_budget_alerts ? 1 : 0
+
+  billing_account = data.google_billing_account.account[0].id
+  display_name    = "GWI Monthly Budget (${var.environment})"
+
+  budget_filter {
+    projects = ["projects/${data.google_project.project.number}"]
+  }
+
+  amount {
+    specified_amount {
+      currency_code = "USD"
+      units         = tostring(var.monthly_budget_amount)
+    }
+  }
+
+  threshold_rules {
+    threshold_percent = 0.5 # 50%
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  threshold_rules {
+    threshold_percent = 0.8 # 80%
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  threshold_rules {
+    threshold_percent = 1.0 # 100%
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  threshold_rules {
+    threshold_percent = 1.2 # 120% - overspend
+    spend_basis       = "CURRENT_SPEND"
+  }
+}
+
+data "google_billing_account" "account" {
+  count           = var.enable_budget_alerts ? 1 : 0
+  billing_account = var.billing_account_id
+}
+
+variable "billing_account_id" {
+  description = "Billing account ID (format: XXXXXX-XXXXXX-XXXXXX)"
+  type        = string
+  default     = ""
+}
+
+# ============================================================================
 # Outputs
 # ============================================================================
 
