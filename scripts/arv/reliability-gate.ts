@@ -3,12 +3,15 @@
  * ARV: Reliability Gate
  *
  * Phase 7: Validates reliability primitives are working correctly.
+ * Phase 30: Added retry/backoff and circuit breaker tests.
  *
  * Checks:
  * - Run locking correctness
  * - Idempotency key correctness
  * - Resume logic correctness
  * - Error taxonomy compliance
+ * - Retry with exponential backoff (Phase 30)
+ * - Circuit breaker pattern (Phase 30)
  *
  * @module arv/reliability-gate
  */
@@ -308,6 +311,168 @@ async function testErrorPatternDetection(): Promise<void> {
 }
 
 // =============================================================================
+// Retry Tests (Phase 30)
+// =============================================================================
+
+async function testRetryWithSuccess(): Promise<void> {
+  const { retry, RETRY_PRESETS } = await import('@gwi/core');
+
+  let attempts = 0;
+
+  const result = await retry(
+    async () => {
+      attempts++;
+      if (attempts < 3) {
+        throw new Error('Transient error');
+      }
+      return 'success';
+    },
+    { ...RETRY_PRESETS.fast, maxAttempts: 5, isRetryable: () => true }
+  );
+
+  assert(result === 'success', 'Should return successful result');
+  assert(attempts === 3, 'Should have attempted 3 times');
+}
+
+async function testRetryWithFailure(): Promise<void> {
+  const { retryWithResult, RETRY_PRESETS } = await import('@gwi/core');
+
+  let attempts = 0;
+
+  const result = await retryWithResult(
+    async () => {
+      attempts++;
+      throw new Error('Permanent error');
+    },
+    { ...RETRY_PRESETS.fast, maxAttempts: 3, isRetryable: () => true }
+  );
+
+  assert(!result.success, 'Should report failure');
+  assert(result.attempts === 3, 'Should have attempted 3 times');
+  assert(result.attemptErrors.length === 3, 'Should have recorded 3 errors');
+}
+
+async function testRetryNonRetryable(): Promise<void> {
+  const { retryWithResult, RETRY_PRESETS } = await import('@gwi/core');
+
+  let attempts = 0;
+
+  const result = await retryWithResult(
+    async () => {
+      attempts++;
+      throw new Error('Non-retryable error');
+    },
+    { ...RETRY_PRESETS.fast, maxAttempts: 5, isRetryable: () => false }
+  );
+
+  assert(!result.success, 'Should report failure');
+  assert(result.attempts === 1, 'Should not retry non-retryable errors');
+}
+
+async function testBackoffCalculation(): Promise<void> {
+  const { calculateBackoff, DEFAULT_RETRY_CONFIG } = await import('@gwi/core');
+
+  // Test exponential growth
+  const delay0 = calculateBackoff(0, DEFAULT_RETRY_CONFIG);
+  const delay1 = calculateBackoff(1, DEFAULT_RETRY_CONFIG);
+  const delay2 = calculateBackoff(2, DEFAULT_RETRY_CONFIG);
+
+  // With jitter, values will vary but should follow exponential trend
+  assert(delay0 > 0, 'First delay should be positive');
+  assert(delay1 > delay0 * 0.5, 'Second delay should be larger than half of first');
+  assert(delay2 <= DEFAULT_RETRY_CONFIG.maxDelayMs * 1.2, 'Delay should not exceed max');
+}
+
+// =============================================================================
+// Circuit Breaker Tests (Phase 30)
+// =============================================================================
+
+async function testCircuitBreakerNormal(): Promise<void> {
+  const { CircuitBreaker } = await import('@gwi/core');
+
+  const breaker = new CircuitBreaker('test-normal', {
+    failureThreshold: 3,
+    resetTimeoutMs: 100,
+  });
+
+  // Normal operation
+  assert(breaker.getState() === 'closed', 'Should start closed');
+
+  const result = await breaker.execute(async () => 'success');
+  assert(result === 'success', 'Should pass through in closed state');
+  assert(breaker.getState() === 'closed', 'Should remain closed after success');
+}
+
+async function testCircuitBreakerOpen(): Promise<void> {
+  const { CircuitBreaker } = await import('@gwi/core');
+
+  const breaker = new CircuitBreaker('test-open', {
+    failureThreshold: 3,
+    resetTimeoutMs: 1000,
+    failureWindowMs: 60000,
+  });
+
+  // Cause failures
+  for (let i = 0; i < 3; i++) {
+    try {
+      await breaker.execute(async () => {
+        throw new Error('Failure');
+      });
+    } catch {
+      // Expected
+    }
+  }
+
+  assert(breaker.getState() === 'open', 'Should be open after failures');
+
+  // Verify requests fail fast
+  try {
+    await breaker.execute(async () => 'should not run');
+    throw new Error('Should have thrown');
+  } catch (error) {
+    assert(
+      error instanceof Error && error.message.includes('Circuit breaker'),
+      'Should throw circuit breaker error'
+    );
+  }
+}
+
+async function testCircuitBreakerRecovery(): Promise<void> {
+  const { CircuitBreaker } = await import('@gwi/core');
+
+  const breaker = new CircuitBreaker('test-recovery', {
+    failureThreshold: 2,
+    resetTimeoutMs: 50,
+    successThreshold: 2,
+    failureWindowMs: 60000,
+  });
+
+  // Open the circuit
+  for (let i = 0; i < 2; i++) {
+    try {
+      await breaker.execute(async () => {
+        throw new Error('Failure');
+      });
+    } catch {
+      // Expected
+    }
+  }
+
+  assert(breaker.getState() === 'open', 'Should be open');
+
+  // Wait for reset timeout
+  await new Promise((r) => setTimeout(r, 60));
+
+  assert(breaker.getState() === 'half-open', 'Should be half-open after timeout');
+
+  // Successful request should eventually close
+  await breaker.execute(async () => 'success');
+  await breaker.execute(async () => 'success');
+
+  assert(breaker.getState() === 'closed', 'Should be closed after recovery');
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -329,6 +494,17 @@ async function runReliabilityGate(): Promise<{ passed: boolean; report: Reliabil
   // Error tests
   results.push(await runTest('Error types', testErrorTypes));
   results.push(await runTest('Error pattern detection', testErrorPatternDetection));
+
+  // Retry tests (Phase 30)
+  results.push(await runTest('Retry with success', testRetryWithSuccess));
+  results.push(await runTest('Retry with failure', testRetryWithFailure));
+  results.push(await runTest('Retry non-retryable', testRetryNonRetryable));
+  results.push(await runTest('Backoff calculation', testBackoffCalculation));
+
+  // Circuit breaker tests (Phase 30)
+  results.push(await runTest('Circuit breaker normal', testCircuitBreakerNormal));
+  results.push(await runTest('Circuit breaker open', testCircuitBreakerOpen));
+  results.push(await runTest('Circuit breaker recovery', testCircuitBreakerRecovery));
 
   const passed = results.filter((r) => r.passed).length;
   const failed = results.filter((r) => !r.passed).length;
