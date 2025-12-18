@@ -4,8 +4,12 @@
  * Exports for the LLM Planner subsystem:
  * - PatchPlan schema and types
  * - PlannerService orchestrator
- * - PlannerProvider interface (Gemini/Claude)
+ * - PlannerProvider interface (Gemini/Claude/OpenAI/Generic)
  * - PlanGuard safety checks
+ *
+ * Provider-agnostic LLM support:
+ * - Use createPlannerProviderFromLLM() for any LLM provider
+ * - Supports OpenAI, Azure OpenAI, Ollama, vLLM, LM Studio, etc.
  */
 
 // Types and Schema
@@ -74,9 +78,13 @@ export {
 // Provider Interface
 export {
   type PlannerProviderInterface,
+  type PlannerProviderInput,
+  type ExtendedPlannerProviderType,
   GeminiPlannerProvider,
   ClaudePlannerProvider,
+  GenericLLMPlannerProvider,
   createPlannerProvider,
+  createPlannerProviderFromLLM,
 } from './providers.js';
 
 // PlanGuard

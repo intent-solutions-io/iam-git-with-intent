@@ -95,3 +95,6 @@ export * from './policy/index.js';
 
 // Planner exports (Phase 26: LLM Planner Integration)
 export * from './planner/index.js';
+
+// LLM exports (Phase 26: Provider-Agnostic LLM Interface)
+export * from './llm/index.js';

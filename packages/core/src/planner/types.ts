@@ -13,8 +13,13 @@ import { z } from 'zod';
 
 /**
  * Supported LLM providers for planning
+ *
+ * - gemini: Google AI (Gemini) - built-in provider
+ * - claude: Anthropic (Claude) - built-in provider
+ * - openai: OpenAI (GPT) - via generic LLM interface
+ * - llm: Generic LLM provider - any OpenAI-compatible endpoint
  */
-export const PlannerProvider = z.enum(['gemini', 'claude']);
+export const PlannerProvider = z.enum(['gemini', 'claude', 'openai', 'llm']);
 export type PlannerProvider = z.infer<typeof PlannerProvider>;
 
 /**

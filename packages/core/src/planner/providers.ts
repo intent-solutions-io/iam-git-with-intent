@@ -1,13 +1,20 @@
 /**
  * Phase 26: LLM Planner Providers
  *
- * Provider interface and implementations for Gemini and Claude.
+ * Provider interface and implementations for LLM planners.
  * Each provider takes intent + context and produces a PatchPlan.
+ *
+ * Supports:
+ * - gemini: Google AI (Gemini)
+ * - claude: Anthropic (Claude)
+ * - openai: OpenAI (GPT)
+ * - llm: Generic provider using provider-agnostic LLM interface
  */
 
 import { randomUUID } from 'node:crypto';
 import type { PatchPlan, PlannerProvider as PlannerProviderType } from './types.js';
 import { PatchPlanSchema } from './types.js';
+import type { LLMProvider, LLMProviderConfig } from '../llm/types.js';
 
 // =============================================================================
 // Provider Interface
@@ -335,22 +342,173 @@ export class ClaudePlannerProvider implements PlannerProviderInterface {
 }
 
 // =============================================================================
+// Generic LLM Provider (Provider-Agnostic)
+// =============================================================================
+
+/**
+ * Generic LLM planner provider using provider-agnostic interface
+ *
+ * Supports any provider that implements LLMProvider:
+ * - Google AI (Gemini)
+ * - Anthropic (Claude)
+ * - OpenAI (GPT)
+ * - OpenAI-compatible endpoints (Azure, Ollama, vLLM, LM Studio)
+ * - Custom providers
+ */
+export class GenericLLMPlannerProvider implements PlannerProviderInterface {
+  readonly name: PlannerProviderType = 'llm';
+  private llmProvider: LLMProvider;
+
+  constructor(llmProvider: LLMProvider, config: LLMProviderConfig) {
+    this.llmProvider = llmProvider;
+    // Map LLM provider type to planner provider name
+    this.name = this.mapProviderType(config.provider);
+  }
+
+  private mapProviderType(type: string): PlannerProviderType {
+    switch (type) {
+      case 'google':
+        return 'gemini';
+      case 'anthropic':
+        return 'claude';
+      case 'openai':
+      case 'openai_compat':
+        return 'openai';
+      default:
+        return 'llm';
+    }
+  }
+
+  isAvailable(): boolean {
+    return this.llmProvider.isAvailable();
+  }
+
+  getModel(): string {
+    return this.llmProvider.getModel();
+  }
+
+  async plan(input: PlannerProviderInput): Promise<PatchPlan> {
+    if (!this.isAvailable()) {
+      throw new Error(
+        `LLM provider ${this.llmProvider.name} not available. Check API key and configuration.`
+      );
+    }
+
+    const userPrompt = this.buildUserPrompt(input);
+
+    // Use completeJson for structured output
+    const response = await this.llmProvider.completeJson({
+      system: PLANNER_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+      temperature: 0.2,
+      maxTokens: 8192,
+    });
+
+    const planData = response.json as Record<string, unknown>;
+
+    // Ensure provider/model are set correctly
+    planData.provider = this.name;
+    planData.model = response.model;
+    planData.plan_id = planData.plan_id || randomUUID();
+    planData.created_at = planData.created_at || new Date().toISOString();
+    planData.trace_id = input.traceId;
+    planData.request_id = input.requestId;
+    planData.tenant_id = input.tenantId;
+
+    return PatchPlanSchema.parse(planData);
+  }
+
+  private buildUserPrompt(input: PlannerProviderInput): string {
+    let prompt = `## Intent\n${input.intent}\n\n`;
+
+    if (input.sourceContext) {
+      prompt += `## Source Context\n`;
+      prompt += `Type: ${input.sourceContext.type}\n`;
+      if (input.sourceContext.url) {
+        prompt += `URL: ${input.sourceContext.url}\n`;
+      }
+      if (input.sourceContext.title) {
+        prompt += `Title: ${input.sourceContext.title}\n`;
+      }
+      if (input.sourceContext.body) {
+        prompt += `Body:\n${input.sourceContext.body}\n`;
+      }
+      if (input.sourceContext.diff) {
+        prompt += `\nDiff:\n\`\`\`\n${input.sourceContext.diff}\n\`\`\`\n`;
+      }
+      prompt += '\n';
+    }
+
+    if (input.repoContext) {
+      prompt += `## Repository Context\n`;
+      prompt += `Languages: ${input.repoContext.languages.join(', ')}\n`;
+      prompt += `Has Tests: ${input.repoContext.hasTests}\n`;
+      if (input.repoContext.defaultBranch) {
+        prompt += `Default Branch: ${input.repoContext.defaultBranch}\n`;
+      }
+      prompt += `Files (sample): ${input.repoContext.files.slice(0, 50).join(', ')}\n`;
+      prompt += '\n';
+    }
+
+    if (input.fileContents && input.fileContents.size > 0) {
+      prompt += `## Relevant File Contents\n`;
+      for (const [path, content] of input.fileContents) {
+        prompt += `### ${path}\n\`\`\`\n${content.slice(0, 5000)}\n\`\`\`\n\n`;
+      }
+    }
+
+    prompt += `\nGenerate a complete PatchPlan JSON for this intent.`;
+
+    return prompt;
+  }
+}
+
+// =============================================================================
 // Factory
 // =============================================================================
 
 /**
+ * Extended planner provider type including generic LLM
+ */
+export type ExtendedPlannerProviderType = PlannerProviderType | 'openai' | 'llm';
+
+/**
  * Create a planner provider by name
+ *
+ * For 'gemini' and 'claude', uses the built-in providers.
+ * For 'openai' or 'llm', requires an LLMProvider instance.
  */
 export function createPlannerProvider(
-  provider: PlannerProviderType,
-  config?: { model?: string; apiKey?: string }
+  provider: ExtendedPlannerProviderType,
+  config?: { model?: string; apiKey?: string; llmProvider?: LLMProvider; llmConfig?: LLMProviderConfig }
 ): PlannerProviderInterface {
   switch (provider) {
     case 'gemini':
       return new GeminiPlannerProvider(config);
     case 'claude':
       return new ClaudePlannerProvider(config);
+    case 'openai':
+    case 'llm':
+      if (!config?.llmProvider || !config?.llmConfig) {
+        throw new Error(
+          `Provider '${provider}' requires llmProvider and llmConfig. Use createPlannerProviderFromLLM() instead.`
+        );
+      }
+      return new GenericLLMPlannerProvider(config.llmProvider, config.llmConfig);
     default:
       throw new Error(`Unknown planner provider: ${provider}`);
   }
+}
+
+/**
+ * Create a planner provider from a generic LLMProvider
+ *
+ * This allows using any LLM provider (including OpenAI-compatible endpoints)
+ * for planning.
+ */
+export function createPlannerProviderFromLLM(
+  llmProvider: LLMProvider,
+  config: LLMProviderConfig
+): PlannerProviderInterface {
+  return new GenericLLMPlannerProvider(llmProvider, config);
 }

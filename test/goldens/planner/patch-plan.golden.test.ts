@@ -89,7 +89,7 @@ describe('PatchPlan Schema Validation', () => {
 
     it('should reject plan with invalid provider', () => {
       const plan = loadFixture('valid-plan.json') as Record<string, unknown>;
-      plan.provider = 'openai'; // Not supported
+      plan.provider = 'invalid_provider'; // Not supported
 
       const result = validatePatchPlan(plan);
       expect(result.valid).toBe(false);
