@@ -70,6 +70,7 @@ import {
   plannerValidateCommand,
   plannerStatusCommand,
 } from './commands/planner.js';
+import { registerForensicsCommands } from './commands/forensics.js';
 import { doctorCommand } from './commands/doctor.js';
 import { diagnoseCommand } from './commands/diagnose.js';
 import {
@@ -576,6 +577,12 @@ plannerCmd
   });
 
 // =============================================================================
+// Forensics Commands (Phase 27)
+// =============================================================================
+
+registerForensicsCommands(program);
+
+// =============================================================================
 // Operator Commands (Phase 8)
 // =============================================================================
 
@@ -899,6 +906,14 @@ LLM Planner (Phase 26 - requires GWI_PLANNER_ENABLED=1):
   gwi planner generate <intent> Generate PatchPlan from intent
   gwi planner validate <file>   Validate a PatchPlan JSON
   gwi planner status            Show planner configuration
+
+Forensics (Phase 27 - requires GWI_FORENSICS_ENABLED=1):
+  gwi forensics status          Show forensics status
+  gwi forensics validate <file> Validate a ForensicBundle
+  gwi forensics replay <file>   Replay a bundle deterministically
+  gwi forensics timeline <file> Show event timeline
+  gwi forensics dlq list        List DLQ items
+  gwi forensics dlq replay <id> Replay from DLQ
 
 Operator Tools:
   gwi doctor                    Check environment health

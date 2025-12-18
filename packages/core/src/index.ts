@@ -98,3 +98,6 @@ export * from './planner/index.js';
 
 // LLM exports (Phase 26: Provider-Agnostic LLM Interface)
 export * from './llm/index.js';
+
+// Forensics exports (Phase 27: Replay & Forensics)
+export * from './forensics/index.js';

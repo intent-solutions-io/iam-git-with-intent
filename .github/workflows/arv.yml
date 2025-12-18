@@ -54,6 +54,10 @@ jobs:
         id: reliability
         run: npx tsx scripts/arv/reliability-gate.ts
 
+      - name: ARV - Forensics Gate
+        id: forensics
+        run: npx tsx scripts/arv/forensics-gate.ts
+
       - name: Summary
         if: always()
         run: |
@@ -67,3 +71,4 @@ jobs:
           echo "| Smoke Tests | ${{ steps.smoke.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Connector Supply Chain | ${{ steps.connectors.outcome }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Reliability Gate | ${{ steps.reliability.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forensics Gate | ${{ steps.forensics.outcome }} |" >> $GITHUB_STEP_SUMMARY
