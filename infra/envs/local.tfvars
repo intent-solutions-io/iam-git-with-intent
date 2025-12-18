@@ -15,8 +15,8 @@ app_version = "0.2.0"
 a2a_gateway_image    = "us-central1-docker.pkg.dev/git-with-intent/gwi/gateway:latest"
 github_webhook_image = "us-central1-docker.pkg.dev/git-with-intent/gwi/github-webhook:latest"
 
-# Phase 11: SaaS API Image
-gwi_api_image = "us-central1-docker.pkg.dev/git-with-intent/gwi/api:latest"
+# Phase 11: SaaS API Image (empty = don't deploy until image exists)
+gwi_api_image = ""
 
 # Gateway Scaling (minimal for testing)
 gateway_max_instances = 3

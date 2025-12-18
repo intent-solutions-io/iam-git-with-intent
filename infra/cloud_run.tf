@@ -65,10 +65,7 @@ resource "google_cloud_run_service" "a2a_gateway" {
           value = var.environment
         }
 
-        env {
-          name  = "PORT"
-          value = "8080"
-        }
+        # Note: PORT is set automatically by Cloud Run
 
         # Resource limits
         resources {
@@ -178,10 +175,7 @@ resource "google_cloud_run_service" "github_webhook" {
           value = var.environment
         }
 
-        env {
-          name  = "PORT"
-          value = "8080"
-        }
+        # Note: PORT is set automatically by Cloud Run
 
         resources {
           limits = {
@@ -310,10 +304,7 @@ resource "google_cloud_run_service" "gwi_api" {
           value = var.app_version
         }
 
-        env {
-          name  = "PORT"
-          value = "8080"
-        }
+        # Note: PORT is set automatically by Cloud Run
 
         # Resource limits
         resources {
@@ -504,10 +495,7 @@ resource "google_cloud_run_service" "gwi_worker" {
           value = var.app_version
         }
 
-        env {
-          name  = "PORT"
-          value = "8080"
-        }
+        # Note: PORT is set automatically by Cloud Run
 
         # Phase 35: GitHub App credentials for autopilot workspace isolation
         env {

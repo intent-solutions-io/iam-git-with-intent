@@ -83,11 +83,12 @@ resource "google_storage_bucket" "adk_docs" {
 # Grant read access to Vertex AI Search service
 # Note: Vertex AI Search uses the default Vertex AI service agent
 # Format: service-{PROJECT_NUMBER}@gcp-sa-discoveryengine.iam.gserviceaccount.com
-resource "google_storage_bucket_iam_member" "adk_docs_vertex_search" {
-  bucket = google_storage_bucket.adk_docs.name
-  role   = "roles/storage.objectViewer"
-  member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-discoveryengine.iam.gserviceaccount.com"
-}
+# DISABLED: Service account is created on first Discovery Engine use
+# resource "google_storage_bucket_iam_member" "adk_docs_vertex_search" {
+#   bucket = google_storage_bucket.adk_docs.name
+#   role   = "roles/storage.objectViewer"
+#   member = "serviceAccount:service-${data.google_project.project.number}@gcp-sa-discoveryengine.iam.gserviceaccount.com"
+# }
 
 # Grant admin access to Agent Engine service account for document management
 resource "google_storage_bucket_iam_member" "adk_docs_admin" {

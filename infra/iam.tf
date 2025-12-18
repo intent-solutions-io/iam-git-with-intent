@@ -131,9 +131,21 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "google.subject"       = "assertion.sub"
     "attribute.actor"      = "assertion.actor"
     "attribute.repository" = "assertion.repository"
+    "attribute.ref"        = "assertion.ref"
   }
+
+  # Restrict to specific GitHub org/repo
+  attribute_condition = "assertion.repository_owner == 'intent-solutions-io'"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
   }
+}
+
+# Allow GitHub Actions to impersonate the CI service account via WIF
+# Uses principalSet to scope to the specific repository
+resource "google_service_account_iam_member" "github_actions_wif" {
+  service_account_id = google_service_account.github_actions.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/intent-solutions-io/git-with-intent"
 }
