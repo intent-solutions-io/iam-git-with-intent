@@ -81,11 +81,11 @@ jobs:
         run: npm run lint
         continue-on-error: false
 
-      - name: Type check
-        run: npm run typecheck
-
       - name: Build
         run: npm run build
+
+      - name: Type check
+        run: npm run typecheck
 
       - name: Test
         run: npm run test
