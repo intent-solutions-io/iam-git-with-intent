@@ -1,5 +1,5 @@
 /**
- * Rate Limiting Module for Git With Intent (Phase 15)
+ * Rate Limiting Module for Git With Intent (Phase 15, 30)
  *
  * Provides tenant-scoped rate limiting with sliding window implementation.
  * Designed for Express middleware integration.
@@ -8,10 +8,20 @@
  * - Tenant-scoped limits
  * - Sliding window algorithm
  * - Configurable limits per endpoint
- * - In-memory and Firestore storage options
+ * - In-memory storage (single instance)
+ * - Redis storage (distributed, Phase 30)
+ * - Graceful fallback when Redis unavailable
  *
  * @module @gwi/core/ratelimit
  */
+
+// Re-export Redis store (Phase 30)
+export {
+  RedisRateLimitStore,
+  createRateLimitStore,
+  type RedisClientLike,
+  type RedisRateLimitStoreOptions,
+} from './redis-store.js';
 
 // =============================================================================
 // Rate Limit Configuration
@@ -88,6 +98,38 @@ export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
     maxRequests: 20,
     windowMs: 60 * 60 * 1000, // 20 per hour
     message: 'Invite rate limit exceeded.',
+  },
+
+  // ==========================================================================
+  // Phase 30: Marketplace rate limits
+  // ==========================================================================
+
+  // Connector publishing - limited to prevent spam
+  'marketplace:publish': {
+    maxRequests: 10,
+    windowMs: 15 * 60 * 1000, // 10 per 15 minutes
+    message: 'Publish rate limit exceeded. Please wait before publishing more connectors.',
+  },
+
+  // Search - higher limit but still protected
+  'marketplace:search': {
+    maxRequests: 100,
+    windowMs: 15 * 60 * 1000, // 100 per 15 minutes
+    message: 'Search rate limit exceeded. Please slow down.',
+  },
+
+  // Tarball downloads - protect bandwidth
+  'marketplace:download': {
+    maxRequests: 50,
+    windowMs: 15 * 60 * 1000, // 50 per 15 minutes
+    message: 'Download rate limit exceeded. Please wait before downloading more connectors.',
+  },
+
+  // Install requests - moderate limit
+  'marketplace:install': {
+    maxRequests: 30,
+    windowMs: 15 * 60 * 1000, // 30 per 15 minutes
+    message: 'Install rate limit exceeded.',
   },
 };
 
