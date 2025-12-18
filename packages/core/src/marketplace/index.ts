@@ -44,3 +44,14 @@ export {
   resetMarketplaceService,
   type MarketplaceServiceConfig,
 } from './service.js';
+
+// Install Pipeline (Phase 29: Policy-aware installation)
+export {
+  InstallPipeline,
+  getInstallPipeline,
+  resetInstallPipeline,
+  DEFAULT_INSTALL_POLICY,
+  type ConnectorInstallPolicy,
+  type InstallPipelineResult,
+  type PendingInstallRequest,
+} from './install-pipeline.js';
