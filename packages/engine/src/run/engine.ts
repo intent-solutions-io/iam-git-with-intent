@@ -31,9 +31,17 @@ import type {
 import { buildDefaultHookRunner } from '../hooks/config.js';
 import { AgentHookRunner } from '../hooks/runner.js';
 import type { AgentRunContext } from '../hooks/types.js';
-import type { TenantStore, SaaSRun, WorkflowType } from '@gwi/core';
-import { getTenantStore, getStoreBackend } from '@gwi/core';
+import type { TenantStore, SaaSRun, WorkflowType, ForensicBundle } from '@gwi/core';
+import {
+  getTenantStore,
+  getStoreBackend,
+  isForensicsEnabled,
+  createForensicCollector,
+  type ForensicCollector,
+} from '@gwi/core';
 import { OrchestratorAgent } from '@gwi/agents';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 // =============================================================================
 // Default Configuration
@@ -60,6 +68,33 @@ interface InMemoryRun {
 }
 
 const fallbackRuns = new Map<string, InMemoryRun>();
+
+// =============================================================================
+// Forensics Helpers
+// =============================================================================
+
+/**
+ * Get the forensics output directory
+ */
+function getForensicsDir(): string {
+  return process.env.GWI_FORENSICS_DIR || '.gwi/forensics';
+}
+
+/**
+ * Save a forensic bundle to disk
+ */
+function saveForensicBundle(bundle: ForensicBundle): string {
+  const dir = getForensicsDir();
+  const filePath = join(dir, `${bundle.run_id}.json`);
+
+  // Ensure directory exists
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  writeFileSync(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+  return filePath;
+}
 
 // =============================================================================
 // Helper Functions
@@ -279,6 +314,30 @@ export async function createEngine(
       // Log to hooks
       await logToHooks(validatedRequest, 'started');
 
+      // Phase 27: Initialize forensic collector if enabled
+      let collector: ForensicCollector | null = null;
+      if (isForensicsEnabled()) {
+        collector = createForensicCollector({
+          tenantId,
+          runId,
+          workflowId: request.metadata?.workflowId as string | undefined,
+          agentId: 'orchestrator',
+          model: process.env.GWI_DEFAULT_MODEL || 'claude-sonnet-4-20250514',
+          computeChecksum: true,
+        });
+        collector.start({
+          runType,
+          repo: repo.fullName,
+          prNumber: request.prNumber,
+          issueNumber: request.issueNumber,
+          trigger: request.trigger,
+          riskMode: request.riskMode,
+        });
+        if (cfg.debug) {
+          console.log(`[Engine] Forensic collector initialized for run ${runId}`);
+        }
+      }
+
       // Phase 13: Trigger actual workflow execution via orchestrator
       if (orchestrator) {
         // Execute workflow asynchronously (don't block the response)
@@ -318,6 +377,20 @@ export async function createEngine(
               console.error(`[Engine] Failed to update run ${runId}:`, err);
             }
 
+            // Phase 27: Complete forensic collection and save bundle
+            if (collector) {
+              try {
+                collector.complete(workflowResult.result as Record<string, unknown>);
+                const bundle = collector.build();
+                const bundlePath = saveForensicBundle(bundle);
+                if (cfg.debug) {
+                  console.log(`[Engine] Forensic bundle saved: ${bundlePath}`);
+                }
+              } catch (err) {
+                console.error(`[Engine] Failed to save forensic bundle:`, err);
+              }
+            }
+
             if (cfg.debug) {
               console.log(`[Engine] Workflow ${workflowResult.workflowId} completed with status: ${workflowResult.status}`);
             }
@@ -333,6 +406,24 @@ export async function createEngine(
               await logToHooks(validatedRequest, 'failed');
             } catch (err) {
               console.error(`[Engine] Failed to update failed run ${runId}:`, err);
+            }
+
+            // Phase 27: Record failure in forensic bundle
+            if (collector) {
+              try {
+                collector.fail({
+                  name: error instanceof Error ? error.name : 'Error',
+                  message: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                });
+                const bundle = collector.build();
+                const bundlePath = saveForensicBundle(bundle);
+                if (cfg.debug) {
+                  console.log(`[Engine] Forensic bundle (failed) saved: ${bundlePath}`);
+                }
+              } catch (err) {
+                console.error(`[Engine] Failed to save forensic bundle:`, err);
+              }
             }
           });
       }

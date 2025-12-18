@@ -340,3 +340,38 @@ FORENSICS GATE PASSED
 Phase 27 successfully implements the core forensic infrastructure for Git With Intent. The ForensicBundle schema provides a comprehensive audit trail format, the RedactionService ensures secrets are never exposed in logs, and the ReplayEngine enables deterministic re-execution for debugging and verification. All components are tested with frozen fixtures and validated by the ARV gate in CI.
 
 The architecture is designed for production use with proper separation of concerns, feature flag gating, and extensibility for future enhancements.
+
+---
+
+## Addendum: Event Capture Wiring (Phase 28 Fixup)
+
+**Date:** 2025-12-17 21:08 CST
+**Task:** git-with-intent-ezg (Phase 28 fixup)
+
+The originally deferred event capture wiring task (git-with-intent-e6j) has been completed as a Phase 28 fixup:
+
+### Changes
+
+1. **Engine Integration** (`packages/engine/src/run/engine.ts`)
+   - ForensicCollector is now created when `GWI_FORENSICS_ENABLED=1`
+   - Collector starts with run input metadata (runType, repo, prNumber, trigger)
+   - Bundle is built and saved on run completion or failure
+   - Bundles saved to `.gwi/forensics/<run_id>.json`
+
+2. **New Golden Tests** (`test/goldens/forensics/forensics-wiring.golden.test.ts`)
+   - 11 additional tests verifying wiring behavior
+   - Feature flag tests
+   - Collector integration tests
+   - Bundle persistence tests
+   - Provider-agnostic support tests (anthropic, openai, google, ollama, custom-vllm)
+
+### Test Results
+```
+Test Files  2 passed (2)
+     Tests  50 passed (50)
+```
+
+### Beads Closed
+- git-with-intent-e6j (Event capture wiring)
+- git-with-intent-ezg (Fixup: wire ForensicCollector)
+- git-with-intent-kyl (Phase 27 Epic)
