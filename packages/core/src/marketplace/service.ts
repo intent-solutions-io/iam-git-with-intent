@@ -1,5 +1,6 @@
 /**
  * Phase 29: Marketplace Service
+ * Phase 30 fixup: Publisher key registry for signature verification
  *
  * Business logic for connector marketplace operations.
  * Handles publishing, installation, and policy integration.
@@ -7,7 +8,7 @@
  * @module @gwi/core/marketplace/service
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash, createVerify } from 'node:crypto';
 import type { ConnectorManifest } from '../connectors/manifest.js';
 import type { SignatureFile } from '../connectors/signature.js';
 import { verifySignature, loadTrustedKeys, type TrustedKeysConfig } from '../connectors/signature.js';
@@ -19,6 +20,8 @@ import type {
   InstallRequest,
   MarketplaceSearchOptions,
   MarketplaceSearchResult,
+  Publisher,
+  PublisherKey,
 } from './types.js';
 import { getMarketplaceStore, type MarketplaceStore } from './storage.js';
 
@@ -29,23 +32,182 @@ import { getMarketplaceStore, type MarketplaceStore } from './storage.js';
 export interface MarketplaceServiceConfig {
   /** Storage backend */
   store?: MarketplaceStore;
-  /** Trusted keys config */
+  /** Trusted keys config (fallback for legacy verification) */
   trustedKeys?: TrustedKeysConfig;
   /** GCS bucket for tarballs */
   tarballBucket?: string;
   /** Registry URL for download links */
   registryUrl?: string;
+  /** Use publisher registry for key verification (Phase 30) */
+  usePublisherRegistry?: boolean;
 }
 
 export class MarketplaceService {
   private store: MarketplaceStore;
   private trustedKeys?: TrustedKeysConfig;
   private registryUrl: string;
+  private usePublisherRegistry: boolean;
 
   constructor(config?: MarketplaceServiceConfig) {
     this.store = config?.store ?? getMarketplaceStore();
     this.trustedKeys = config?.trustedKeys;
     this.registryUrl = config?.registryUrl ?? process.env.GWI_REGISTRY_URL ?? 'https://registry.gitwithintent.com';
+    this.usePublisherRegistry = config?.usePublisherRegistry ?? true;
+  }
+
+  // ===========================================================================
+  // Publisher Registry Operations (Phase 30 fixup)
+  // ===========================================================================
+
+  /**
+   * Get publisher by ID
+   */
+  async getPublisher(publisherId: string): Promise<Publisher | null> {
+    return this.store.getPublisher(publisherId);
+  }
+
+  /**
+   * Register a new publisher
+   */
+  async registerPublisher(
+    id: string,
+    displayName: string,
+    email: string,
+    publicKey: string
+  ): Promise<Publisher> {
+    const now = new Date().toISOString();
+
+    // Compute key fingerprint
+    const fingerprint = createHash('sha256').update(publicKey).digest('hex');
+    const keyId = `${id}:${fingerprint.slice(0, 8)}`;
+
+    const key: PublisherKey = {
+      keyId,
+      publicKey,
+      status: 'active',
+      fingerprint,
+      createdAt: now,
+    };
+
+    const publisher: Publisher = {
+      id,
+      displayName,
+      email,
+      verified: false,
+      publicKeys: [key],
+      revokedKeys: [],
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.store.createPublisher(publisher);
+    return publisher;
+  }
+
+  /**
+   * Add a new key to publisher
+   */
+  async addPublisherKey(publisherId: string, publicKey: string): Promise<PublisherKey> {
+    const publisher = await this.store.getPublisher(publisherId);
+    if (!publisher) {
+      throw new Error(`Publisher ${publisherId} not found`);
+    }
+
+    const now = new Date().toISOString();
+    const fingerprint = createHash('sha256').update(publicKey).digest('hex');
+    const keyId = `${publisherId}:${fingerprint.slice(0, 8)}`;
+
+    const key: PublisherKey = {
+      keyId,
+      publicKey,
+      status: 'active',
+      fingerprint,
+      createdAt: now,
+    };
+
+    await this.store.addPublisherKey(publisherId, key);
+    return key;
+  }
+
+  /**
+   * Revoke a publisher key
+   */
+  async revokePublisherKey(publisherId: string, keyId: string, reason: string): Promise<void> {
+    await this.store.revokePublisherKey(publisherId, keyId, reason);
+  }
+
+  /**
+   * Verify signature using publisher registry
+   */
+  async verifySignatureWithRegistry(
+    data: string,
+    signature: SignatureFile
+  ): Promise<{ valid: boolean; error?: string; publisher?: Publisher }> {
+    // Look up publisher by key ID
+    const publisher = await this.store.getPublisherByKeyId(signature.keyId);
+    if (!publisher) {
+      return { valid: false, error: `Key ${signature.keyId} not found in publisher registry` };
+    }
+
+    // Check publisher status
+    if (publisher.status !== 'active') {
+      return { valid: false, error: `Publisher ${publisher.id} is ${publisher.status}` };
+    }
+
+    // Find the key
+    const key = publisher.publicKeys.find((k) => k.keyId === signature.keyId);
+    if (!key) {
+      // Check if it was revoked
+      const revokedKey = publisher.revokedKeys.find((k) => k.keyId === signature.keyId);
+      if (revokedKey) {
+        return {
+          valid: false,
+          error: `Key ${signature.keyId} was revoked: ${revokedKey.revocationReason}`,
+        };
+      }
+      return { valid: false, error: `Key ${signature.keyId} not found` };
+    }
+
+    // Check key status
+    if (key.status !== 'active') {
+      return { valid: false, error: `Key ${signature.keyId} is ${key.status}` };
+    }
+
+    // Check expiration
+    if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
+      return { valid: false, error: `Key ${signature.keyId} has expired` };
+    }
+
+    // Verify Ed25519 signature
+    try {
+      const verify = createVerify('ed25519');
+      verify.update(data);
+      const signatureBuffer = Buffer.from(signature.signature, 'base64');
+      const publicKeyBuffer = Buffer.from(key.publicKey, 'base64');
+
+      // Ed25519 public key in DER format
+      const publicKeyDer = Buffer.concat([
+        Buffer.from('302a300506032b6570032100', 'hex'), // Ed25519 DER prefix
+        publicKeyBuffer,
+      ]);
+
+      const isValid = verify.verify(
+        { key: publicKeyDer, format: 'der', type: 'spki' },
+        signatureBuffer
+      );
+
+      if (isValid) {
+        return { valid: true, publisher };
+      } else {
+        return { valid: false, error: 'Signature verification failed' };
+      }
+    } catch (err) {
+      return {
+        valid: false,
+        error: `Signature verification error: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
   }
 
   // ===========================================================================
@@ -115,22 +277,32 @@ export class MarketplaceService {
     signature: SignatureFile,
     publishedBy: string
   ): Promise<{ success: boolean; error?: string; version?: ConnectorVersion }> {
-    // Load trusted keys if not already loaded
-    if (!this.trustedKeys) {
-      this.trustedKeys = await loadTrustedKeys();
-    }
+    // Verify signature using publisher registry (Phase 30) or fallback to trusted keys
+    let verifyResult: { valid: boolean; error?: string; publisher?: Publisher };
 
-    // Verify signature
-    const verifyResult = await verifySignature(
-      request.tarballChecksum,
-      signature,
-      this.trustedKeys
-    );
+    if (this.usePublisherRegistry) {
+      // Use publisher registry for signature verification
+      verifyResult = await this.verifySignatureWithRegistry(request.tarballChecksum, signature);
+    } else {
+      // Fallback to file-based trusted keys
+      if (!this.trustedKeys) {
+        this.trustedKeys = await loadTrustedKeys();
+      }
+      const legacyResult = await verifySignature(
+        request.tarballChecksum,
+        signature,
+        this.trustedKeys
+      );
+      verifyResult = {
+        valid: legacyResult.valid,
+        error: legacyResult.valid ? undefined : `${legacyResult.error} - ${legacyResult.message}`,
+      };
+    }
 
     if (!verifyResult.valid) {
       return {
         success: false,
-        error: `Signature verification failed: ${verifyResult.error} - ${verifyResult.message}`,
+        error: `Signature verification failed: ${verifyResult.error}`,
       };
     }
 
