@@ -6,7 +6,27 @@
  */
 
 import { Octokit } from 'octokit';
-import type { PRMetadata, ConflictInfo, ComplexityScore } from '@gwi/core';
+import type { PRMetadata, ConflictInfo, ComplexityScore, IssueMetadata } from '@gwi/core';
+
+/**
+ * Extended PR info with fetched conflicts
+ * PRMetadata has hasConflicts: boolean, but conflicts are stored separately
+ * This type includes both for convenience when first fetching a PR
+ */
+export interface PRWithConflicts {
+  metadata: PRMetadata;
+  conflicts: ConflictInfo[];
+}
+
+/**
+ * @deprecated Legacy type for backward compatibility - use PRWithConflicts
+ *
+ * This extended metadata type includes inline conflicts for legacy CLI code.
+ * New code should use PRWithConflicts which separates metadata and conflicts.
+ */
+export interface LegacyPRMetadata extends PRMetadata {
+  conflicts: ConflictInfo[];
+}
 
 /**
  * GitHub client configuration
@@ -24,6 +44,16 @@ export interface ParsedPRUrl {
   owner: string;
   repo: string;
   number: number;
+}
+
+/**
+ * Parsed Issue URL
+ */
+export interface ParsedIssueUrl {
+  owner: string;
+  repo: string;
+  number: number;
+  fullName: string;
 }
 
 /**
@@ -82,9 +112,44 @@ export class GitHubClient {
   }
 
   /**
-   * Get PR metadata
+   * Parse a GitHub Issue URL
+   * Supports:
+   * - https://github.com/owner/repo/issues/123
+   * - github.com/owner/repo/issues/123
+   * - owner/repo#123
    */
-  async getPR(url: string): Promise<PRMetadata> {
+  static parseIssueUrl(url: string): ParsedIssueUrl {
+    const patterns = [
+      // https://github.com/owner/repo/issues/123
+      /github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/,
+      // owner/repo#123
+      /^([^/]+)\/([^#]+)#(\d+)$/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) {
+        const owner = match[1];
+        const repo = match[2];
+        return {
+          owner,
+          repo,
+          number: parseInt(match[3], 10),
+          fullName: `${owner}/${repo}`,
+        };
+      }
+    }
+
+    throw new Error(`Invalid Issue URL: ${url}`);
+  }
+
+  /**
+   * Get PR metadata and conflicts
+   *
+   * Returns both the PRMetadata (for storage) and conflicts (for separate storage).
+   * Conflicts are NOT part of PRMetadata - they're stored via PRStore.saveConflicts().
+   */
+  async getPR(url: string): Promise<PRWithConflicts> {
     const { owner, repo, number } = GitHubClient.parsePRUrl(url);
 
     const { data: pr } = await this.octokit.rest.pulls.get({
@@ -112,21 +177,58 @@ export class GitHubClient {
 
     // Get merge status to check for conflicts
     const conflicts = await this.getConflicts(owner, repo, number, mappedFiles);
+    const hasConflicts = conflicts.length > 0 || pr.mergeable === false || pr.mergeable_state === 'dirty';
 
-    return {
+    // Generate ID from URL
+    const id = `gh-${owner}-${repo}-${number}`;
+
+    const metadata: PRMetadata = {
+      id,
       url,
+      owner,
+      repo,
       number,
       title: pr.title,
+      body: pr.body ?? '',
       baseBranch: pr.base.ref,
       headBranch: pr.head.ref,
       author: pr.user?.login ?? 'unknown',
+      state: pr.state === 'open' ? 'open' : pr.merged ? 'merged' : 'closed',
+      mergeable: pr.mergeable,
+      mergeableState: pr.mergeable_state,
+      hasConflicts,
       filesChanged: mappedFiles.length,
       additions: mappedFiles.reduce((sum, f) => sum + f.additions, 0),
       deletions: mappedFiles.reduce((sum, f) => sum + f.deletions, 0),
-      conflicts,
       createdAt: new Date(pr.created_at),
       updatedAt: new Date(pr.updated_at),
+      fetchedAt: new Date(),
     };
+
+    return { metadata, conflicts };
+  }
+
+  /**
+   * Get just PR metadata (convenience wrapper for backward compatibility)
+   *
+   * Use getPR() to also get conflicts.
+   */
+  async getPRMetadata(url: string): Promise<PRMetadata> {
+    const { metadata } = await this.getPR(url);
+    return metadata;
+  }
+
+  /**
+   * @deprecated Get PR with inline conflicts (legacy format)
+   *
+   * This method returns the old format where conflicts are embedded in the PR object.
+   * New code should use getPR() which returns { metadata, conflicts } separately.
+   *
+   * This exists for backward compatibility with CLI commands.
+   */
+  async getPRLegacy(url: string): Promise<LegacyPRMetadata> {
+    const { metadata, conflicts } = await this.getPR(url);
+    return { ...metadata, conflicts };
   }
 
   /**
@@ -304,6 +406,85 @@ export class GitHubClient {
       event,
     });
   }
+
+  /**
+   * Get GitHub Issue metadata
+   *
+   * Fetches issue details from GitHub API and returns IssueMetadata.
+   * Supports full URLs (https://github.com/owner/repo/issues/123)
+   * and shorthand format (owner/repo#123).
+   */
+  async getIssue(url: string): Promise<IssueMetadata> {
+    const { owner, repo, number, fullName } = GitHubClient.parseIssueUrl(url);
+
+    const { data: issue } = await this.octokit.rest.issues.get({
+      owner,
+      repo,
+      issue_number: number,
+    });
+
+    // Extract labels as strings
+    const labels = issue.labels
+      .map((label) => (typeof label === 'string' ? label : label.name))
+      .filter((name): name is string => !!name);
+
+    // Extract assignee logins
+    const assignees = (issue.assignees ?? [])
+      .map((a) => a?.login)
+      .filter((login): login is string => !!login);
+
+    return {
+      url: issue.html_url,
+      number: issue.number,
+      title: issue.title,
+      body: issue.body ?? '',
+      author: issue.user?.login ?? 'unknown',
+      labels,
+      assignees,
+      milestone: issue.milestone?.title,
+      repo: {
+        owner,
+        name: repo,
+        fullName,
+      },
+      createdAt: new Date(issue.created_at),
+      updatedAt: new Date(issue.updated_at),
+    };
+  }
+
+  /**
+   * Create a Pull Request
+   *
+   * Phase 34: Creates a new pull request on GitHub.
+   *
+   * @param options - PR creation options
+   * @returns Created PR details
+   */
+  async createPR(options: {
+    owner: string;
+    repo: string;
+    title: string;
+    body: string;
+    head: string;
+    base: string;
+    draft?: boolean;
+  }): Promise<{ number: number; url: string; sha: string }> {
+    const { data: pr } = await this.octokit.rest.pulls.create({
+      owner: options.owner,
+      repo: options.repo,
+      title: options.title,
+      body: options.body,
+      head: options.head,
+      base: options.base,
+      draft: options.draft ?? false,
+    });
+
+    return {
+      number: pr.number,
+      url: pr.html_url,
+      sha: pr.head.sha,
+    };
+  }
 }
 
 /**
@@ -312,3 +493,43 @@ export class GitHubClient {
 export function createGitHubClient(config?: GitHubClientConfig): GitHubClient {
   return new GitHubClient(config);
 }
+
+// =============================================================================
+// Re-exports from Phase 2 modules
+// =============================================================================
+
+// Policy-aware connector
+export * from './connector.js';
+
+// Comment/check-run formatting
+export * from './comment-formatter.js';
+
+// Workflow orchestration
+export * from './workflows.js';
+
+// SDK-compliant connector (Phase 3)
+// Note: Use named imports to avoid conflicts with connector.ts exports
+export {
+  GitHubSDKConnector,
+  createGitHubSDKConnector,
+  type GitHubSDKConnectorConfig,
+  // SDK schemas have different names to avoid conflicts
+  PostCommentInput as SDKPostCommentInput,
+  PostCommentOutput,
+  CreateCheckRunInput as SDKCreateCheckRunInput,
+  CreateCheckRunOutput,
+  ManageLabelsInput as SDKManageLabelsInput,
+  ManageLabelsOutput,
+  CreateBranchInput as SDKCreateBranchInput,
+  CreateBranchOutput,
+  PushCommitInput as SDKPushCommitInput,
+  PushCommitOutput,
+  CreatePullRequestInput,
+  CreatePullRequestOutput,
+  UpdatePullRequestInput,
+  UpdatePullRequestOutput,
+  GetIssueInput,
+  GetIssueOutput,
+  GetPullRequestInput,
+  GetPullRequestOutput,
+} from './sdk-connector.js';

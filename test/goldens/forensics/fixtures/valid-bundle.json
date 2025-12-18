@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "bundle_id": "550e8400-e29b-41d4-a716-446655440000",
+  "run_id": "run-123456",
+  "tenant_id": "tenant-abc",
+  "workflow_id": "workflow-xyz",
+  "created_at": "2025-01-15T12:00:00.000Z",
+  "run_started_at": "2025-01-15T11:55:00.000Z",
+  "run_ended_at": "2025-01-15T12:00:00.000Z",
+  "run_duration_ms": 300000,
+  "run_status": "completed",
+  "agent_id": "coder",
+  "model": "claude-sonnet-4-20250514",
+  "input": {
+    "intent": "Add user authentication",
+    "repo": "test/repo"
+  },
+  "output": {
+    "files_changed": 3,
+    "success": true
+  },
+  "events": [
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440001",
+      "type": "run.started",
+      "timestamp": "2025-01-15T11:55:00.000Z",
+      "sequence": 0,
+      "data": {
+        "run_id": "run-123456",
+        "tenant_id": "tenant-abc",
+        "workflow_id": "workflow-xyz",
+        "agent_id": "coder",
+        "model": "claude-sonnet-4-20250514"
+      }
+    },
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440002",
+      "type": "llm.request",
+      "timestamp": "2025-01-15T11:55:01.000Z",
+      "sequence": 1,
+      "data": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-20250514",
+        "prompt": "Generate authentication code",
+        "system": "You are a code generation assistant"
+      }
+    },
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440003",
+      "type": "llm.response",
+      "timestamp": "2025-01-15T11:55:05.000Z",
+      "sequence": 2,
+      "duration_ms": 4000,
+      "data": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-20250514",
+        "response": "Here is the authentication code...",
+        "usage": {
+          "prompt_tokens": 100,
+          "completion_tokens": 500,
+          "total_tokens": 600
+        },
+        "latency_ms": 4000,
+        "finish_reason": "stop"
+      }
+    },
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440004",
+      "type": "policy.check",
+      "timestamp": "2025-01-15T11:59:55.000Z",
+      "sequence": 3,
+      "data": {
+        "policy_id": "policy-default",
+        "policy_name": "Default Policy",
+        "action": "candidate.execute",
+        "decision": "allow",
+        "reason": "All checks passed"
+      }
+    },
+    {
+      "event_id": "550e8400-e29b-41d4-a716-446655440005",
+      "type": "run.completed",
+      "timestamp": "2025-01-15T12:00:00.000Z",
+      "sequence": 4,
+      "data": {
+        "run_id": "run-123456",
+        "tenant_id": "tenant-abc",
+        "output": {
+          "files_changed": 3,
+          "success": true
+        }
+      }
+    }
+  ],
+  "event_counts": {
+    "run.started": 1,
+    "llm.request": 1,
+    "llm.response": 1,
+    "policy.check": 1,
+    "run.completed": 1
+  },
+  "total_tokens": {
+    "prompt_tokens": 100,
+    "completion_tokens": 500,
+    "total_tokens": 600
+  },
+  "total_llm_latency_ms": 4000,
+  "policy_summary": {
+    "total_checks": 1,
+    "approved": 1,
+    "denied": 0,
+    "escalated": 0
+  },
+  "redaction": {
+    "applied": false,
+    "fields_redacted": [],
+    "redaction_count": 0
+  },
+  "replay_status": "not_replayed",
+  "replay_attempts": 0
+}

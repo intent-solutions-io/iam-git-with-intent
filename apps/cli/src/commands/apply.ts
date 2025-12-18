@@ -12,6 +12,7 @@ import ora from 'ora';
 import { createGitHubClient } from '@gwi/integrations';
 import { createResolverAgent, createReviewerAgent } from '@gwi/agents';
 import type { ConflictInfo, ResolutionResult, PRMetadata } from '@gwi/core';
+import { merge3 } from '@gwi/core';
 import { writeFile, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -51,9 +52,9 @@ export async function applyCommand(
 
     spinner.start('Fetching PR details...');
 
-    // Get PR metadata
+    // Get PR with inline conflicts (legacy format for CLI)
     const github = createGitHubClient();
-    const pr = await github.getPR(prUrl);
+    const pr = await github.getPRLegacy(prUrl);
 
     spinner.succeed(`Found PR #${pr.number}: ${pr.title}`);
 
@@ -174,21 +175,47 @@ export async function applyCommand(
 
 async function resolveConflict(
   conflict: ConflictInfo,
-  _pr: PRMetadata
+  pr: PRMetadata
 ): Promise<ResolutionResult> {
-  // Simple merge logic - strip conflict markers
-  let resolved = conflict.conflictMarkers;
+  // Phase 20: Use deterministic 3-way merge algorithm
+  const mergeResult = merge3({
+    base: conflict.baseContent,
+    ours: conflict.oursContent,
+    theirs: conflict.theirsContent,
+    labels: {
+      ours: pr.headBranch,
+      theirs: pr.baseBranch,
+    },
+  });
 
-  resolved = resolved
-    .replace(/<<<<<<< .*\n/g, '')
-    .replace(/=======\n/g, '')
-    .replace(/>>>>>>> .*\n/g, '');
+  // Map merge result to resolution result
+  if (mergeResult.status === 'skipped') {
+    return {
+      file: conflict.file,
+      resolvedContent: '',
+      explanation: `Skipped: ${mergeResult.reason || 'binary or unprocessable file'}`,
+      confidence: 0,
+      strategy: 'custom',
+    };
+  }
 
+  if (mergeResult.status === 'conflict') {
+    // Return merged text with conflict markers - needs human review
+    return {
+      file: conflict.file,
+      resolvedContent: mergeResult.mergedText,
+      explanation: `Merge produced ${mergeResult.conflicts.length} conflict(s) requiring human review`,
+      confidence: 30, // Low confidence - has unresolved conflicts
+      strategy: 'custom',
+    };
+  }
+
+  // Clean merge
   return {
     file: conflict.file,
-    resolvedContent: resolved,
-    explanation: 'AI-generated resolution: merged both changes',
-    confidence: 75,
+    resolvedContent: mergeResult.mergedText,
+    explanation: 'Deterministic 3-way merge: changes merged cleanly',
+    confidence: 95, // High confidence for clean merges
     strategy: 'merge-both',
   };
 }

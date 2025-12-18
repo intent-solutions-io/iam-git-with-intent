@@ -18,7 +18,6 @@
  * - postgres: PostgreSQL
  * - firestore: Google Firestore
  * - memory: In-memory (for testing)
- * - agentfs: AgentFS (internal only)
  *
  * For Firestore, set:
  * - GCP_PROJECT_ID: Google Cloud project ID
@@ -32,6 +31,12 @@ export {
   InMemoryTenantStore,
   InMemoryUserStore,
   InMemoryMembershipStore,
+  InMemoryInstanceStore,
+  InMemoryScheduleStore,
+  // Phase 14: Signals → PR Queue
+  InMemorySignalStore,
+  InMemoryWorkItemStore,
+  InMemoryPRCandidateStore,
 } from './inmemory.js';
 
 // Firestore exports
@@ -44,11 +49,47 @@ export {
 } from './firestore-client.js';
 export { FirestoreTenantStore } from './firestore-tenant.js';
 export { FirestoreRunStore } from './firestore-run.js';
+export { FirestoreMembershipStore, getMembershipStore } from './firestore-membership.js';
+export { FirestoreUserStore, getUserStore } from './firestore-user.js';
 
-import type { StoreFactory, StorageConfig, TenantStore, RunStore } from './interfaces.js';
+// Phase 11: Approval and Audit stores
+export {
+  FirestoreApprovalStore,
+  InMemoryApprovalStore,
+  getApprovalStore,
+  resetApprovalStore,
+} from './firestore-approval.js';
+export {
+  FirestoreAuditStore,
+  InMemoryAuditStore,
+  getAuditStore,
+  resetAuditStore,
+} from './firestore-audit.js';
+
+// Phase 13: Instance and Schedule stores
+export { FirestoreInstanceStore } from './firestore-instance.js';
+export { FirestoreScheduleStore } from './firestore-schedule.js';
+
+// Phase 14: Signal, WorkItem, and PRCandidate stores
+export { FirestoreSignalStore } from './firestore-signal.js';
+export { FirestoreWorkItemStore } from './firestore-workitem.js';
+export { FirestorePRCandidateStore } from './firestore-candidate.js';
+
+// Phase 22: Metering stores
+export {
+  FirestoreMeteringStore,
+  InMemoryMeteringStore,
+  getMeteringStore,
+  setMeteringStore,
+  resetMeteringStore,
+  type MeteringStore,
+  type EventQueryOptions,
+} from './firestore-metering.js';
+
+import type { StoreFactory, StorageConfig, TenantStore, RunStore, SignalStore, WorkItemStore, PRCandidateStore, InstanceStore, ScheduleStore } from './interfaces.js';
 import { getStorageConfig } from './interfaces.js';
 import { SQLiteStoreFactory } from './sqlite.js';
-import { InMemoryTenantStore, InMemoryRunStore } from './inmemory.js';
+import { InMemoryTenantStore, InMemoryRunStore, InMemorySignalStore, InMemoryWorkItemStore, InMemoryPRCandidateStore, InMemoryInstanceStore, InMemoryScheduleStore } from './inmemory.js';
 
 /**
  * Create a store factory based on configuration
@@ -77,15 +118,6 @@ export function createStoreFactory(config?: Partial<StorageConfig>): StoreFactor
     case 'memory':
       // TODO: Implement MemoryStoreFactory for testing
       throw new Error('Memory storage not yet implemented. Use sqlite for now.');
-
-    case 'agentfs':
-      // Internal only - check for explicit opt-in
-      if (process.env.GWI_USE_AGENTFS !== 'true') {
-        console.warn('AgentFS storage is internal-only. Falling back to SQLite.');
-        return new SQLiteStoreFactory(finalConfig.sqlitePath);
-      }
-      // TODO: Implement AgentFSStoreFactory
-      throw new Error('AgentFS storage not yet implemented.');
 
     default:
       console.warn(`Unknown storage type: ${finalConfig.type}. Falling back to SQLite.`);
@@ -205,4 +237,160 @@ export function getRunStore(): RunStore {
 export function resetStores(): void {
   tenantStoreInstance = null;
   runStoreInstance = null;
+  instanceStoreInstance = null;
+  scheduleStoreInstance = null;
+  signalStoreInstance = null;
+  workItemStoreInstance = null;
+  prCandidateStoreInstance = null;
+}
+
+// =============================================================================
+// Phase 13: Instance and Schedule Store Access
+// =============================================================================
+
+// Singleton instances for Phase 13 stores
+let instanceStoreInstance: InstanceStore | null = null;
+let scheduleStoreInstance: ScheduleStore | null = null;
+
+/**
+ * Get the InstanceStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns InstanceStore instance (singleton)
+ */
+export function getInstanceStore(): InstanceStore {
+  if (instanceStoreInstance) {
+    return instanceStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestoreInstanceStore } = require('./firestore-instance.js');
+    instanceStoreInstance = new FirestoreInstanceStore() as InstanceStore;
+  } else {
+    instanceStoreInstance = new InMemoryInstanceStore();
+  }
+
+  return instanceStoreInstance;
+}
+
+/**
+ * Get the ScheduleStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns ScheduleStore instance (singleton)
+ */
+export function getScheduleStore(): ScheduleStore {
+  if (scheduleStoreInstance) {
+    return scheduleStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestoreScheduleStore } = require('./firestore-schedule.js');
+    scheduleStoreInstance = new FirestoreScheduleStore() as ScheduleStore;
+  } else {
+    scheduleStoreInstance = new InMemoryScheduleStore();
+  }
+
+  return scheduleStoreInstance;
+}
+
+// =============================================================================
+// Phase 14: Signal and PR Queue Store Access
+// =============================================================================
+
+// Singleton instances for Phase 14 stores
+let signalStoreInstance: SignalStore | null = null;
+let workItemStoreInstance: WorkItemStore | null = null;
+let prCandidateStoreInstance: PRCandidateStore | null = null;
+
+/**
+ * Get the SignalStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns SignalStore instance (singleton)
+ */
+export function getSignalStore(): SignalStore {
+  if (signalStoreInstance) {
+    return signalStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestoreSignalStore } = require('./firestore-signal.js');
+    signalStoreInstance = new FirestoreSignalStore() as SignalStore;
+  } else {
+    signalStoreInstance = new InMemorySignalStore();
+  }
+
+  return signalStoreInstance;
+}
+
+/**
+ * Get the WorkItemStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns WorkItemStore instance (singleton)
+ */
+export function getWorkItemStore(): WorkItemStore {
+  if (workItemStoreInstance) {
+    return workItemStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestoreWorkItemStore } = require('./firestore-workitem.js');
+    workItemStoreInstance = new FirestoreWorkItemStore() as WorkItemStore;
+  } else {
+    workItemStoreInstance = new InMemoryWorkItemStore();
+  }
+
+  return workItemStoreInstance;
+}
+
+/**
+ * Get the PRCandidateStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns PRCandidateStore instance (singleton)
+ */
+export function getPRCandidateStore(): PRCandidateStore {
+  if (prCandidateStoreInstance) {
+    return prCandidateStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    // Dynamic import to avoid requiring firebase-admin when not using Firestore
+    const { FirestorePRCandidateStore } = require('./firestore-candidate.js');
+    prCandidateStoreInstance = new FirestorePRCandidateStore() as PRCandidateStore;
+  } else {
+    prCandidateStoreInstance = new InMemoryPRCandidateStore();
+  }
+
+  return prCandidateStoreInstance;
+}
+
+/**
+ * Reset Phase 14 store singletons (for testing)
+ */
+export function resetPhase14Stores(): void {
+  signalStoreInstance = null;
+  workItemStoreInstance = null;
+  prCandidateStoreInstance = null;
 }

@@ -1,0 +1,8 @@
+{
+  "name": "simple-addition",
+  "description": "Both sides add independent functions at end - should auto-merge cleanly",
+  "expectedStatus": "clean",
+  "expectedConflicts": 0,
+  "category": "auto-merge",
+  "note": "Order of additions in output may vary; both functions should be present"
+}

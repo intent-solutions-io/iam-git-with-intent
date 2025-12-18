@@ -7,28 +7,8 @@
 # - A2A Gateway for agent-to-agent protocol
 # - GitHub Webhook for PR/Issue events
 # - Cloud Trace/Monitoring for telemetry
-
-terraform {
-  required_version = ">= 1.5.0"
-
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = ">= 5.0.0"
-    }
-  }
-
-  backend "gcs" {
-    # Configure via -backend-config or env
-    # bucket = "gwi-terraform-state"
-    # prefix = "terraform/state"
-  }
-}
-
-provider "google" {
-  project = var.project_id
-  region  = var.region
-}
+#
+# Note: Terraform and provider blocks are in provider.tf
 
 # Enable required APIs
 resource "google_project_service" "required_apis" {

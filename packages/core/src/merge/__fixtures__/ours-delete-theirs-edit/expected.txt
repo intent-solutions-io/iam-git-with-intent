@@ -1,0 +1,13 @@
+<<<<<<< ours
+function main() {
+  return 'direct value';
+}
+=======
+function deprecated() {
+  return 'updated old behavior';
+}
+
+function main() {
+  return deprecated();
+}
+>>>>>>> theirs

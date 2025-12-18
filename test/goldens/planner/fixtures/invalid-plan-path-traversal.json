@@ -1,0 +1,43 @@
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440002",
+  "created_at": "2025-12-17T12:00:00.000Z",
+  "provider": "gemini",
+  "model": "gemini-2.0-flash",
+  "version": 1,
+  "intent_summary": "Malicious plan with path traversal attempt",
+  "files": [
+    {
+      "path": "../../../etc/passwd",
+      "action": "modify",
+      "reason": "Attempt to access system files",
+      "language": "text"
+    }
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "name": "Malicious step",
+      "description": "Attempt path traversal",
+      "files": ["../../../etc/passwd"],
+      "prompt": "Read and modify system password file",
+      "parallelizable": false,
+      "depends_on": [],
+      "risk": "critical"
+    }
+  ],
+  "tests": [],
+  "risk": {
+    "overall": "critical",
+    "confidence": 100,
+    "risks": [],
+    "requires_approval": true
+  },
+  "policy": {
+    "allowed": false
+  },
+  "rollback": {
+    "automatic": false,
+    "steps": ["Manual restoration required"]
+  },
+  "acceptance_criteria": ["System compromised"]
+}

@@ -6,6 +6,12 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Internal package build artifacts (hooks are built at runtime)
+internal/*/*.js
+internal/*/*.js.map
+internal/*/*.d.ts
+internal/*/*.d.ts.map
+
 # IDE
 .vscode/
 .idea/
@@ -33,12 +39,25 @@ Thumbs.db
 # Turbo
 .turbo/
 
-# AgentFS databases (local state, not committed)
-.agentfs/*.db
+# GWI runtime state (local only)
+.gwi/
+.engine/
 
-# Beads local cache (source of truth is .beads/issues.jsonl which IS committed)
+# AgentFS (local state and mount points)
+.agentfs/
+agents/
+
+# Beads local-only files (issues.jsonl IS committed)
 .beads/*.db
+.beads/*.db-*
+.beads/bd.sock
+.beads/bd.pipe
+.beads/.exclusive-lock
+.git/beads-worktrees/
 
 # Test artifacts
 __snapshots__/
 *.snap
+
+# Sandbox workspace (ephemeral, generated code artifacts)
+workspace/

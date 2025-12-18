@@ -1,0 +1,12 @@
+import { alpha } from './alpha';
+import { beta } from './beta';
+import { gamma } from './gamma';
+import { delta } from './delta';
+
+export function combined() {
+<<<<<<< ours
+  return alpha() + beta() + gamma();
+=======
+  return alpha() + beta() + delta();
+>>>>>>> theirs
+}

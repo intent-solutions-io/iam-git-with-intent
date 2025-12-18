@@ -1,0 +1,25 @@
+{
+  "manifestVersion": "1.0",
+  "id": "airbyte",
+  "version": "0.1.0",
+  "displayName": "Airbyte Connector",
+  "description": "Connect to Airbyte API for data pipeline management",
+  "author": "GWI Team",
+  "license": "MIT",
+  "entrypoint": "dist/index.js",
+  "tools": [
+    { "name": "listConnections", "description": "List all connections", "policyClass": "READ" },
+    { "name": "getConnection", "description": "Get connection details", "policyClass": "READ" },
+    { "name": "listSources", "description": "List sources", "policyClass": "READ" },
+    { "name": "listDestinations", "description": "List destinations", "policyClass": "READ" },
+    { "name": "triggerSync", "description": "Trigger sync job", "policyClass": "WRITE_NON_DESTRUCTIVE" },
+    { "name": "getSyncStatus", "description": "Get sync status", "policyClass": "READ" },
+    { "name": "createConnection", "description": "Create connection", "policyClass": "DESTRUCTIVE" },
+    { "name": "deleteConnection", "description": "Delete connection", "policyClass": "DESTRUCTIVE" }
+  ],
+  "capabilities": ["data-integration"],
+  "checksum": "sha256:3e5fe521e9292be6bad421475403c1070fdc78a193977915f52079b38f55dbbb",
+  "minCoreVersion": "0.1.0",
+  "repository": "https://github.com/intent-solutions-io/git-with-intent",
+  "keywords": ["airbyte", "data", "etl", "pipeline"]
+}

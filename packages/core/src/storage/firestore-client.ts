@@ -156,6 +156,36 @@ export const COLLECTIONS = {
   MEMBERSHIPS: 'gwi_memberships',
   /** Steps within runs */
   STEPS: 'steps',  // Subcollection under runs
+  /** Phase 11: Approval records */
+  APPROVALS: 'gwi_approvals',
+  /** Phase 11: Audit events */
+  AUDIT_EVENTS: 'gwi_audit_events',
+  /** Phase 12: Connector configs (subcollection under tenants) */
+  CONNECTOR_CONFIGS: 'connector_configs',
+  /** Phase 13: Workflow instances (subcollection under tenants) */
+  INSTANCES: 'instances',
+  /** Phase 13: Workflow schedules (subcollection under tenants) */
+  SCHEDULES: 'schedules',
+  /** Phase 14: Signals (subcollection under tenants) */
+  SIGNALS: 'signals',
+  /** Phase 14: Work items (subcollection under tenants) */
+  WORK_ITEMS: 'work_items',
+  /** Phase 14: PR candidates (subcollection under tenants) */
+  PR_CANDIDATES: 'pr_candidates',
+  /** Phase 16: Distributed locks */
+  RUN_LOCKS: 'gwi_run_locks',
+  /** Phase 16: Idempotency records */
+  IDEMPOTENCY: 'gwi_idempotency',
+  /** Phase 16: Run checkpoints */
+  CHECKPOINTS: 'gwi_checkpoints',
+  /** Phase 22: Usage events (append-only ledger) */
+  USAGE_EVENTS: 'gwi_usage_events',
+  /** Phase 22: Daily usage aggregates */
+  USAGE_DAILY: 'gwi_usage_daily',
+  /** Phase 22: Monthly usage aggregates */
+  USAGE_MONTHLY: 'gwi_usage_monthly',
+  /** Phase 22: Usage snapshots (per-tenant current state) */
+  USAGE_SNAPSHOTS: 'gwi_usage_snapshots',
 } as const;
 
 // =============================================================================

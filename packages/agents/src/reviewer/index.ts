@@ -6,19 +6,28 @@
  * Validates resolutions from Resolver Agent.
  * Checks: syntax, code loss, security issues.
  *
- * TRUE AGENT: Stateful (AgentFS), Autonomous, Collaborative (A2A)
+ * TRUE AGENT: Stateful (state), Autonomous, Collaborative (A2A)
  */
 
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
-import { type TaskRequestPayload, MODELS } from '@gwi/core';
+import { type TaskRequestPayload, MODELS, type IssueMetadata, type CodeGenerationResult } from '@gwi/core';
 import type { ResolutionResult, ReviewResult, ConflictInfo } from '@gwi/core';
 
 /**
- * Reviewer input
+ * Reviewer input for conflict resolution review
  */
 export interface ReviewerInput {
   resolution: ResolutionResult;
   originalConflict: ConflictInfo;
+}
+
+/**
+ * Reviewer input for code generation review (issue-to-code workflow)
+ */
+export interface CodeReviewInput {
+  codeResult: CodeGenerationResult;
+  issue: IssueMetadata;
+  workflowType: 'issue-to-code';
 }
 
 /**
@@ -107,6 +116,50 @@ Respond with a JSON object:
 5. Confidence < 70 should always set approved: false`;
 
 /**
+ * System prompt for code generation review (issue-to-code workflow)
+ */
+const CODE_REVIEW_SYSTEM_PROMPT = `You are the Reviewer Agent for Git With Intent, an AI-powered DevOps automation platform.
+
+Your role is to review generated code from the Coder Agent. You must check:
+
+## 1. Completeness
+- Does the generated code address all requirements from the issue?
+- Are all necessary files included?
+- Are all imports and dependencies correct?
+
+## 2. Syntax Validation
+- Does the code have valid syntax?
+- Are all brackets, braces, parentheses matched?
+- Are all strings properly closed?
+
+## 3. Code Quality
+- Does the code follow best practices?
+- Is the code readable and maintainable?
+- Are error cases handled appropriately?
+
+## 4. Security Scan
+- Check for hardcoded secrets/credentials
+- Check for injection vulnerabilities
+- Check for unsafe operations
+
+## 5. Issue Alignment
+- Does the implementation match the issue requirements?
+- Are there any obvious gaps or missing features?
+
+## Output Format
+
+Respond with a JSON object:
+{
+  "approved": true/false,
+  "syntaxValid": true/false,
+  "requirementsMet": true/false,
+  "securityIssues": ["issue1", "issue2"],
+  "suggestions": ["suggestion1"],
+  "confidence": 85,
+  "reasoning": "Explanation of the review decision"
+}`;
+
+/**
  * Reviewer Agent Implementation
  */
 export class ReviewerAgent extends BaseAgent {
@@ -131,7 +184,7 @@ export class ReviewerAgent extends BaseAgent {
   }
 
   /**
-   * Initialize - load history from AgentFS
+   * Initialize - load history from state
    */
   protected async onInitialize(): Promise<void> {
     const history = await this.loadState<ReviewHistoryEntry[]>('review_history');
@@ -149,14 +202,33 @@ export class ReviewerAgent extends BaseAgent {
 
   /**
    * Process a review request
+   * Supports both conflict resolution review and code generation review
    */
   protected async processTask(payload: TaskRequestPayload): Promise<ReviewerOutput> {
     if (payload.taskType !== 'review') {
       throw new Error(`Unsupported task type: ${payload.taskType}`);
     }
 
-    const input = payload.input as ReviewerInput;
-    return this.review(input.resolution, input.originalConflict);
+    const input = payload.input as ReviewerInput | CodeReviewInput | Record<string, unknown>;
+
+    // Check if this is a code review (issue-to-code workflow)
+    if ('workflowType' in input && input.workflowType === 'issue-to-code') {
+      const codeInput = input as CodeReviewInput;
+      return this.reviewCode(codeInput.codeResult, codeInput.issue);
+    }
+
+    // Check if this is a code review by detecting codeResult
+    if ('codeResult' in input) {
+      const codeInput = input as CodeReviewInput;
+      return this.reviewCode(codeInput.codeResult, codeInput.issue);
+    }
+
+    // Otherwise, treat as conflict resolution review
+    const resolveInput = input as ReviewerInput;
+    if (!resolveInput.resolution || !resolveInput.originalConflict) {
+      throw new Error('Invalid review input: missing resolution or originalConflict');
+    }
+    return this.review(resolveInput.resolution, resolveInput.originalConflict);
   }
 
   /**
@@ -220,6 +292,192 @@ export class ReviewerAgent extends BaseAgent {
       shouldEscalate,
       escalationReason: shouldEscalate ? this.getEscalationReason(review) : undefined,
     };
+  }
+
+  /**
+   * Review generated code from issue-to-code workflow
+   */
+  async reviewCode(
+    codeResult: CodeGenerationResult,
+    issue: IssueMetadata
+  ): Promise<ReviewerOutput> {
+    // Quick checks on all generated files
+    const quickChecks = this.performCodeQuickChecks(codeResult);
+
+    // If quick checks fail badly, don't even call LLM
+    if (!quickChecks.syntaxValid || quickChecks.criticalSecurityIssue) {
+      const review: ReviewResult = {
+        approved: false,
+        syntaxValid: quickChecks.syntaxValid,
+        codeLossDetected: false, // Not applicable for code generation
+        securityIssues: quickChecks.securityIssues,
+        suggestions: quickChecks.suggestions,
+        confidence: 95,
+      };
+
+      this.recordReview(`issue-${issue.number}`, review);
+
+      return {
+        review,
+        shouldEscalate: true,
+        escalationReason: quickChecks.syntaxValid
+          ? 'Critical security issue detected'
+          : 'Syntax validation failed',
+      };
+    }
+
+    // Deep review with LLM
+    const context = this.buildCodeReviewContext(codeResult, issue);
+
+    const response = await this.chat({
+      model: this.config.defaultModel,
+      messages: [
+        { role: 'system', content: CODE_REVIEW_SYSTEM_PROMPT },
+        { role: 'user', content: context },
+      ],
+      temperature: 0.2,
+    });
+
+    const review = this.parseCodeReviewResponse(response, quickChecks);
+
+    // Record in history
+    this.recordReview(`issue-${issue.number}`, review);
+
+    // Determine escalation
+    const shouldEscalate =
+      !review.approved ||
+      review.confidence < 70 ||
+      review.securityIssues.length > 0;
+
+    return {
+      review,
+      shouldEscalate,
+      escalationReason: shouldEscalate ? this.getEscalationReason(review) : undefined,
+    };
+  }
+
+  /**
+   * Perform quick checks on generated code
+   */
+  private performCodeQuickChecks(codeResult: CodeGenerationResult): {
+    syntaxValid: boolean;
+    securityIssues: string[];
+    suggestions: string[];
+    criticalSecurityIssue: boolean;
+  } {
+    const securityIssues: string[] = [];
+    const suggestions: string[] = [];
+    let criticalSecurityIssue = false;
+    let syntaxValid = true;
+
+    // Check each generated file
+    for (const file of codeResult.files) {
+      // Basic syntax check
+      const fileSyntaxValid = this.checkBasicSyntax(file.content);
+      if (!fileSyntaxValid) {
+        syntaxValid = false;
+        suggestions.push(`Syntax error detected in ${file.path}`);
+      }
+
+      // Security pattern check
+      for (const pattern of this.securityPatterns) {
+        if (pattern.test(file.content)) {
+          const issue = `Security pattern in ${file.path}: ${pattern.source}`;
+          securityIssues.push(issue);
+
+          if (/password|secret|api[_-]?key|token/i.test(pattern.source)) {
+            criticalSecurityIssue = true;
+          }
+        }
+      }
+    }
+
+    // Low confidence from coder is a yellow flag
+    if (codeResult.confidence < 50) {
+      suggestions.push(`Coder agent had low confidence (${codeResult.confidence}%) - review carefully`);
+    }
+
+    return {
+      syntaxValid,
+      securityIssues,
+      suggestions,
+      criticalSecurityIssue,
+    };
+  }
+
+  /**
+   * Build context for code generation review
+   */
+  private buildCodeReviewContext(codeResult: CodeGenerationResult, issue: IssueMetadata): string {
+    const filesContext = codeResult.files.map((f) => `
+### ${f.path} (${f.action})
+**Explanation:** ${f.explanation}
+\`\`\`
+${f.content.slice(0, 2000)}${f.content.length > 2000 ? '\n...(truncated)' : ''}
+\`\`\`
+`).join('\n');
+
+    return `## Code Generation Review Request
+
+**Issue #:** ${issue.number}
+**Issue Title:** ${issue.title}
+**Repository:** ${issue.repo.fullName}
+
+### Issue Description
+${issue.body || 'No description provided'}
+
+### Generated Code
+**Files Generated:** ${codeResult.files.length}
+**Coder Confidence:** ${codeResult.confidence}%
+**Tests Included:** ${codeResult.testsIncluded}
+**Summary:** ${codeResult.summary}
+
+${filesContext}
+
+Please review this generated code and provide your assessment as a JSON object.`;
+  }
+
+  /**
+   * Parse code review response from LLM
+   */
+  private parseCodeReviewResponse(
+    response: string,
+    quickChecks: ReturnType<typeof this.performCodeQuickChecks>
+  ): ReviewResult {
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Merge with quick checks (quick checks are authoritative for security)
+      return {
+        approved: parsed.approved && quickChecks.syntaxValid && !quickChecks.criticalSecurityIssue,
+        syntaxValid: quickChecks.syntaxValid && (parsed.syntaxValid !== false),
+        codeLossDetected: false, // Not applicable for code generation
+        securityIssues: [
+          ...quickChecks.securityIssues,
+          ...(parsed.securityIssues || []),
+        ],
+        suggestions: [
+          ...quickChecks.suggestions,
+          ...(parsed.suggestions || []),
+        ],
+        confidence: Math.min(parsed.confidence || 50, quickChecks.syntaxValid ? 100 : 20),
+      };
+    } catch {
+      // Fallback - conservative review
+      return {
+        approved: false,
+        syntaxValid: quickChecks.syntaxValid,
+        codeLossDetected: false,
+        securityIssues: quickChecks.securityIssues,
+        suggestions: ['LLM review failed - manual review required'],
+        confidence: 30,
+      };
+    }
   }
 
   /**

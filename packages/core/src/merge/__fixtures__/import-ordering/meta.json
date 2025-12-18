@@ -1,0 +1,7 @@
+{
+  "name": "import-ordering",
+  "description": "Both add imports (clean merge) but function body conflicts - partial conflict",
+  "expectedStatus": "conflict",
+  "expectedConflicts": 1,
+  "category": "partial-merge"
+}

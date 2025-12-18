@@ -1,0 +1,174 @@
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440001",
+  "created_at": "2025-12-17T12:00:00.000Z",
+  "provider": "gemini",
+  "model": "gemini-2.0-flash",
+  "version": 1,
+  "trace_id": "trace-abc123",
+  "request_id": "req-xyz789",
+  "intent_summary": "Add a user authentication module with JWT tokens and bcrypt password hashing",
+  "files": [
+    {
+      "path": "src/auth/index.ts",
+      "action": "create",
+      "reason": "Main authentication module entry point",
+      "language": "typescript",
+      "estimated_lines": 50
+    },
+    {
+      "path": "src/auth/jwt.ts",
+      "action": "create",
+      "reason": "JWT token generation and verification utilities",
+      "language": "typescript",
+      "estimated_lines": 80
+    },
+    {
+      "path": "src/auth/password.ts",
+      "action": "create",
+      "reason": "Password hashing with bcrypt",
+      "language": "typescript",
+      "estimated_lines": 40
+    },
+    {
+      "path": "src/middleware/auth.ts",
+      "action": "create",
+      "reason": "Express middleware for auth verification",
+      "language": "typescript",
+      "estimated_lines": 60
+    },
+    {
+      "path": "package.json",
+      "action": "modify",
+      "reason": "Add bcrypt and jsonwebtoken dependencies",
+      "language": "json",
+      "estimated_lines": 5
+    }
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "name": "Create password module",
+      "description": "Implement bcrypt-based password hashing and verification",
+      "files": ["src/auth/password.ts"],
+      "prompt": "Create a TypeScript module for password hashing using bcrypt. Include functions: hashPassword(plain: string): Promise<string> and verifyPassword(plain: string, hash: string): Promise<boolean>. Use salt rounds of 12.",
+      "parallelizable": true,
+      "depends_on": [],
+      "risk": "low"
+    },
+    {
+      "order": 2,
+      "name": "Create JWT module",
+      "description": "Implement JWT token generation and verification",
+      "files": ["src/auth/jwt.ts"],
+      "prompt": "Create a TypeScript module for JWT handling. Include functions: generateToken(payload: object, expiresIn?: string): string and verifyToken(token: string): object | null. Use environment variable JWT_SECRET for signing.",
+      "parallelizable": true,
+      "depends_on": [],
+      "risk": "medium"
+    },
+    {
+      "order": 3,
+      "name": "Create auth entry point",
+      "description": "Create main authentication module that exports all utilities",
+      "files": ["src/auth/index.ts"],
+      "prompt": "Create the main authentication module entry point that re-exports password and jwt utilities. Add a unified authenticate(username: string, password: string) function.",
+      "parallelizable": false,
+      "depends_on": [1, 2],
+      "risk": "low"
+    },
+    {
+      "order": 4,
+      "name": "Create auth middleware",
+      "description": "Create Express middleware for JWT verification",
+      "files": ["src/middleware/auth.ts"],
+      "prompt": "Create Express middleware that verifies JWT tokens from Authorization header. Extract Bearer token and verify using jwt module. Set req.user on success, return 401 on failure.",
+      "parallelizable": false,
+      "depends_on": [2],
+      "risk": "medium"
+    },
+    {
+      "order": 5,
+      "name": "Update dependencies",
+      "description": "Add required npm packages to package.json",
+      "files": ["package.json"],
+      "prompt": "Add bcrypt (^5.1.0), @types/bcrypt (^5.0.0), jsonwebtoken (^9.0.0), and @types/jsonwebtoken (^9.0.0) to package.json dependencies/devDependencies.",
+      "parallelizable": false,
+      "depends_on": [],
+      "risk": "low"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Password hashing roundtrip",
+      "type": "unit",
+      "command": "npm test -- --grep 'password'",
+      "validates": ["src/auth/password.ts"],
+      "must_pass_before": false,
+      "must_pass_after": true
+    },
+    {
+      "name": "JWT token lifecycle",
+      "type": "unit",
+      "command": "npm test -- --grep 'jwt'",
+      "validates": ["src/auth/jwt.ts"],
+      "must_pass_before": false,
+      "must_pass_after": true
+    },
+    {
+      "name": "Auth middleware integration",
+      "type": "integration",
+      "command": "npm run test:integration -- --grep 'auth'",
+      "validates": ["src/middleware/auth.ts"],
+      "must_pass_before": false,
+      "must_pass_after": true
+    }
+  ],
+  "risk": {
+    "overall": "medium",
+    "confidence": 85,
+    "risks": [
+      {
+        "id": "risk-1",
+        "severity": "medium",
+        "description": "JWT secret management requires environment variable",
+        "mitigation": "Document required environment variables in README",
+        "affected_files": ["src/auth/jwt.ts"],
+        "requires_review": false
+      },
+      {
+        "id": "risk-2",
+        "severity": "low",
+        "description": "bcrypt is CPU intensive for password hashing",
+        "mitigation": "Salt rounds of 12 provide good balance between security and performance",
+        "affected_files": ["src/auth/password.ts"],
+        "requires_review": false
+      }
+    ],
+    "requires_approval": false,
+    "review_reasons": []
+  },
+  "policy": {
+    "allowed": true,
+    "required_scopes": ["commit"],
+    "notes": "Standard development operation, no special permissions required"
+  },
+  "rollback": {
+    "automatic": true,
+    "steps": [
+      "Revert package.json changes",
+      "Remove src/middleware/auth.ts",
+      "Remove src/auth/ directory"
+    ],
+    "estimated_time_sec": 30
+  },
+  "acceptance_criteria": [
+    "Password hashing works with bcrypt",
+    "JWT tokens can be generated and verified",
+    "Auth middleware correctly protects routes",
+    "All unit tests pass",
+    "No TypeScript errors"
+  ],
+  "estimated_duration_sec": 300,
+  "source_url": "https://github.com/example/repo/issues/42",
+  "intent_hash": "sha256:abc123def456",
+  "tenant_id": "tenant-001"
+}

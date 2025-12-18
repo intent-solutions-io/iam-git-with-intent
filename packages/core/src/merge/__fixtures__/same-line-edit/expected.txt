@@ -1,0 +1,8 @@
+const config = {
+<<<<<<< ours
+  timeout: 5000,
+=======
+  timeout: 2000,
+>>>>>>> theirs
+  retries: 3,
+};

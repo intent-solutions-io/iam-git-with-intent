@@ -2,12 +2,31 @@
  * Git With Intent - GitHub Webhook Handler
  *
  * Receives GitHub webhook events and triggers workflows via orchestrator.
+ * Phase 8: Added tenant linking and installation handling.
+ *
  * R3: Gateway only - no agent logic, pure event routing.
  */
 
 import express from 'express';
 import helmet from 'helmet';
-import crypto from 'crypto';
+import {
+  handleInstallationCreated,
+  handleInstallationDeleted,
+  handleInstallationRepositories,
+  type InstallationPayload,
+  type InstallationRepositoriesPayload,
+} from './handlers/installation.js';
+import {
+  getTenantLinker,
+  type WebhookContext,
+  type TenantContext,
+} from './services/tenant-linker.js';
+import {
+  verifyGitHubWebhookSignature,
+  type WebhookVerificationResult,
+  enqueueJob,
+  createWorkflowJob,
+} from '@gwi/core';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -19,7 +38,29 @@ const config = {
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
   env: process.env.DEPLOYMENT_ENV || 'dev',
   location: 'us-central1',
+  // Phase 17: Use job queue instead of direct orchestrator calls
+  useJobQueue: process.env.USE_JOB_QUEUE === 'true',
 };
+
+// Security validation: Require webhook secret in production
+if (config.env === 'prod' && !config.webhookSecret) {
+  console.error(JSON.stringify({
+    severity: 'CRITICAL',
+    type: 'startup_security_error',
+    error: 'GITHUB_WEBHOOK_SECRET is required in production',
+    hint: 'Set GITHUB_WEBHOOK_SECRET environment variable',
+  }));
+  process.exit(1);
+}
+
+if (!config.webhookSecret) {
+  console.warn(JSON.stringify({
+    severity: 'WARNING',
+    type: 'startup_warning',
+    message: 'GITHUB_WEBHOOK_SECRET not set - webhook signature validation DISABLED',
+    env: config.env,
+  }));
+}
 
 // Security middleware
 app.use(helmet());
@@ -30,6 +71,9 @@ app.use(express.json({
   },
 }));
 
+// Tenant linker instance
+const tenantLinker = getTenantLinker();
+
 /**
  * Health check
  */
@@ -37,6 +81,7 @@ app.get('/health', (_req, res) => {
   res.json({
     status: 'healthy',
     service: 'github-webhook',
+    version: '0.2.0',
     env: config.env,
     timestamp: Date.now(),
   });
@@ -52,14 +97,27 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
   const signature = req.headers['x-hub-signature-256'] as string;
 
   try {
-    // Validate webhook signature
-    if (config.webhookSecret && !verifySignature(req.rawBody || '', signature)) {
-      console.log(JSON.stringify({
-        type: 'webhook_invalid_signature',
-        delivery,
-        event,
-      }));
-      return res.status(401).json({ error: 'Invalid signature' });
+    // Validate webhook signature using centralized security function (Phase 17)
+    if (config.webhookSecret) {
+      const verificationResult: WebhookVerificationResult = verifyGitHubWebhookSignature(
+        req.rawBody || '',
+        signature,
+        config.webhookSecret
+      );
+
+      if (!verificationResult.valid) {
+        console.log(JSON.stringify({
+          severity: 'WARNING',
+          type: 'webhook_signature_verification_failed',
+          delivery,
+          event,
+          error: verificationResult.error,
+          signatureType: verificationResult.signatureType,
+        }));
+        return res.status(401).json({
+          error: verificationResult.error || 'Signature verification failed',
+        });
+      }
     }
 
     // Route based on event type
@@ -91,17 +149,7 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
   }
 });
 
-/**
- * Verify GitHub webhook signature
- */
-function verifySignature(payload: string, signature: string): boolean {
-  if (!signature) return false;
-
-  const hmac = crypto.createHmac('sha256', config.webhookSecret);
-  const digest = 'sha256=' + hmac.update(payload).digest('hex');
-
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
-}
+// Note: verifySignature removed in Phase 17 - now using centralized verifyGitHubWebhookSignature from @gwi/core
 
 /**
  * Handle webhook event based on type
@@ -110,21 +158,36 @@ async function handleWebhookEvent(
   event: string,
   payload: unknown,
   delivery: string
-): Promise<{ status: string; workflowId?: string; skipped?: boolean; reason?: string }> {
+): Promise<{ status: string; workflowId?: string; tenantId?: string; skipped?: boolean; reason?: string }> {
   const body = payload as Record<string, unknown>;
+
+  // Handle installation events first (no tenant context needed)
+  if (event === 'installation') {
+    return handleInstallationEvent(body, delivery);
+  }
+
+  if (event === 'installation_repositories') {
+    return handleInstallationReposEvent(body, delivery);
+  }
+
+  // For all other events, extract context and resolve tenant
+  const webhookCtx = tenantLinker.extractContext(event, body, delivery);
+
+  // Resolve tenant (may be null if not found)
+  const tenantCtx = await tenantLinker.resolveTenant(webhookCtx);
 
   switch (event) {
     case 'pull_request':
-      return handlePullRequestEvent(body, delivery);
+      return handlePullRequestEvent(body, delivery, webhookCtx, tenantCtx);
 
     case 'issue_comment':
-      return handleIssueCommentEvent(body, delivery);
+      return handleIssueCommentEvent(body, delivery, webhookCtx, tenantCtx);
 
     case 'issues':
-      return handleIssueEvent(body, delivery);
+      return handleIssueEvent(body, delivery, webhookCtx, tenantCtx);
 
     case 'push':
-      return handlePushEvent(body, delivery);
+      return handlePushEvent(body, delivery, webhookCtx, tenantCtx);
 
     default:
       return { status: 'skipped', skipped: true, reason: `Unsupported event: ${event}` };
@@ -132,12 +195,87 @@ async function handleWebhookEvent(
 }
 
 /**
+ * Handle installation events
+ */
+async function handleInstallationEvent(
+  payload: Record<string, unknown>,
+  _delivery: string
+): Promise<{ status: string; tenantId?: string; skipped?: boolean; reason?: string }> {
+  const installationPayload = payload as unknown as InstallationPayload;
+  const action = installationPayload.action;
+
+  switch (action) {
+    case 'created': {
+      const result = await handleInstallationCreated(installationPayload);
+      if (result.tenantId) {
+        // Register in linker cache
+        tenantLinker.registerInstallation(
+          installationPayload.installation.id,
+          result.tenantId
+        );
+      }
+      return {
+        status: result.status,
+        tenantId: result.tenantId,
+        reason: result.reason,
+      };
+    }
+
+    case 'deleted': {
+      const result = await handleInstallationDeleted(installationPayload);
+      // Unregister from cache
+      tenantLinker.unregisterInstallation(installationPayload.installation.id);
+      return {
+        status: result.status,
+        tenantId: result.tenantId,
+        reason: result.reason,
+      };
+    }
+
+    case 'suspend':
+    case 'unsuspend':
+      // TODO: Handle suspend/unsuspend in future phase
+      return {
+        status: 'skipped',
+        skipped: true,
+        reason: `Installation ${action} not yet implemented`,
+      };
+
+    default:
+      return {
+        status: 'skipped',
+        skipped: true,
+        reason: `Unknown installation action: ${action}`,
+      };
+  }
+}
+
+/**
+ * Handle installation_repositories events
+ */
+async function handleInstallationReposEvent(
+  payload: Record<string, unknown>,
+  _delivery: string
+): Promise<{ status: string; tenantId?: string; skipped?: boolean; reason?: string }> {
+  const reposPayload = payload as unknown as InstallationRepositoriesPayload;
+  const result = await handleInstallationRepositories(reposPayload);
+
+  return {
+    status: result.status,
+    tenantId: result.tenantId,
+    reason: result.reason,
+  };
+}
+
+/**
  * Handle pull_request events
  */
 async function handlePullRequestEvent(
   payload: Record<string, unknown>,
-  delivery: string
-): Promise<{ status: string; workflowId?: string; skipped?: boolean; reason?: string }> {
+  delivery: string,
+  webhookCtx: WebhookContext,
+  tenantCtx: TenantContext | null
+): Promise<{ status: string; workflowId?: string; tenantId?: string; skipped?: boolean; reason?: string }> {
   const action = payload.action as string;
   const pr = payload.pull_request as Record<string, unknown>;
 
@@ -147,28 +285,116 @@ async function handlePullRequestEvent(
     return { status: 'skipped', skipped: true, reason: `Action ${action} not handled` };
   }
 
+  // Check tenant context
+  if (!tenantCtx) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: 'Tenant not found for installation',
+    };
+  }
+
+  // Check if repo is enabled
+  if (!tenantCtx.repoEnabled) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: 'Repository not enabled for processing',
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  // Check plan limits
+  if (!tenantCtx.withinLimits) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: tenantCtx.limitReason,
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  // Get effective settings
+  const settings = tenantLinker.getEffectiveSettings(tenantCtx);
+
   // Check if PR has conflicts
   const mergeable = pr.mergeable as boolean | null;
   const mergeableState = pr.mergeable_state as string;
 
-  if (mergeable !== false && mergeableState !== 'dirty') {
-    return { status: 'skipped', skipped: true, reason: 'No conflicts detected' };
+  const hasConflicts = mergeable === false || mergeableState === 'dirty';
+
+  // Determine what to trigger based on settings and PR state
+  if (hasConflicts && settings.autoResolve) {
+    // Create run in Firestore
+    const run = await tenantLinker.createRun(
+      tenantCtx,
+      'resolve',
+      webhookCtx,
+      { number: pr.number as number, url: pr.html_url as string }
+    );
+
+    // Trigger workflow
+    const workflowId = await triggerWorkflow('pr-resolve', {
+      tenantId: tenantCtx.tenant.id,
+      repoId: tenantCtx.repo?.id,
+      runId: run.id,
+      pr: {
+        url: pr.html_url,
+        number: pr.number,
+        title: pr.title,
+        baseBranch: (pr.base as Record<string, unknown>).ref,
+        headBranch: (pr.head as Record<string, unknown>).ref,
+        author: ((pr.user as Record<string, unknown>).login),
+        hasConflicts: true,
+      },
+      delivery,
+    });
+
+    return {
+      status: 'triggered',
+      workflowId,
+      tenantId: tenantCtx.tenant.id,
+    };
   }
 
-  // Trigger pr-resolve workflow
-  const workflowId = await triggerWorkflow('pr-resolve', {
-    pr: {
-      url: pr.html_url,
-      number: pr.number,
-      title: pr.title,
-      baseBranch: (pr.base as Record<string, unknown>).ref,
-      headBranch: (pr.head as Record<string, unknown>).ref,
-      author: ((pr.user as Record<string, unknown>).login),
-    },
-    delivery,
-  });
+  if (action === 'opened' && settings.autoTriage) {
+    // Create run in Firestore
+    const run = await tenantLinker.createRun(
+      tenantCtx,
+      'triage',
+      webhookCtx,
+      { number: pr.number as number, url: pr.html_url as string }
+    );
 
-  return { status: 'triggered', workflowId };
+    // Trigger triage workflow
+    const workflowId = await triggerWorkflow('pr-triage', {
+      tenantId: tenantCtx.tenant.id,
+      repoId: tenantCtx.repo?.id,
+      runId: run.id,
+      pr: {
+        url: pr.html_url,
+        number: pr.number,
+        title: pr.title,
+        baseBranch: (pr.base as Record<string, unknown>).ref,
+        headBranch: (pr.head as Record<string, unknown>).ref,
+        author: ((pr.user as Record<string, unknown>).login),
+      },
+      delivery,
+    });
+
+    return {
+      status: 'triggered',
+      workflowId,
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  return {
+    status: 'skipped',
+    skipped: true,
+    reason: hasConflicts ? 'Auto-resolve not enabled' : 'No action required',
+    tenantId: tenantCtx.tenant.id,
+  };
 }
 
 /**
@@ -176,8 +402,10 @@ async function handlePullRequestEvent(
  */
 async function handleIssueCommentEvent(
   payload: Record<string, unknown>,
-  delivery: string
-): Promise<{ status: string; workflowId?: string; skipped?: boolean; reason?: string }> {
+  delivery: string,
+  webhookCtx: WebhookContext,
+  tenantCtx: TenantContext | null
+): Promise<{ status: string; workflowId?: string; tenantId?: string; skipped?: boolean; reason?: string }> {
   const action = payload.action as string;
   if (action !== 'created') {
     return { status: 'skipped', skipped: true, reason: 'Only handle created comments' };
@@ -191,6 +419,33 @@ async function handleIssueCommentEvent(
     return { status: 'skipped', skipped: true, reason: 'Not a /gwi command' };
   }
 
+  // Check tenant context
+  if (!tenantCtx) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: 'Tenant not found for installation',
+    };
+  }
+
+  if (!tenantCtx.repoEnabled) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: 'Repository not enabled',
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  if (!tenantCtx.withinLimits) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: tenantCtx.limitReason,
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
   const command = body.slice(5).trim().split(' ')[0];
   const issue = payload.issue as Record<string, unknown>;
   const isPR = 'pull_request' in issue;
@@ -199,38 +454,129 @@ async function handleIssueCommentEvent(
   switch (command) {
     case 'resolve':
       if (!isPR) {
-        return { status: 'skipped', skipped: true, reason: 'Resolve only works on PRs' };
+        return {
+          status: 'skipped',
+          skipped: true,
+          reason: 'Resolve only works on PRs',
+          tenantId: tenantCtx.tenant.id,
+        };
       }
-      const workflowId = await triggerWorkflow('pr-resolve', {
-        pr: { number: issue.number, url: issue.html_url },
-        delivery,
-        triggeredBy: (comment.user as Record<string, unknown>).login,
-      });
-      return { status: 'triggered', workflowId };
+
+      {
+        const resolveRun = await tenantLinker.createRun(
+          tenantCtx,
+          'resolve',
+          webhookCtx,
+          { number: issue.number as number, url: issue.html_url as string }
+        );
+
+        const workflowId = await triggerWorkflow('pr-resolve', {
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          runId: resolveRun.id,
+          pr: { number: issue.number, url: issue.html_url },
+          delivery,
+          triggeredBy: (comment.user as Record<string, unknown>).login,
+        });
+
+        return {
+          status: 'triggered',
+          workflowId,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
 
     case 'review':
       if (!isPR) {
-        return { status: 'skipped', skipped: true, reason: 'Review only works on PRs' };
+        return {
+          status: 'skipped',
+          skipped: true,
+          reason: 'Review only works on PRs',
+          tenantId: tenantCtx.tenant.id,
+        };
       }
-      const reviewId = await triggerWorkflow('pr-review', {
-        pr: { number: issue.number, url: issue.html_url },
-        delivery,
-        triggeredBy: (comment.user as Record<string, unknown>).login,
-      });
-      return { status: 'triggered', workflowId: reviewId };
+
+      {
+        const reviewRun = await tenantLinker.createRun(
+          tenantCtx,
+          'review',
+          webhookCtx,
+          { number: issue.number as number, url: issue.html_url as string }
+        );
+
+        const reviewId = await triggerWorkflow('pr-review', {
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          runId: reviewRun.id,
+          pr: { number: issue.number, url: issue.html_url },
+          delivery,
+          triggeredBy: (comment.user as Record<string, unknown>).login,
+        });
+
+        return {
+          status: 'triggered',
+          workflowId: reviewId,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
+
+    case 'triage':
+      if (!isPR) {
+        return {
+          status: 'skipped',
+          skipped: true,
+          reason: 'Triage only works on PRs',
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
+
+      {
+        const triageRun = await tenantLinker.createRun(
+          tenantCtx,
+          'triage',
+          webhookCtx,
+          { number: issue.number as number, url: issue.html_url as string }
+        );
+
+        const triageId = await triggerWorkflow('pr-triage', {
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          runId: triageRun.id,
+          pr: { number: issue.number, url: issue.html_url },
+          delivery,
+          triggeredBy: (comment.user as Record<string, unknown>).login,
+        });
+
+        return {
+          status: 'triggered',
+          workflowId: triageId,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
 
     default:
-      return { status: 'skipped', skipped: true, reason: `Unknown command: ${command}` };
+      return {
+        status: 'skipped',
+        skipped: true,
+        reason: `Unknown command: ${command}`,
+        tenantId: tenantCtx.tenant.id,
+      };
   }
 }
 
 /**
  * Handle issues events
+ *
+ * Phase 34: Enhanced autopilot support
+ * - Supports both 'gwi-auto-code' and 'gwi:autopilot' labels
+ * - Handles opened and labeled actions
  */
 async function handleIssueEvent(
   payload: Record<string, unknown>,
-  delivery: string
-): Promise<{ status: string; workflowId?: string; skipped?: boolean; reason?: string }> {
+  delivery: string,
+  webhookCtx: WebhookContext,
+  tenantCtx: TenantContext | null
+): Promise<{ status: string; workflowId?: string; tenantId?: string; skipped?: boolean; reason?: string }> {
   const action = payload.action as string;
   if (action !== 'opened' && action !== 'labeled') {
     return { status: 'skipped', skipped: true, reason: `Action ${action} not handled` };
@@ -239,25 +585,77 @@ async function handleIssueEvent(
   const issue = payload.issue as Record<string, unknown>;
   const labels = (issue.labels as Array<Record<string, unknown>>) || [];
 
-  // Check for gwi-auto-code label
-  const hasAutoCodeLabel = labels.some(l => l.name === 'gwi-auto-code');
-  if (!hasAutoCodeLabel) {
-    return { status: 'skipped', skipped: true, reason: 'Missing gwi-auto-code label' };
+  // Phase 34: Support multiple trigger labels
+  const triggerLabels = ['gwi-auto-code', 'gwi:autopilot', 'gwi:auto'];
+  const hasAutopilotLabel = labels.some(l => triggerLabels.includes(l.name as string));
+  if (!hasAutopilotLabel) {
+    return { status: 'skipped', skipped: true, reason: 'Missing autopilot trigger label' };
   }
 
-  // Trigger issue-to-code workflow
-  const workflowId = await triggerWorkflow('issue-to-code', {
+  // Phase 34: Extract the specific label for workflow context
+  const matchedLabel = labels.find(l => triggerLabels.includes(l.name as string));
+  const triggerLabel = matchedLabel?.name as string;
+
+  // Check tenant context
+  if (!tenantCtx) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: 'Tenant not found for installation',
+    };
+  }
+
+  if (!tenantCtx.repoEnabled) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: 'Repository not enabled',
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  if (!tenantCtx.withinLimits) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: tenantCtx.limitReason,
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  // Create autopilot run
+  const run = await tenantLinker.createRun(
+    tenantCtx,
+    'autopilot',
+    webhookCtx,
+    { number: issue.number as number, url: issue.html_url as string }
+  );
+
+  // Phase 34: Trigger autopilot workflow with enhanced context
+  const workflowId = await triggerWorkflow('autopilot', {
+    tenantId: tenantCtx.tenant.id,
+    repoId: tenantCtx.repo?.id,
+    runId: run.id,
     issue: {
       number: issue.number,
       title: issue.title,
       body: issue.body,
       url: issue.html_url,
       labels: labels.map(l => l.name),
+      author: (issue.user as Record<string, unknown>)?.login,
+      createdAt: issue.created_at,
     },
+    triggerLabel,
     delivery,
+    repoFullName: webhookCtx.repository?.fullName,
+    installationId: webhookCtx.installationId,
   });
 
-  return { status: 'triggered', workflowId };
+  return {
+    status: 'triggered',
+    workflowId,
+    tenantId: tenantCtx.tenant.id,
+  };
 }
 
 /**
@@ -265,20 +663,70 @@ async function handleIssueEvent(
  */
 async function handlePushEvent(
   _payload: Record<string, unknown>,
-  _delivery: string
-): Promise<{ status: string; skipped: boolean; reason: string }> {
-  // Push events could trigger CI checks
-  return { status: 'skipped', skipped: true, reason: 'Push events not yet implemented' };
+  _delivery: string,
+  _webhookCtx: WebhookContext,
+  tenantCtx: TenantContext | null
+): Promise<{ status: string; tenantId?: string; skipped: boolean; reason: string }> {
+  // Push events could trigger CI checks in future phases
+  return {
+    status: 'skipped',
+    skipped: true,
+    reason: 'Push events not yet implemented',
+    tenantId: tenantCtx?.tenant.id,
+  };
 }
 
 /**
- * Trigger a workflow via the orchestrator
+ * Trigger a workflow via the job queue or orchestrator
+ *
+ * Phase 17: Supports both queue-based (recommended) and direct orchestrator calls.
+ * Set USE_JOB_QUEUE=true to use the job queue.
  */
 async function triggerWorkflow(
   type: string,
   input: Record<string, unknown>
 ): Promise<string> {
   const workflowId = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Phase 17: Use job queue when enabled
+  if (config.useJobQueue) {
+    const tenantId = input.tenantId as string;
+    const runId = input.runId as string;
+
+    const job = createWorkflowJob(tenantId, runId, type, {
+      ...input,
+      workflowId,
+    });
+
+    const result = await enqueueJob(job);
+
+    console.log(JSON.stringify({
+      type: 'workflow_queued',
+      workflowType: type,
+      workflowId,
+      messageId: result.messageId,
+      success: result.success,
+      tenantId,
+      runId,
+    }));
+
+    if (!result.success) {
+      throw new Error(`Failed to queue workflow: ${result.error}`);
+    }
+
+    return workflowId;
+  }
+
+  // Skip actual orchestrator call if not configured
+  if (!config.projectId || !config.orchestratorEngineId) {
+    console.log(JSON.stringify({
+      type: 'workflow_dry_run',
+      workflowType: type,
+      workflowId,
+      input,
+    }));
+    return workflowId;
+  }
 
   // Build Agent Engine URL
   const url = `https://${config.location}-aiplatform.googleapis.com/v1/projects/${config.projectId}/locations/${config.location}/reasoningEngines/${config.orchestratorEngineId}:query`;
@@ -348,6 +796,7 @@ app.listen(PORT, () => {
   console.log(JSON.stringify({
     type: 'startup',
     service: 'github-webhook',
+    version: '0.2.0',
     env: config.env,
     port: PORT,
     timestamp: new Date().toISOString(),

@@ -1,0 +1,48 @@
+{
+  "name": "@gwi/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK client for the Git With Intent API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "git-with-intent",
+    "gwi",
+    "sdk",
+    "typescript",
+    "api-client",
+    "git",
+    "devops",
+    "automation"
+  ],
+  "author": "Intent Solutions <jeremy@intentsolutions.io>",
+  "license": "MIT",
+  "dependencies": {
+    "@gwi/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

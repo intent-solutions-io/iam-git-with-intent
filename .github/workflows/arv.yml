@@ -1,0 +1,74 @@
+name: ARV - Agent Readiness Verification
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  arv:
+    name: Agent Readiness Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: ARV - Forbidden Patterns
+        id: forbidden
+        run: npm run arv:lint
+
+      - name: ARV - Contract Tests
+        id: contracts
+        run: npm run arv:contracts
+
+      - name: ARV - Golden Tests
+        id: goldens
+        run: npm run arv:goldens
+
+      - name: ARV - Smoke Tests
+        id: smoke
+        run: npm run arv:smoke
+
+      - name: ARV - Connector Supply Chain
+        id: connectors
+        run: npx tsx scripts/arv/connector-supply-chain.ts
+
+      - name: ARV - Reliability Gate
+        id: reliability
+        run: npx tsx scripts/arv/reliability-gate.ts
+
+      - name: ARV - Forensics Gate
+        id: forensics
+        run: npx tsx scripts/arv/forensics-gate.ts
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## ARV Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Forbidden Patterns | ${{ steps.forbidden.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Contract Tests | ${{ steps.contracts.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Golden Tests | ${{ steps.goldens.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ steps.smoke.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Connector Supply Chain | ${{ steps.connectors.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Reliability Gate | ${{ steps.reliability.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Forensics Gate | ${{ steps.forensics.outcome }} |" >> $GITHUB_STEP_SUMMARY

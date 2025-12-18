@@ -1,0 +1,7 @@
+{
+  "name": "overlapping-blocks",
+  "description": "Both sides modify the same region with multi-line changes - overlapping edit conflict",
+  "expectedStatus": "conflict",
+  "expectedConflicts": 1,
+  "category": "true-conflict"
+}

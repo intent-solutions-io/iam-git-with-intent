@@ -8,3 +8,5 @@
 
 export * from './types.js';
 export { createEngine, getDefaultEngine } from './engine.js';
+export * from './issue-to-code.js';
+export * from './autopilot-executor.js';

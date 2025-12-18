@@ -2,21 +2,18 @@
  * Base Agent Class for Git With Intent
  *
  * All agents MUST extend this class. Provides:
- * - AgentFS state management
- * - Audit logging for all tool calls
+ * - In-memory state management (production-ready)
+ * - Simple audit logging
  * - A2A message handling
  * - Lifecycle management
  *
  * Agents are TRUE AGENTS - stateful, autonomous, collaborative.
  * NOT function wrappers.
+ *
+ * NOTE: State is in-memory and resets on restart. For persistence,
+ * use the Storage interfaces (Firestore in production).
  */
 
-import {
-  type AgentFSInstance,
-  AuditLogger,
-  openAgentFS,
-  createAgentId,
-} from '@gwi/core/agentfs';
 import {
   type A2AMessage,
   type TaskRequestPayload,
@@ -26,6 +23,89 @@ import {
 } from '@gwi/core/a2a';
 import { type ModelSelector, createModelSelector, type ChatOptions } from '@gwi/core/models';
 import type { AgentId, ModelConfig } from '@gwi/core';
+
+/**
+ * Create SPIFFE agent ID
+ */
+function createAgentId(name: string): AgentId {
+  return `spiffe://intent.solutions/agent/${name}`;
+}
+
+/**
+ * Simple in-memory state store (no external dependencies)
+ */
+interface InMemoryState {
+  kv: Map<string, unknown>;
+  auditLog: AuditEntry[];
+}
+
+/**
+ * Audit log entry
+ */
+interface AuditEntry {
+  timestamp: number;
+  toolName: string;
+  input: unknown;
+  output: unknown;
+  durationMs: number;
+}
+
+/**
+ * Simple audit logger (no state dependency)
+ */
+class SimpleAuditLogger {
+  constructor(private readonly state: InMemoryState) {}
+
+  /**
+   * Record a tool call with automatic timing
+   */
+  async record<TInput, TOutput>(
+    toolName: string,
+    input: TInput,
+    fn: () => Promise<TOutput>
+  ): Promise<TOutput> {
+    const startTime = Date.now();
+
+    try {
+      const output = await fn();
+      const endTime = Date.now();
+
+      this.state.auditLog.push({
+        timestamp: startTime,
+        toolName,
+        input,
+        output,
+        durationMs: endTime - startTime,
+      });
+
+      // Keep audit log bounded
+      if (this.state.auditLog.length > 1000) {
+        this.state.auditLog = this.state.auditLog.slice(-1000);
+      }
+
+      return output;
+    } catch (error) {
+      const endTime = Date.now();
+
+      this.state.auditLog.push({
+        timestamp: startTime,
+        toolName,
+        input,
+        output: { error: error instanceof Error ? error.message : String(error) },
+        durationMs: endTime - startTime,
+      });
+
+      throw error;
+    }
+  }
+
+  /**
+   * Get recent audit entries
+   */
+  getRecent(limit = 10): AuditEntry[] {
+    return this.state.auditLog.slice(-limit).reverse();
+  }
+}
 
 /**
  * Agent configuration
@@ -58,11 +138,11 @@ export abstract class BaseAgent {
   /** Agent configuration */
   protected readonly config: AgentConfig;
 
-  /** AgentFS instance for state management */
-  protected agentfs!: AgentFSInstance;
+  /** In-memory state (no external dependencies) */
+  private _state: InMemoryState = { kv: new Map(), auditLog: [] };
 
   /** Audit logger for tool calls */
-  protected audit!: AuditLogger;
+  protected audit!: SimpleAuditLogger;
 
   /** Model selector for LLM calls */
   protected models!: ModelSelector;
@@ -83,11 +163,9 @@ export abstract class BaseAgent {
    */
   async initialize(): Promise<void> {
     try {
-      // Open AgentFS
-      this.agentfs = await openAgentFS({ id: this.config.name });
-
-      // Create audit logger
-      this.audit = new AuditLogger(this.agentfs);
+      // Create in-memory state and audit logger (no external deps)
+      this._state = { kv: new Map(), auditLog: [] };
+      this.audit = new SimpleAuditLogger(this._state);
 
       // Create model selector
       this.models = createModelSelector();
@@ -186,17 +264,19 @@ export abstract class BaseAgent {
   }
 
   /**
-   * Save state to AgentFS
+   * Save state to in-memory store
+   * NOTE: State is ephemeral and resets on restart.
+   * For persistence, use Storage interfaces (Firestore).
    */
   protected async saveState<T>(key: string, value: T): Promise<void> {
-    await this.agentfs.kv.set(`state:${key}`, value);
+    this._state.kv.set(`state:${key}`, value);
   }
 
   /**
-   * Load state from AgentFS
+   * Load state from in-memory store
    */
   protected async loadState<T>(key: string): Promise<T | null> {
-    return this.agentfs.kv.get<T>(`state:${key}`);
+    return (this._state.kv.get(`state:${key}`) as T) ?? null;
   }
 
   /**

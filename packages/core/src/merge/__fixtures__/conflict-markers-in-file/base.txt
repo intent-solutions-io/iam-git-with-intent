@@ -1,0 +1,5 @@
+// Example showing git conflict syntax
+// <<<<<<< HEAD means current branch
+// ======= is the separator
+// >>>>>>> branch-name is the incoming
+const example = 'base';

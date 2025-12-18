@@ -78,16 +78,17 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npm run lint || true
+        run: npm run lint
+        continue-on-error: false
 
       - name: Type check
-        run: npm run typecheck || true
+        run: npm run typecheck
 
       - name: Build
         run: npm run build
 
       - name: Test
-        run: npm run test || true
+        run: npm run test
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -124,6 +125,15 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ env.REGISTRY }}
 
+      - name: Build and push API
+        run: |
+          cd apps/api
+          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }} \
+                     ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:latest
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:latest
+
       - name: Build and push A2A Gateway
         run: |
           cd apps/gateway
@@ -142,9 +152,21 @@ jobs:
                      ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:latest
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:latest
 
+      # Phase 35: Build and push Worker (needs full monorepo context)
+      - name: Build and push Worker
+        run: |
+          docker build -f apps/worker/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:${{ github.sha }} .
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:${{ github.sha }}
+          docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:${{ github.sha }} \
+                     ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:latest
+          docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:latest
+
     outputs:
+      api_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}
       gateway_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
       webhook_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}
+      worker_image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:${{ github.sha }}
 
   # =============================================================================
   # Deploy to Dev (develop branch)
@@ -183,8 +205,10 @@ jobs:
           terraform apply -auto-approve \
             -var="environment=dev" \
             -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="gwi_api_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}" \
             -var="a2a_gateway_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}" \
-            -var="github_webhook_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}"
+            -var="github_webhook_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}" \
+            -var="gwi_worker_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:${{ github.sha }}"
 
       - name: Deploy Agents to Agent Engine
         run: |
@@ -228,8 +252,10 @@ jobs:
           terraform apply -auto-approve \
             -var="environment=prod" \
             -var="project_id=${{ env.PROJECT_ID }}" \
+            -var="gwi_api_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}" \
             -var="a2a_gateway_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}" \
-            -var="github_webhook_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}"
+            -var="github_webhook_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}" \
+            -var="gwi_worker_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/worker:${{ github.sha }}"
 
       - name: Deploy Agents to Agent Engine
         run: |

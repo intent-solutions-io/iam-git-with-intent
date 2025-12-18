@@ -1,0 +1,226 @@
+rules_version = '2';
+
+// Git With Intent - Firestore Security Rules
+// Phase 11: Production-ready multi-tenant security with RBAC
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =================================================================
+    // Helper Functions
+    // =================================================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get user's membership data for a tenant
+    function getMembership(tenantId) {
+      return get(/databases/$(database)/documents/gwi_memberships/$(request.auth.uid + '_' + tenantId));
+    }
+
+    // Check if user has any active membership in tenant
+    function hasTenantAccess(tenantId) {
+      let membership = getMembership(tenantId);
+      return isAuthenticated() &&
+        membership != null &&
+        membership.data.status == 'active';
+    }
+
+    // Check if user has at least DEVELOPER role (can trigger runs)
+    function isDeveloper(tenantId) {
+      let membership = getMembership(tenantId);
+      return membership != null &&
+        membership.data.role in ['owner', 'admin', 'developer'] &&
+        membership.data.status == 'active';
+    }
+
+    // Check if user is tenant owner or admin
+    function isTenantAdmin(tenantId) {
+      let membership = getMembership(tenantId);
+      return membership != null &&
+        membership.data.role in ['owner', 'admin'] &&
+        membership.data.status == 'active';
+    }
+
+    // Check if user is tenant owner
+    function isTenantOwner(tenantId) {
+      let membership = getMembership(tenantId);
+      return membership != null &&
+        membership.data.role == 'owner' &&
+        membership.data.status == 'active';
+    }
+
+    // Check if request is from service account (Cloud Run)
+    function isServiceAccount() {
+      return request.auth.token.firebase.sign_in_provider == 'custom' ||
+        (request.auth.token.email != null &&
+         request.auth.token.email.matches('.*@.*\\.iam\\.gserviceaccount\\.com'));
+    }
+
+    // Check if tenant is active (not suspended)
+    function isTenantActive(tenantId) {
+      let tenant = get(/databases/$(database)/documents/gwi_tenants/$(tenantId));
+      return tenant != null && tenant.data.status == 'active';
+    }
+
+    // =================================================================
+    // Tenant Collection
+    // =================================================================
+
+    match /gwi_tenants/{tenantId} {
+      // Members can read tenant info (VIEWER and above)
+      allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+
+      // Only service accounts can create tenants (via installation webhook)
+      allow create: if isServiceAccount();
+
+      // Admins can update tenant settings
+      allow update: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+
+      // Only owners can delete tenant
+      allow delete: if isTenantOwner(tenantId) || isServiceAccount();
+
+      // Repos subcollection - admins can connect/disconnect repos
+      match /repos/{repoId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow create, update: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+        allow delete: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+      }
+
+      // Settings subcollection - developers can read, admins can update
+      match /settings/{settingId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow write: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+      }
+    }
+
+    // =================================================================
+    // Runs Collection
+    // =================================================================
+
+    match /gwi_runs/{runId} {
+      // VIEWER and above can read runs for their tenant
+      allow read: if hasTenantAccess(resource.data.tenantId) || isServiceAccount();
+
+      // Only service accounts can create runs (from webhook triggers)
+      // Plan limits are enforced at the API layer
+      allow create: if isServiceAccount();
+
+      // Service accounts update run status as it progresses
+      allow update: if isServiceAccount();
+
+      // DEVELOPER and above can cancel runs, service accounts for cleanup
+      allow delete: if isDeveloper(resource.data.tenantId) || isServiceAccount();
+
+      // Steps subcollection - detailed run progress
+      match /steps/{stepId} {
+        allow read: if hasTenantAccess(get(/databases/$(database)/documents/gwi_runs/$(runId)).data.tenantId) ||
+                       isServiceAccount();
+        allow write: if isServiceAccount();
+      }
+
+      // Logs subcollection - run execution logs
+      match /logs/{logId} {
+        allow read: if hasTenantAccess(get(/databases/$(database)/documents/gwi_runs/$(runId)).data.tenantId) ||
+                       isServiceAccount();
+        allow write: if isServiceAccount();
+      }
+    }
+
+    // =================================================================
+    // Users Collection
+    // =================================================================
+
+    match /gwi_users/{userId} {
+      // Users can read their own profile
+      allow read: if request.auth.uid == userId || isServiceAccount();
+
+      // Users can update their own profile (except role fields)
+      allow update: if request.auth.uid == userId &&
+        !('role' in request.resource.data) ||
+        isServiceAccount();
+
+      // Service accounts handle creation/deletion
+      allow create, delete: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Memberships Collection
+    // =================================================================
+
+    match /gwi_memberships/{membershipId} {
+      // Users can read their own memberships, admins can read tenant memberships
+      allow read: if request.auth.uid == resource.data.userId ||
+                     isTenantAdmin(resource.data.tenantId) ||
+                     isServiceAccount();
+
+      // Admins can invite members (create), owners only for admin role
+      // Prevent creating owner memberships (service account only)
+      allow create: if (isTenantAdmin(request.resource.data.tenantId) &&
+                        request.resource.data.role != 'owner' &&
+                        isTenantActive(request.resource.data.tenantId)) ||
+                       isServiceAccount();
+
+      // Admins can update member roles (but not to owner)
+      // Users cannot update their own role (prevent self-elevation)
+      allow update: if (isTenantAdmin(resource.data.tenantId) &&
+                        request.auth.uid != resource.data.userId &&
+                        request.resource.data.role != 'owner' &&
+                        isTenantActive(resource.data.tenantId)) ||
+                       isServiceAccount();
+
+      // Only owners can remove members (admins can suspend via update)
+      allow delete: if isTenantOwner(resource.data.tenantId) || isServiceAccount();
+    }
+
+    // =================================================================
+    // Installations Index (for webhook lookup)
+    // =================================================================
+
+    match /gwi_installations/{installationId} {
+      // Only service accounts can access (GitHub App installation mapping)
+      allow read, write: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Audit Logs Collection (Phase 11: Observability)
+    // =================================================================
+
+    match /gwi_audit_logs/{logId} {
+      // Admins can read audit logs for their tenant
+      allow read: if isTenantAdmin(resource.data.tenantId) || isServiceAccount();
+
+      // Only service accounts can write audit logs
+      allow write: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Usage Metrics Collection (Phase 11: Plan enforcement)
+    // =================================================================
+
+    match /gwi_usage/{tenantId} {
+      // Members can read their tenant's usage
+      allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+
+      // Only service accounts update usage metrics
+      allow write: if isServiceAccount();
+
+      // Monthly breakdown subcollection
+      match /months/{monthId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow write: if isServiceAccount();
+      }
+    }
+
+    // =================================================================
+    // Default Deny
+    // =================================================================
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

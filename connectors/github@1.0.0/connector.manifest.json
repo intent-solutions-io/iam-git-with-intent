@@ -1,0 +1,26 @@
+{
+  "manifestVersion": "1.0",
+  "id": "github",
+  "version": "1.0.0",
+  "displayName": "GitHub Connector",
+  "description": "Connect to GitHub API for issues, PRs, comments, branches, and check runs",
+  "author": "GWI Team",
+  "license": "MIT",
+  "entrypoint": "dist/index.js",
+  "tools": [
+    { "name": "getIssue", "description": "Get issue details", "policyClass": "READ" },
+    { "name": "getPullRequest", "description": "Get PR details", "policyClass": "READ" },
+    { "name": "postComment", "description": "Post a comment", "policyClass": "WRITE_NON_DESTRUCTIVE" },
+    { "name": "createCheckRun", "description": "Create check run", "policyClass": "WRITE_NON_DESTRUCTIVE" },
+    { "name": "manageLabels", "description": "Manage labels", "policyClass": "WRITE_NON_DESTRUCTIVE" },
+    { "name": "createBranch", "description": "Create branch", "policyClass": "DESTRUCTIVE" },
+    { "name": "pushCommit", "description": "Push commit", "policyClass": "DESTRUCTIVE" },
+    { "name": "createPullRequest", "description": "Create PR", "policyClass": "DESTRUCTIVE" },
+    { "name": "updatePullRequest", "description": "Update PR", "policyClass": "DESTRUCTIVE" }
+  ],
+  "capabilities": ["vcs", "ci-cd", "issue-tracking"],
+  "checksum": "sha256:c5492e867b800536d5f3093ff57a08ce41d941730cd80375870e1c416e238a15",
+  "minCoreVersion": "0.1.0",
+  "repository": "https://github.com/intent-solutions-io/git-with-intent",
+  "keywords": ["github", "vcs", "pull-request", "issues"]
+}

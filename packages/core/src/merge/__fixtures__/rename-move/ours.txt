@@ -1,0 +1,4 @@
+// Renamed to: src/utils/new-name.ts
+export function helper() {
+  return 'modified by ours';
+}

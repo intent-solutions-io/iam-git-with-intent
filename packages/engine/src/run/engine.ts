@@ -10,8 +10,10 @@
  * - Supports Firestore backend via GWI_STORE_BACKEND=firestore
  * - Falls back to in-memory storage for development
  *
- * Real agent orchestration and Vertex AI Agent Engine integration
- * will be added in subsequent phases.
+ * Phase 13 updates:
+ * - Integrated with OrchestratorAgent for real workflow execution
+ * - Maps run types to workflow types
+ * - Executes actual agent pipelines
  *
  * @module @gwi/engine/run
  */
@@ -24,11 +26,22 @@ import type {
   RunResult,
   ValidatedRunRequest,
   EngineRunStatus,
+  EngineRunType,
 } from './types.js';
 import { buildDefaultHookRunner } from '../hooks/config.js';
-import type { AgentHookRunner, AgentRunContext } from '../hooks/types.js';
-import type { TenantStore, SaaSRun } from '@gwi/core';
-import { getTenantStore, getStoreBackend } from '@gwi/core';
+import { AgentHookRunner } from '../hooks/runner.js';
+import type { AgentRunContext } from '../hooks/types.js';
+import type { TenantStore, SaaSRun, WorkflowType, ForensicBundle } from '@gwi/core';
+import {
+  getTenantStore,
+  getStoreBackend,
+  isForensicsEnabled,
+  createForensicCollector,
+  type ForensicCollector,
+} from '@gwi/core';
+import { OrchestratorAgent } from '@gwi/agents';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 // =============================================================================
 // Default Configuration
@@ -55,6 +68,33 @@ interface InMemoryRun {
 }
 
 const fallbackRuns = new Map<string, InMemoryRun>();
+
+// =============================================================================
+// Forensics Helpers
+// =============================================================================
+
+/**
+ * Get the forensics output directory
+ */
+function getForensicsDir(): string {
+  return process.env.GWI_FORENSICS_DIR || '.gwi/forensics';
+}
+
+/**
+ * Save a forensic bundle to disk
+ */
+function saveForensicBundle(bundle: ForensicBundle): string {
+  const dir = getForensicsDir();
+  const filePath = join(dir, `${bundle.run_id}.json`);
+
+  // Ensure directory exists
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+
+  writeFileSync(filePath, JSON.stringify(bundle, null, 2), 'utf-8');
+  return filePath;
+}
 
 // =============================================================================
 // Helper Functions
@@ -141,12 +181,24 @@ export async function createEngine(
   // Get TenantStore from deps or environment-based singleton
   const tenantStore: TenantStore = deps?.tenantStore ?? getTenantStore();
 
-  // Build hook runner (will load AgentFS/Beads hooks if enabled)
+  // Build hook runner (will load state/Beads hooks if enabled)
   let hookRunner: AgentHookRunner | null = null;
   try {
     hookRunner = await buildDefaultHookRunner();
   } catch (error) {
     console.warn('[Engine] Failed to build hook runner, continuing without hooks:', error);
+  }
+
+  // Phase 13: Initialize orchestrator for workflow execution
+  let orchestrator: OrchestratorAgent | null = null;
+  try {
+    orchestrator = new OrchestratorAgent();
+    await orchestrator.initialize();
+    if (cfg.debug) {
+      console.log('[Engine] Orchestrator initialized');
+    }
+  } catch (error) {
+    console.warn('[Engine] Failed to initialize orchestrator, workflows will be limited:', error);
   }
 
   /**
@@ -262,10 +314,119 @@ export async function createEngine(
       // Log to hooks
       await logToHooks(validatedRequest, 'started');
 
-      // TODO: In future phases, this is where we would:
-      // 1. Call Vertex AI Agent Engine with the foreman
-      // 2. Start the agent pipeline
-      // 3. Update status as agents complete
+      // Phase 27: Initialize forensic collector if enabled
+      let collector: ForensicCollector | null = null;
+      if (isForensicsEnabled()) {
+        collector = createForensicCollector({
+          tenantId,
+          runId,
+          workflowId: request.metadata?.workflowId as string | undefined,
+          agentId: 'orchestrator',
+          model: process.env.GWI_DEFAULT_MODEL || 'claude-sonnet-4-20250514',
+          computeChecksum: true,
+        });
+        collector.start({
+          runType,
+          repo: repo.fullName,
+          prNumber: request.prNumber,
+          issueNumber: request.issueNumber,
+          trigger: request.trigger,
+          riskMode: request.riskMode,
+        });
+        if (cfg.debug) {
+          console.log(`[Engine] Forensic collector initialized for run ${runId}`);
+        }
+      }
+
+      // Phase 13: Trigger actual workflow execution via orchestrator
+      if (orchestrator) {
+        // Execute workflow asynchronously (don't block the response)
+        const workflowType = mapRunTypeToWorkflowType(runType);
+        const workflowInput = {
+          workflowType,
+          payload: {
+            tenantId,
+            runId,
+            repo: validatedRequest.repo,
+            prNumber: request.prNumber,
+            issueNumber: request.issueNumber,
+            riskMode: request.riskMode,
+            metadata: request.metadata,
+          },
+        };
+
+        // Start workflow execution in background
+        orchestrator.startWorkflow(workflowType, workflowInput.payload)
+          .then(async (workflowResult) => {
+            // Update run status based on workflow result
+            const finalStatus: EngineRunStatus =
+              workflowResult.status === 'completed' ? 'completed' :
+              workflowResult.status === 'failed' ? 'failed' :
+              workflowResult.status === 'escalated' ? 'completed' : 'running';
+
+            try {
+              await tenantStore.updateRun(tenantId, runId, {
+                status: finalStatus,
+                result: workflowResult.result,
+                completedAt: new Date(),
+                durationMs: Date.now() - new Date(result.startedAt).getTime(),
+              });
+
+              await logToHooks(validatedRequest, finalStatus);
+            } catch (err) {
+              console.error(`[Engine] Failed to update run ${runId}:`, err);
+            }
+
+            // Phase 27: Complete forensic collection and save bundle
+            if (collector) {
+              try {
+                collector.complete(workflowResult.result as Record<string, unknown>);
+                const bundle = collector.build();
+                const bundlePath = saveForensicBundle(bundle);
+                if (cfg.debug) {
+                  console.log(`[Engine] Forensic bundle saved: ${bundlePath}`);
+                }
+              } catch (err) {
+                console.error(`[Engine] Failed to save forensic bundle:`, err);
+              }
+            }
+
+            if (cfg.debug) {
+              console.log(`[Engine] Workflow ${workflowResult.workflowId} completed with status: ${workflowResult.status}`);
+            }
+          })
+          .catch(async (error) => {
+            console.error(`[Engine] Workflow failed for run ${runId}:`, error);
+            try {
+              await tenantStore.updateRun(tenantId, runId, {
+                status: 'failed',
+                error: error instanceof Error ? error.message : String(error),
+                completedAt: new Date(),
+              });
+              await logToHooks(validatedRequest, 'failed');
+            } catch (err) {
+              console.error(`[Engine] Failed to update failed run ${runId}:`, err);
+            }
+
+            // Phase 27: Record failure in forensic bundle
+            if (collector) {
+              try {
+                collector.fail({
+                  name: error instanceof Error ? error.name : 'Error',
+                  message: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                });
+                const bundle = collector.build();
+                const bundlePath = saveForensicBundle(bundle);
+                if (cfg.debug) {
+                  console.log(`[Engine] Forensic bundle (failed) saved: ${bundlePath}`);
+                }
+              } catch (err) {
+                console.error(`[Engine] Failed to save forensic bundle:`, err);
+              }
+            }
+          });
+      }
 
       return result;
     },
@@ -375,13 +536,31 @@ function getExpectedSteps(runType: string): number {
     case 'PLAN':
       return 2; // triage + plan
     case 'RESOLVE':
-      return 4; // triage + plan + code + validate
+      return 3; // triage + resolver + reviewer
     case 'REVIEW':
-      return 2; // triage + review
+      return 2; // triage + reviewer
     case 'AUTOPILOT':
-      return 5; // triage + plan + code + validate + review
+      return 3; // triage + coder + reviewer
     default:
       return 1;
+  }
+}
+
+/**
+ * Map engine run type to orchestrator workflow type
+ */
+function mapRunTypeToWorkflowType(runType: EngineRunType): WorkflowType {
+  switch (runType) {
+    case 'RESOLVE':
+      return 'pr-resolve';
+    case 'REVIEW':
+      return 'pr-review';
+    case 'AUTOPILOT':
+      return 'issue-to-code';
+    case 'TRIAGE':
+    case 'PLAN':
+    default:
+      return 'pr-review'; // Default to review for triage/plan
   }
 }
 

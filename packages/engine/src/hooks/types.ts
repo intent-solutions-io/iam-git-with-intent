@@ -3,15 +3,13 @@
  *
  * These types define the contract for the hook system that runs after each
  * agent step, message, or run. Hooks can be used for:
- * - Auditing to AgentFS (internal)
- * - Creating/updating Beads issues (internal)
  * - Custom logging or telemetry
  * - Future extensibility
  *
  * @module @gwi/engine/hooks
  */
 
-import type { RunType, RunStatus, StepStatus } from '@gwi/core';
+import type { RunType, StepStatus } from '@gwi/core';
 
 // =============================================================================
 // Agent Role Types
@@ -191,18 +189,6 @@ export interface AgentHook {
  */
 export interface HookConfig {
   /**
-   * Enable AgentFS audit hook (internal dev only)
-   * @default false
-   */
-  enableAgentFs: boolean;
-
-  /**
-   * Enable Beads task tracking hook (internal dev only)
-   * @default false
-   */
-  enableBeads: boolean;
-
-  /**
    * Enable custom hooks from plugins
    * @default true
    */
@@ -231,8 +217,6 @@ export interface HookConfig {
  * Default hook configuration
  */
 export const DEFAULT_HOOK_CONFIG: HookConfig = {
-  enableAgentFs: false,
-  enableBeads: false,
   enableCustomHooks: true,
   hookTimeoutMs: 5000,
   parallelExecution: true,
@@ -277,9 +261,38 @@ export interface BeadsHookConfig {
  * Default Beads hook configuration
  */
 export const DEFAULT_BEADS_HOOK_CONFIG: BeadsHookConfig = {
-  createIssueForRunTypes: ['AUTOPILOT', 'RESOLVE'],
+  createIssueForRunTypes: ['autopilot', 'resolve'],
   minComplexityForIssue: 3,
   createOnPartialSuccess: true,
   createOnDeferral: true,
   updateExistingIssues: true,
 };
+
+// =============================================================================
+// Hook Runner Interface
+// =============================================================================
+
+/**
+ * Interface for the hook runner that manages multiple hooks
+ */
+export interface AgentHookRunner {
+  /**
+   * Register a hook with the runner
+   */
+  registerHook(hook: AgentHook): void;
+
+  /**
+   * Called after an agent step completes
+   */
+  afterStep(ctx: AgentRunContext): Promise<void>;
+
+  /**
+   * Called when a run starts
+   */
+  runStart?(ctx: AgentRunContext): Promise<void>;
+
+  /**
+   * Called when a run ends
+   */
+  runEnd?(ctx: AgentRunContext, success: boolean): Promise<void>;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@gwi/registry",
+  "version": "0.1.0",
+  "description": "GWI Connector Registry Server",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "gwi-registry": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "npx tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.9"
+  }
+}

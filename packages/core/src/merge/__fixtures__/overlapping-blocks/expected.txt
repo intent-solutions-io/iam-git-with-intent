@@ -1,0 +1,13 @@
+function process() {
+  const data = fetch();
+<<<<<<< ours
+  sanitize(data);
+  validate(data);
+  log(data);
+=======
+  transform(data);
+  validate(data);
+  audit(data);
+>>>>>>> theirs
+  return data;
+}

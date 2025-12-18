@@ -3,10 +3,14 @@
  *
  * R3: Cloud Run as gateway only (proxy to Agent Engine via REST)
  *
- * Phase 5: Added local engine integration alongside Agent Engine proxy.
+ * Phase 11: Added tenant verification for foreman endpoint.
+ * Phase 29: Added marketplace registry API for connector hosting.
+ *
  * The gateway can now:
  * 1. Route to Vertex AI Agent Engine (production)
  * 2. Call the local engine directly (development/testing)
+ * 3. Verify tenant exists before processing runs
+ * 4. Serve connector marketplace registry API
  *
  * Endpoints:
  * - GET /health - Health check
@@ -14,20 +18,58 @@
  * - POST /a2a/:agent - Route to specific agent (Vertex AI)
  * - POST /a2a/foreman - Main foreman endpoint (uses local engine in dev)
  * - POST /api/workflows - Start workflow via orchestrator
+ * - GET /v1/search - Search connectors (marketplace)
+ * - GET /v1/connectors/:id - Get connector info (marketplace)
+ * - GET /v1/connectors/:id/:version - Get version metadata (marketplace)
+ * - GET /v1/connectors/:id/:version/tarball - Download tarball (marketplace)
+ * - GET /v1/connectors/:id/:version/signature - Download signature (marketplace)
+ * - POST /v1/connectors - Publish connector metadata (marketplace, authenticated)
+ * - POST /v1/publish - Full publish with tarball upload (marketplace, authenticated)
+ * - POST /v1/connectors/:id/:version/deprecate - Deprecate version (marketplace)
+ * - POST /v1/connectors/:id/:version/download - Track download (marketplace)
  */
 
 import express from 'express';
 import helmet from 'helmet';
+import cors from 'cors';
 import { z } from 'zod';
 import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
+import { getTenantStore } from '@gwi/core';
+import { marketplaceRouter } from './marketplace-routes.js';
+import { onboardingRouter } from './onboarding-routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 // Security middleware
 app.use(helmet());
+
+// CORS configuration
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+    callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+}));
+
 app.use(express.json({ limit: '1mb' }));
+
+// Mount marketplace routes (Phase 29: Connector Marketplace)
+app.use(marketplaceRouter);
+
+// Mount onboarding routes (Phase 33: Customer Onboarding)
+app.use(onboardingRouter);
 
 // Environment
 const config = {
@@ -131,6 +173,8 @@ app.get('/.well-known/agent.json', (_req, res) => {
       a2a: '/a2a',
       health: '/health',
       workflows: '/api/workflows',
+      marketplace: '/v1',
+      onboarding: '/v1/onboarding',
     },
     agents: Object.keys(agentEngines).map(name => ({
       name,
@@ -151,6 +195,8 @@ app.get('/.well-known/agent.json', (_req, res) => {
  * This is the primary A2A entrypoint for starting runs.
  * In development (no Agent Engine IDs), uses local engine.
  * In production, routes to Vertex AI Agent Engine.
+ *
+ * Phase 11: Verifies tenant exists and is active before processing.
  */
 app.post('/a2a/foreman', async (req, res) => {
   const startTime = Date.now();
@@ -166,6 +212,38 @@ app.post('/a2a/foreman', async (req, res) => {
     }
 
     const input = parseResult.data;
+
+    // Phase 11: Verify tenant exists and is active
+    const tenantStore = getTenantStore();
+    const tenant = await tenantStore.getTenant(input.tenantId);
+
+    if (!tenant) {
+      console.log(JSON.stringify({
+        type: 'foreman_rejected',
+        reason: 'TENANT_NOT_FOUND',
+        tenantId: input.tenantId,
+        durationMs: Date.now() - startTime,
+      }));
+      return res.status(404).json({
+        error: 'Tenant not found',
+        tenantId: input.tenantId,
+      });
+    }
+
+    if (tenant.status !== 'active') {
+      console.log(JSON.stringify({
+        type: 'foreman_rejected',
+        reason: 'TENANT_SUSPENDED',
+        tenantId: input.tenantId,
+        status: tenant.status,
+        durationMs: Date.now() - startTime,
+      }));
+      return res.status(403).json({
+        error: 'Tenant is not active',
+        tenantId: input.tenantId,
+        status: tenant.status,
+      });
+    }
 
     // Decide whether to use local engine or Agent Engine
     if (shouldUseLocalEngine()) {
