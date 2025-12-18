@@ -815,7 +815,7 @@ export class AutoActionsEngine {
       execution.completedAt = Date.now();
       execution.durationMs = execution.completedAt - execution.startedAt;
       this.logAudit(action, execution, triggeredBy);
-    } catch (error) {
+    } catch {
       if (execution.retryCount < config.maxAttempts) {
         await this.retryExecution(execution, action, alert, triggerType, triggeredBy);
       }

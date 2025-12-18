@@ -171,7 +171,7 @@ export class FirestoreMarketplaceStore implements MarketplaceStore {
     // In production, would use Algolia/Typesense/ElasticSearch
     const query = searchQuery.toLowerCase();
 
-    let firestoreQuery = this.db
+    const firestoreQuery = this.db
       .collection(MARKETPLACE_COLLECTIONS.CONNECTORS)
       .orderBy('displayName')
       .startAt(query)

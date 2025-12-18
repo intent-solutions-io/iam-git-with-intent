@@ -353,7 +353,7 @@ export class CostManagementService {
 
     // Calculate costs
     const plan = this.getTenantPlan(tenantId);
-    let base = plan?.basePrice ?? 0;
+    const base = plan?.basePrice ?? 0;
     let overage = 0;
 
     for (const [resourceType, usage] of Object.entries(byResource)) {

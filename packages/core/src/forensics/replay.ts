@@ -465,7 +465,7 @@ export class ReplayEngine {
 
       // Process events
       let eventsProcessed = 0;
-      let eventsFailed = 0;
+      let _eventsFailed = 0;
 
       for (const event of bundle.events) {
         // Check max events limit
@@ -489,7 +489,7 @@ export class ReplayEngine {
             result.llmCallsMocked++;
           }
         } else {
-          eventsFailed++;
+          _eventsFailed++;
           if (processResult.error) {
             warnings.push(`Event ${event.event_id} (${event.type}): ${processResult.error}`);
           }

@@ -210,7 +210,7 @@ export function verifyApprovalSignature(
     };
 
     // Rebuild canonical payload (without signature fields)
-    const { signature, signingKeyId, ...unsignedApproval } = approval;
+    const { signature, signingKeyId: _signingKeyId, ...unsignedApproval } = approval;
     const payload = canonicalizeApprovalPayload(unsignedApproval);
 
     // Verify signature
