@@ -104,3 +104,6 @@ export * from './forensics/index.js';
 
 // Metering exports (Phase 28: Usage Dashboard + Billing)
 export * from './metering/index.js';
+
+// Marketplace exports (Phase 29: Connector Marketplace)
+export * from './marketplace/index.js';
