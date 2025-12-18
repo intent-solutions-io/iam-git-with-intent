@@ -33,6 +33,7 @@ import { Candidates } from './pages/Candidates';
 import { CandidateDetail } from './pages/CandidateDetail';
 // Phase 28: Usage & Billing
 import { Usage } from './pages/Usage';
+import { Upgrade } from './pages/Upgrade';
 
 export function App() {
   return (
@@ -180,6 +181,14 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <Usage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/upgrade"
+              element={
+                <ProtectedRoute>
+                  <Upgrade />
                 </ProtectedRoute>
               }
             />
