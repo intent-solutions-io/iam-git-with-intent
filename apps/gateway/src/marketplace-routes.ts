@@ -26,7 +26,7 @@ import type {
   MarketplaceSearchOptions,
   ConnectorCapability,
 } from '@gwi/core';
-import { getMarketplaceService, PublishRequestSchema, getAllCircuitBreakerStats } from '@gwi/core';
+import { getMarketplaceService, getAllCircuitBreakerStats } from '@gwi/core';
 import { z } from 'zod';
 
 // ESM __dirname equivalent
@@ -49,8 +49,8 @@ const MAX_TARBALL_SIZE = 50 * 1024 * 1024;
 /** Maximum request body size (55MB to account for base64 overhead) */
 const MAX_BODY_SIZE = 55 * 1024 * 1024;
 
-/** Maximum manifest size (1MB) */
-const MAX_MANIFEST_SIZE = 1024 * 1024;
+/** Maximum manifest size (1MB) - reserved for future validation */
+const _MAX_MANIFEST_SIZE = 1024 * 1024;
 
 /** Rate limit window (15 minutes) */
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
