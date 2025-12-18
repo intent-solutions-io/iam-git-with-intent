@@ -158,3 +158,60 @@ export * from './supply-chain/index.js';
 
 // Production Excellence exports (Phase 50: Production Readiness)
 export * from './production-excellence/index.js';
+
+// Time Series exports (Phase 51: Canonical Time-Series Schema)
+export * from './time-series/index.js';
+
+// Prediction Connectors exports (Phase 52: Connector Contract + Normalization)
+export * from './prediction-connectors/index.js';
+
+// Airbyte Integration exports (Phase 53: Airbyte Partner-First Connector)
+export * from './airbyte-integration/index.js';
+
+// Series Storage exports (Phase 54: Dual-Layer Storage)
+export * from './series-storage/index.js';
+
+// Forecasting exports (Phase 55-56: Forecasting Services)
+export * from './forecasting/index.js';
+
+// Backtesting exports (Phase 57: Forecast Quality + Walk-Forward Validation)
+export * from './backtesting/index.js';
+
+// Command Center exports (Phase 58: Dashboard v1)
+export * from './command-center/index.js';
+
+// Alerts exports (Phase 59: Alert Rules Engine)
+export * from './alerts/index.js';
+
+// Auto-Actions exports (Phase 60: Automated Responses)
+export * from './auto-actions/index.js';
+
+// Public API exports (Phase 61: REST API Infrastructure)
+export * from './public-api/index.js';
+
+// API Keys exports (Phase 62: API Key Management)
+export * from './api-keys/index.js';
+
+// Audit Logging exports (Phase 63: Comprehensive Audit Trails)
+export * from './audit-logging/index.js';
+
+// Data Governance exports (Phase 64: Data Classification & Lineage)
+export * from './data-governance/index.js';
+
+// Admin API exports (Phase 65: Administrative Operations)
+export * from './admin-api/index.js';
+
+// Cost Management exports (Phase 66: Usage Metering & Billing)
+export * from './cost-management/index.js';
+
+// Analytics & Reporting exports (Phase 67: Business Intelligence)
+export * from './analytics-reporting/index.js';
+
+// Export Integrations exports (Phase 68: Data Export & Webhooks)
+export * from './export-integrations/index.js';
+
+// System Health exports (Phase 69: Health Monitoring & Diagnostics)
+export * from './system-health/index.js';
+
+// GA Readiness exports (Phase 70: Production Launch Gate)
+export * from './ga-readiness/index.js';
