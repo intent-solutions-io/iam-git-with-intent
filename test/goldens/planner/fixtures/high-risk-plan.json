@@ -1,0 +1,130 @@
+{
+  "plan_id": "550e8400-e29b-41d4-a716-446655440004",
+  "created_at": "2025-12-17T12:00:00.000Z",
+  "provider": "gemini",
+  "model": "gemini-2.0-flash",
+  "version": 1,
+  "intent_summary": "Critical infrastructure change requiring approval",
+  "files": [
+    {
+      "path": "infra/terraform/main.tf",
+      "action": "modify",
+      "reason": "Update production infrastructure",
+      "language": "hcl",
+      "estimated_lines": 200
+    },
+    {
+      "path": "infra/terraform/variables.tf",
+      "action": "modify",
+      "reason": "Update production variables",
+      "language": "hcl",
+      "estimated_lines": 50
+    },
+    {
+      "path": "infra/terraform/prod.tfvars",
+      "action": "modify",
+      "reason": "Update production configuration",
+      "language": "hcl",
+      "estimated_lines": 30
+    }
+  ],
+  "steps": [
+    {
+      "order": 1,
+      "name": "Update main terraform config",
+      "description": "Modify production infrastructure definition",
+      "files": ["infra/terraform/main.tf"],
+      "prompt": "Update the main terraform configuration with new resource definitions",
+      "parallelizable": false,
+      "depends_on": [],
+      "risk": "critical"
+    },
+    {
+      "order": 2,
+      "name": "Update variables",
+      "description": "Add new production variables",
+      "files": ["infra/terraform/variables.tf"],
+      "prompt": "Add new variable definitions for the infrastructure change",
+      "parallelizable": false,
+      "depends_on": [1],
+      "risk": "high"
+    },
+    {
+      "order": 3,
+      "name": "Update production values",
+      "description": "Set production-specific values",
+      "files": ["infra/terraform/prod.tfvars"],
+      "prompt": "Set the production values for new variables",
+      "parallelizable": false,
+      "depends_on": [2],
+      "risk": "critical"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Terraform validate",
+      "type": "unit",
+      "command": "cd infra/terraform && terraform validate",
+      "validates": ["infra/terraform/main.tf", "infra/terraform/variables.tf"],
+      "must_pass_before": false,
+      "must_pass_after": true
+    },
+    {
+      "name": "Terraform plan",
+      "type": "integration",
+      "command": "cd infra/terraform && terraform plan -var-file=prod.tfvars",
+      "validates": ["infra/terraform/prod.tfvars"],
+      "must_pass_before": false,
+      "must_pass_after": true
+    }
+  ],
+  "risk": {
+    "overall": "critical",
+    "confidence": 90,
+    "risks": [
+      {
+        "id": "risk-1",
+        "severity": "critical",
+        "description": "Production infrastructure modification",
+        "mitigation": "Require ADMIN approval before execution",
+        "affected_files": ["infra/terraform/main.tf", "infra/terraform/prod.tfvars"],
+        "requires_review": true
+      },
+      {
+        "id": "risk-2",
+        "severity": "high",
+        "description": "Potential service disruption during apply",
+        "mitigation": "Schedule maintenance window for terraform apply",
+        "affected_files": ["infra/terraform/main.tf"],
+        "requires_review": true
+      }
+    ],
+    "requires_approval": true,
+    "review_reasons": [
+      "Production infrastructure change",
+      "Potential service disruption"
+    ]
+  },
+  "policy": {
+    "allowed": false,
+    "policy_name": "productionDeployPolicy",
+    "required_scopes": ["deploy"],
+    "notes": "Requires ADMIN approval for production changes"
+  },
+  "rollback": {
+    "automatic": false,
+    "steps": [
+      "Run terraform plan to review current state",
+      "Run terraform apply with previous state",
+      "Verify infrastructure restored"
+    ],
+    "estimated_time_sec": 600
+  },
+  "acceptance_criteria": [
+    "Terraform validate passes",
+    "Terraform plan shows expected changes",
+    "ADMIN approval obtained",
+    "Maintenance window scheduled"
+  ],
+  "estimated_duration_sec": 1800
+}
