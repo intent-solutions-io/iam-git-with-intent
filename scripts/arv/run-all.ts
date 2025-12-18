@@ -120,6 +120,26 @@ async function main(): Promise<void> {
       command: 'npx',
       args: ['tsx', join(__dirname, 'metering-gate.ts')],
     },
+    {
+      name: 'Observability Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'observability-gate.ts')],
+    },
+    {
+      name: 'Security Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'security-gate.ts')],
+    },
+    {
+      name: 'Approval Policy Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'approval-policy-gate.ts')],
+    },
+    {
+      name: 'Planner Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'planner-gate.ts')],
+    },
   ];
 
   const results: CheckResult[] = [];
