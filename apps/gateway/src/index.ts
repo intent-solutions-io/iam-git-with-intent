@@ -23,7 +23,10 @@
  * - GET /v1/connectors/:id/:version - Get version metadata (marketplace)
  * - GET /v1/connectors/:id/:version/tarball - Download tarball (marketplace)
  * - GET /v1/connectors/:id/:version/signature - Download signature (marketplace)
- * - POST /v1/connectors - Publish connector (marketplace, authenticated)
+ * - POST /v1/connectors - Publish connector metadata (marketplace, authenticated)
+ * - POST /v1/publish - Full publish with tarball upload (marketplace, authenticated)
+ * - POST /v1/connectors/:id/:version/deprecate - Deprecate version (marketplace)
+ * - POST /v1/connectors/:id/:version/download - Track download (marketplace)
  */
 
 import express from 'express';

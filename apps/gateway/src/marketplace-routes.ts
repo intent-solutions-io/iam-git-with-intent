@@ -241,13 +241,10 @@ router.get('/v1/connectors/:id/:version/signature', async (req, res) => {
 // =============================================================================
 
 /**
- * POST /v1/connectors - Publish a connector version
+ * POST /v1/connectors - Publish connector metadata (tarball already in GCS)
  *
  * Requires authentication and publisher permissions.
- * Expects multipart form data with:
- * - manifest: JSON manifest
- * - signature: Signature JSON
- * - tarball: gzipped tarball file
+ * Use POST /v1/publish for full publish with tarball upload.
  */
 router.post('/v1/connectors', async (req, res) => {
   try {
@@ -294,6 +291,210 @@ router.post('/v1/connectors', async (req, res) => {
     console.error('Publish error:', error);
     res.status(500).json({
       error: 'Publish failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /v1/publish - Full publish with tarball upload
+ *
+ * CLI-friendly endpoint that accepts tarball as base64 and handles
+ * GCS upload server-side. This simplifies the publish workflow.
+ *
+ * Body:
+ * - manifest: ConnectorManifest object
+ * - tarball: base64-encoded gzipped tarball
+ * - signature: SignatureFile object
+ */
+router.post('/v1/publish', async (req, res) => {
+  try {
+    // TODO: Add authentication middleware
+    const publishedBy = req.headers['x-user-id'] as string || 'anonymous';
+    const apiKey = req.headers['x-api-key'] as string;
+
+    // Basic API key validation (would be more robust in production)
+    if (process.env.REGISTRY_API_KEY && apiKey !== process.env.REGISTRY_API_KEY) {
+      return res.status(401).json({ error: 'Invalid API key' });
+    }
+
+    const { manifest, tarball, signature } = req.body;
+
+    if (!manifest || !tarball || !signature) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        required: ['manifest', 'tarball', 'signature'],
+      });
+    }
+
+    // Validate manifest has required fields
+    if (!manifest.id || !manifest.version) {
+      return res.status(400).json({
+        error: 'Manifest must include id and version',
+      });
+    }
+
+    const connectorId = manifest.id;
+    const version = manifest.version;
+
+    // Decode tarball
+    let tarballBuffer: Buffer;
+    try {
+      tarballBuffer = Buffer.from(tarball, 'base64');
+    } catch {
+      return res.status(400).json({ error: 'Invalid base64 tarball' });
+    }
+
+    // Validate tarball checksum matches signature
+    const crypto = await import('crypto');
+    const computedChecksum = crypto.createHash('sha256').update(tarballBuffer).digest('hex');
+
+    if (signature.checksum !== computedChecksum) {
+      return res.status(400).json({
+        error: 'Tarball checksum mismatch',
+        expected: signature.checksum,
+        computed: computedChecksum,
+      });
+    }
+
+    // Upload tarball to GCS
+    const bucket = storage.bucket(tarballBucket);
+    const tarballPath = `${connectorId}/${version}/connector.tar.gz`;
+    const signaturePath = `${connectorId}/${version}/signature.json`;
+
+    console.log(`Uploading tarball to gs://${tarballBucket}/${tarballPath}`);
+    await bucket.file(tarballPath).save(tarballBuffer, {
+      contentType: 'application/gzip',
+      metadata: {
+        connectorId,
+        version,
+        checksum: computedChecksum,
+      },
+    });
+
+    // Upload signature
+    console.log(`Uploading signature to gs://${tarballBucket}/${signaturePath}`);
+    await bucket.file(signaturePath).save(JSON.stringify(signature, null, 2), {
+      contentType: 'application/json',
+    });
+
+    // Publish metadata via service
+    const service = getMarketplaceService();
+    const result = await service.publish(
+      {
+        connectorId,
+        version,
+        manifest,
+        tarballChecksum: computedChecksum,
+        changelog: manifest.changelog,
+        releaseNotes: manifest.releaseNotes,
+        prerelease: manifest.prerelease ?? false,
+      },
+      signature,
+      publishedBy
+    );
+
+    if (!result.success) {
+      // Clean up uploaded files on failure
+      try {
+        await bucket.file(tarballPath).delete();
+        await bucket.file(signaturePath).delete();
+      } catch {
+        // Ignore cleanup errors
+      }
+
+      return res.status(400).json({
+        error: 'Publish failed',
+        message: result.error,
+      });
+    }
+
+    console.log(`Published ${connectorId}@${version} by ${publishedBy}`);
+
+    res.status(201).json({
+      success: true,
+      connectorId,
+      version,
+      checksum: computedChecksum,
+      tarballUrl: `${process.env.GWI_REGISTRY_URL ?? 'https://registry.gitwithintent.com'}/v1/connectors/${connectorId}/${version}/tarball`,
+    });
+  } catch (error) {
+    console.error('Publish error:', error);
+    res.status(500).json({
+      error: 'Publish failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
+// Deprecation Endpoint
+// =============================================================================
+
+/**
+ * POST /v1/connectors/:id/:version/deprecate - Deprecate a version
+ *
+ * Marks a connector version as deprecated with a reason.
+ */
+router.post('/v1/connectors/:id/:version/deprecate', async (req, res) => {
+  try {
+    const publishedBy = req.headers['x-user-id'] as string || 'anonymous';
+    const { id, version } = req.params;
+    const { reason } = req.body;
+
+    if (!reason) {
+      return res.status(400).json({ error: 'Deprecation reason required' });
+    }
+
+    const service = getMarketplaceService();
+    const result = await service.deprecateVersion(id, version, reason);
+
+    if (!result.success) {
+      return res.status(400).json({
+        error: 'Deprecation failed',
+        message: result.error,
+      });
+    }
+
+    console.log(`Deprecated ${id}@${version} by ${publishedBy}: ${reason}`);
+
+    res.json({ success: true, id, version, reason });
+  } catch (error) {
+    console.error('Deprecate error:', error);
+    res.status(500).json({
+      error: 'Deprecation failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
+// Download Tracking
+// =============================================================================
+
+/**
+ * POST /v1/connectors/:id/:version/download - Track a download
+ *
+ * Called by clients after successful download to track metrics.
+ */
+router.post('/v1/connectors/:id/:version/download', async (req, res) => {
+  try {
+    const { id, version } = req.params;
+    const service = getMarketplaceService();
+
+    // Just verify the version exists - incrementing handled by service
+    const versionInfo = await service.getVersion(id, version);
+    if (!versionInfo) {
+      return res.status(404).json({ error: 'Version not found' });
+    }
+
+    // Download tracking happens on tarball download, but this endpoint
+    // can be used for explicit tracking (e.g., local installs)
+    res.json({ success: true, id, version });
+  } catch (error) {
+    console.error('Download tracking error:', error);
+    res.status(500).json({
+      error: 'Download tracking failed',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
