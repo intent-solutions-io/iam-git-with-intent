@@ -426,10 +426,23 @@ let defaultMeteringService: MeteringService | null = null;
 
 /**
  * Get the default metering service instance
+ *
+ * Uses Firestore storage in production (GWI_STORE_BACKEND=firestore),
+ * in-memory storage for development/testing.
  */
 export function getMeteringService(): MeteringService {
   if (!defaultMeteringService) {
-    defaultMeteringService = new MeteringService();
+    const backend = process.env.GWI_STORE_BACKEND;
+    let storage: MeteringEventStorage | undefined;
+
+    if (backend === 'firestore') {
+      // Lazy import to avoid circular dependencies
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { createFirestoreMeteringEventStorage } = require('./firestore-storage.js');
+      storage = createFirestoreMeteringEventStorage();
+    }
+
+    defaultMeteringService = new MeteringService({ storage });
   }
   return defaultMeteringService;
 }

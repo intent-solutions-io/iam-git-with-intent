@@ -36,3 +36,10 @@ export {
   type MeteringConfig,
   type MeteringEventStorage,
 } from './service.js';
+
+// Firestore Storage (production)
+export {
+  FirestoreMeteringEventStorage,
+  createFirestoreMeteringEventStorage,
+  METERING_COLLECTIONS,
+} from './firestore-storage.js';
