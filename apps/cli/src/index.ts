@@ -58,6 +58,18 @@ import {
   runListCommand,
   runApproveCommand,
 } from './commands/run.js';
+import {
+  approvalApproveCommand,
+  approvalDenyCommand,
+  approvalRevokeCommand,
+  approvalListCommand,
+  approvalCheckCommand,
+} from './commands/approval.js';
+import {
+  plannerGenerateCommand,
+  plannerValidateCommand,
+  plannerStatusCommand,
+} from './commands/planner.js';
 import { doctorCommand } from './commands/doctor.js';
 import { diagnoseCommand } from './commands/diagnose.js';
 import {
@@ -422,6 +434,148 @@ runCmd
   });
 
 // =============================================================================
+// Approval Commands (Phase 25)
+// =============================================================================
+
+const approvalCmd = program
+  .command('approval')
+  .description('Manage approvals with policy-as-code enforcement (Phase 25)');
+
+approvalCmd
+  .command('approve <target>')
+  .description('Approve a candidate/run/PR for execution')
+  .option('--scopes <scopes...>', 'Approval scopes (commit, push, open_pr, merge, deploy)')
+  .option('-m, --comment <text>', 'Approval comment')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (target, options) => {
+    try {
+      await approvalApproveCommand(target, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+approvalCmd
+  .command('deny <target>')
+  .description('Deny a candidate/run/PR')
+  .requiredOption('--reason <text>', 'Denial reason (required)')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (target, options) => {
+    try {
+      await approvalDenyCommand(target, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+approvalCmd
+  .command('revoke <target>')
+  .description('Revoke existing approval for a target')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (target, options) => {
+    try {
+      await approvalRevokeCommand(target, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+approvalCmd
+  .command('list <target>')
+  .description('List approvals for a target')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('-l, --limit <n>', 'Limit number of results', parseInt)
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (target, options) => {
+    try {
+      await approvalListCommand(target, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+approvalCmd
+  .command('check <target>')
+  .description('Check policy for a target')
+  .option('--action <action>', 'Action to check (e.g., candidate.execute)')
+  .option('--scopes <scopes...>', 'Required scopes to check')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (target, options) => {
+    try {
+      await approvalCheckCommand(target, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Planner Commands (Phase 26)
+// =============================================================================
+
+const plannerCmd = program
+  .command('planner')
+  .description('LLM Planner integration (Phase 26 - requires GWI_PLANNER_ENABLED=1)');
+
+plannerCmd
+  .command('generate <intent>')
+  .description('Generate a PatchPlan from an intent using LLM')
+  .option('-p, --provider <provider>', 'Provider (gemini/claude)')
+  .option('-m, --model <model>', 'Specific model to use')
+  .option('--json', 'Output as JSON')
+  .option('-o, --output <file>', 'Save plan to file')
+  .option('--skip-guard', 'Skip PlanGuard validation')
+  .option('--max-risk <level>', 'Maximum risk level (low/medium/high/critical)')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (intent, options) => {
+    try {
+      await plannerGenerateCommand(intent, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+plannerCmd
+  .command('validate <plan-file>')
+  .description('Validate a PatchPlan JSON file')
+  .option('--max-risk <level>', 'Maximum risk level (low/medium/high/critical)')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (planFile, options) => {
+    try {
+      await plannerValidateCommand(planFile, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+plannerCmd
+  .command('status')
+  .description('Show LLM Planner status and configuration')
+  .action(async () => {
+    try {
+      await plannerStatusCommand();
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
 // Operator Commands (Phase 8)
 // =============================================================================
 
@@ -731,6 +885,20 @@ Run Management:
   gwi run list                  List recent runs
   gwi run status <run-id>       Show run status and details
   gwi run approve <run-id>      Approve run for commit/push
+
+Approvals (Phase 25 - Policy-as-Code):
+  gwi approval approve <target> Approve with Ed25519 signed approval
+  gwi approval deny <target>    Deny with reason (--reason required)
+  gwi approval revoke <target>  Revoke existing approval
+  gwi approval list <target>    List approvals for target
+  gwi approval check <target>   Check policy evaluation
+
+  Target formats: run-<id>, candidate-<id>, pr-<number>, or <uuid>
+
+LLM Planner (Phase 26 - requires GWI_PLANNER_ENABLED=1):
+  gwi planner generate <intent> Generate PatchPlan from intent
+  gwi planner validate <file>   Validate a PatchPlan JSON
+  gwi planner status            Show planner configuration
 
 Operator Tools:
   gwi doctor                    Check environment health

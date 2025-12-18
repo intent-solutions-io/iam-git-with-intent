@@ -83,3 +83,15 @@ export * from './agents/index.js';
 
 // Merge exports (Phase 20: 3-Way Merge Resolver)
 export * from './merge/index.js';
+
+// Telemetry exports (Phase 23: Production Observability)
+export * from './telemetry/index.js';
+
+// Approvals exports (Phase 25: Approval Commands + Policy-as-Code)
+export * from './approvals/index.js';
+
+// Policy exports (Phase 25: Policy-as-Code Enforcement)
+export * from './policy/index.js';
+
+// Planner exports (Phase 26: LLM Planner Integration)
+export * from './planner/index.js';
