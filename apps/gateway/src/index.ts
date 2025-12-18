@@ -37,6 +37,7 @@ import { createEngine } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 import { getTenantStore } from '@gwi/core';
 import { marketplaceRouter } from './marketplace-routes.js';
+import { onboardingRouter } from './onboarding-routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -66,6 +67,9 @@ app.use(express.json({ limit: '1mb' }));
 
 // Mount marketplace routes (Phase 29: Connector Marketplace)
 app.use(marketplaceRouter);
+
+// Mount onboarding routes (Phase 33: Customer Onboarding)
+app.use(onboardingRouter);
 
 // Environment
 const config = {
@@ -170,6 +174,7 @@ app.get('/.well-known/agent.json', (_req, res) => {
       health: '/health',
       workflows: '/api/workflows',
       marketplace: '/v1',
+      onboarding: '/v1/onboarding',
     },
     agents: Object.keys(agentEngines).map(name => ({
       name,

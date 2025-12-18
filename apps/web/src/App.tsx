@@ -37,6 +37,8 @@ import { Upgrade } from './pages/Upgrade';
 // Phase 29: Connector Marketplace
 import { Marketplace } from './pages/Marketplace';
 import { MarketplaceDetail } from './pages/MarketplaceDetail';
+// Phase 33: Operations Dashboard
+import { AdminOps } from './pages/AdminOps';
 
 export function App() {
   return (
@@ -198,6 +200,15 @@ export function App() {
             {/* Phase 29: Connector Marketplace */}
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:connectorId" element={<MarketplaceDetail />} />
+            {/* Phase 33: Operations Dashboard */}
+            <Route
+              path="/admin/ops"
+              element={
+                <ProtectedRoute>
+                  <AdminOps />
+                </ProtectedRoute>
+              }
+            />
           </Route>
         </Routes>
       </BrowserRouter>
