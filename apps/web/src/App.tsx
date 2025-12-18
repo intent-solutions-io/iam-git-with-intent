@@ -34,6 +34,9 @@ import { CandidateDetail } from './pages/CandidateDetail';
 // Phase 28: Usage & Billing
 import { Usage } from './pages/Usage';
 import { Upgrade } from './pages/Upgrade';
+// Phase 29: Connector Marketplace
+import { Marketplace } from './pages/Marketplace';
+import { MarketplaceDetail } from './pages/MarketplaceDetail';
 
 export function App() {
   return (
@@ -192,6 +195,9 @@ export function App() {
                 </ProtectedRoute>
               }
             />
+            {/* Phase 29: Connector Marketplace */}
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/marketplace/:connectorId" element={<MarketplaceDetail />} />
           </Route>
         </Routes>
       </BrowserRouter>
