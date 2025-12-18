@@ -3,6 +3,7 @@
  *
  * Phase 7: Operator-grade hardening for deterministic, resumable runs.
  * Phase 16: Firestore-backed distributed implementations.
+ * Phase 30: Retry/backoff and circuit breaker patterns.
  *
  * This module provides:
  * - Run locking to prevent concurrent mutation
@@ -10,6 +11,8 @@
  * - Error taxonomy for consistent failure handling
  * - Observability primitives (structured logging, tracing, metrics)
  * - Checkpoints for resume/replay
+ * - Retry with exponential backoff and jitter
+ * - Circuit breaker pattern for cascading failure prevention
  *
  * @module @gwi/core/reliability
  */
@@ -100,6 +103,29 @@ export {
   getFirestoreCheckpointManager,
   resetFirestoreCheckpointManager,
 } from './firestore-checkpoint.js';
+
+// Retry and Circuit Breaker (Phase 30)
+export {
+  // Retry
+  type RetryConfig,
+  type RetryResult,
+  DEFAULT_RETRY_CONFIG,
+  RETRY_PRESETS,
+  retry,
+  retryWithResult,
+  calculateBackoff,
+
+  // Circuit Breaker
+  type CircuitState,
+  type CircuitBreakerConfig,
+  DEFAULT_CIRCUIT_BREAKER_CONFIG,
+  CircuitBreaker,
+  getCircuitBreaker,
+  resetAllCircuitBreakers,
+
+  // Combined
+  ResilientExecutor,
+} from './retry.js';
 
 // =============================================================================
 // Environment-Aware Store Getters (Phase 16)
