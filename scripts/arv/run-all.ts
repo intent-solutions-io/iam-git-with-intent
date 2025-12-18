@@ -155,6 +155,11 @@ async function main(): Promise<void> {
       command: 'npx',
       args: ['tsx', join(__dirname, 'identity-gate.ts')],
     },
+    {
+      name: 'GA Readiness Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'ga-readiness-gate.ts')],
+    },
   ];
 
   const results: CheckResult[] = [];
