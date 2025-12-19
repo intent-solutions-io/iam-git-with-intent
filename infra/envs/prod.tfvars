@@ -2,7 +2,7 @@
 # tofu plan -var-file="envs/prod.tfvars"
 
 # Project Configuration
-project_id  = "git-with-intent-prod"
+project_id  = "git-with-intent"
 region      = "us-central1"
 environment = "prod"
 
@@ -11,11 +11,11 @@ app_name    = "git-with-intent"
 app_version = "0.1.0"
 
 # Gateway Images (set by CI)
-a2a_gateway_image    = "us-central1-docker.pkg.dev/git-with-intent-prod/gwi/gateway:latest"
-github_webhook_image = "us-central1-docker.pkg.dev/git-with-intent-prod/gwi/github-webhook:latest"
+a2a_gateway_image    = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/gateway:latest"
+github_webhook_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/github-webhook:latest"
 
 # Phase 11: SaaS API Image
-gwi_api_image = "us-central1-docker.pkg.dev/git-with-intent-prod/gwi/api:latest"
+gwi_api_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/api:latest"
 
 # Gateway Scaling (higher for production)
 gateway_max_instances = 20
