@@ -17,6 +17,9 @@ github_webhook_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/gi
 # Phase 11: SaaS API Image
 gwi_api_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/api:latest"
 
+# Worker Service Image (for scheduler and background jobs)
+gwi_worker_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/worker:latest"
+
 # Gateway Scaling (higher for production)
 gateway_max_instances = 20
 gwi_api_max_instances = 10
