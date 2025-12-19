@@ -42,6 +42,8 @@ Thumbs.db
 # GWI runtime state (local only)
 .gwi/
 .engine/
+.beads/
+.agentfs/
 
 # Test artifacts
 __snapshots__/
