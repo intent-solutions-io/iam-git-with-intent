@@ -2,7 +2,7 @@
  * Run Index
  *
  * Abstraction for indexing and retrieving run metadata.
- * Provides pluggable backends for local filesystem and AgentFS.
+ * Provides local filesystem storage for run metadata.
  */
 
 import { promises as fs } from 'fs';
@@ -216,13 +216,6 @@ export class LocalFsRunIndexStore implements RunIndexStore {
 }
 
 // =============================================================================
-// NOTE: AgentFS is INTERNAL DEV TOOLING ONLY
-// =============================================================================
-// AgentFS integration has been moved to internal/agentfs-tools/.
-// Production code MUST NOT depend on AgentFS. See CLAUDE.md "Golden Rule":
-// "Any user-visible code path MUST work without AgentFS or Beads."
-
-// =============================================================================
 // Factory Function
 // =============================================================================
 
@@ -231,8 +224,7 @@ let defaultStore: RunIndexStore | null = null;
 /**
  * Get the configured run index store
  *
- * Uses local filesystem storage only.
- * AgentFS is internal dev tooling and is NOT available as a runtime backend.
+ * Uses local filesystem storage.
  */
 export function getRunIndexStore(basePath?: string): RunIndexStore {
   if (defaultStore && !basePath) {

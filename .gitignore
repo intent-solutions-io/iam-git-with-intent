@@ -43,18 +43,6 @@ Thumbs.db
 .gwi/
 .engine/
 
-# AgentFS (local state and mount points)
-.agentfs/
-/agents/
-
-# Beads local-only files (issues.jsonl IS committed)
-.beads/*.db
-.beads/*.db-*
-.beads/bd.sock
-.beads/bd.pipe
-.beads/.exclusive-lock
-.git/beads-worktrees/
-
 # Test artifacts
 __snapshots__/
 *.snap

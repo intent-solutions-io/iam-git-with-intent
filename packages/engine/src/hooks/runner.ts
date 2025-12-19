@@ -61,8 +61,7 @@ export interface HookRunResult {
  * Usage:
  * ```typescript
  * const runner = new AgentHookRunner();
- * runner.register(new stateHook({ ... }));
- * runner.register(new BeadsHook({ ... }));
+ * runner.register(new CustomHook({ ... }));
  *
  * // After each agent step:
  * await runner.afterStep(context);

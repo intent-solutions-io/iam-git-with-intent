@@ -8,16 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **You MUST start by invoking the foreman subagent to route the task.**
 
-The foreman will create/update Beads tasks before implementation. All work happens inside the AgentFS mount.
-
 ### Quick Boot Sequence
 
 ```bash
 npm run hooks:preflight     # Validate setup
-npm run agentfs:mount       # Mount filesystem
-cd agents/gwi               # Enter mount
-bd onboard                  # First time only
-bd ready                    # Pick work
 # Invoke foreman subagent
 ```
 
@@ -46,7 +40,7 @@ bd ready                    # Pick work
 ### Subagents
 
 Route tasks through the foreman (`.claude/agents/foreman.md`) which delegates to:
-- **planner.md** - PRDs, epics, Beads tasks
+- **planner.md** - PRDs, epics, tasks
 - **engine-core.md** - Run bundle, schemas, policy
 - **connector-engineer.md** - Tool SDKs, integrations
 - **reviewer.md** - ARV, security, drift
@@ -75,7 +69,7 @@ Route tasks through the foreman (`.claude/agents/foreman.md`) which delegates to
 ## SAFETY GUARDRAILS
 
 - **No direct gcloud deploys** - All infra goes through GitHub Actions + OpenTofu
-- **No deletion** of `000-docs/`, `.beads/`, `.claude/`, `infra/` without explicit instruction
+- **No deletion** of `000-docs/`, `.claude/`, `infra/` without explicit instruction
 - **No secrets in code** - Use environment variables and Secret Manager
 - **Prefer small diffs** over wholesale rewrites
 
@@ -116,51 +110,6 @@ Route tasks through the foreman (`.claude/agents/foreman.md`) which delegates to
 @gwi/agents → @gwi/core
 @gwi/integrations → @gwi/core
 apps/gateway, apps/github-webhook → @gwi/core
-```
-
----
-
-## RUNTIME vs DEV TOOLS (GOLDEN RULE)
-
-**Production Runtime** (user-facing CLI/API):
-- Depends ONLY on: Node.js, GitHub API, Anthropic/Google AI APIs, Firestore
-- **Does NOT require** AgentFS, Beads, or experimental tools
-
-**Dev/Ops Tools** (internal only): AgentFS, Beads, "Hard Mode" CI
-
-> **Golden Rule**: Any user-visible code path MUST work without AgentFS or Beads.
-
-### AgentFS + Beads: INTERNAL DEV TOOLS ONLY
-
-**These tools are for internal development only and are NOT required:**
-
-- **AgentFS**: Optional dev tool for agent state inspection. Uses FUSE mount on Linux.
-- **Beads**: Optional task tracking tool. Reference bead IDs in PRs/commits when available.
-- **IMPORTANT**: Production code MUST NOT depend on AgentFS or Beads. They are internal dev tools only.
-- **Reference**: See `bobs-brain` repo for canonical Agent Engine deployment + ARV + drift control.
-
-#### Session Boot: AgentFS FUSE (Linux)
-
-```bash
-npm run agentfs:install   # Install AgentFS CLI
-npm run agentfs:init      # Create .agentfs/gwi.db
-npm run agentfs:mount     # Mount at ./agents/gwi
-
-# Start Claude Code from inside the mount
-cd agents/gwi
-claude
-```
-
-Verify setup: `npm run tools:verify`
-
-#### AgentFS Commands
-
-```bash
-npm run agentfs:install   # Install CLI
-npm run agentfs:init      # Initialize database
-npm run agentfs:mount     # Mount FUSE filesystem
-npm run agentfs:umount    # Unmount
-npm run agentfs:inspect   # Show DB contents
 ```
 
 ---
@@ -277,13 +226,10 @@ STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 ```
 
-**Dev tools** (internal only): `GWI_AGENTFS_ENABLED`, `GWI_BEADS_ENABLED`, `GWI_HOOK_DEBUG`
-
 ---
 
 ## CONSTRAINTS
 
-- Do NOT require AgentFS/Beads for user-facing features
 - Do NOT hard-code model names (use config/env)
 - Do NOT break storage interface contracts (`packages/core/src/storage/interfaces.ts`)
 - Use storage interfaces for ALL persistence
@@ -305,8 +251,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 - **Agent Engine Context**: `000-docs/044-DR-GUID-agent-engine-context.md` (read first!)
 - **Compliance Checklist**: `000-docs/045-DR-CHKL-agent-engine-compliance.md`
-- System audit: `000-docs/032-AA-AUDT-appaudit-devops-playbook.md`
-- AgentFS/Beads policy: `000-docs/006-DR-ADRC-agentfs-beads-policy.md`
+- System audit: `000-docs/126-AA-AUDT-appaudit-devops-playbook.md`
 - Phase AARs: `000-docs/NNN-AA-REPT-*.md`
 
 ---
@@ -335,12 +280,10 @@ CI will fail if ARV does not pass.
 
 ### Every Phase Must End With:
 
-1. `bd sync` - Sync Beads state
-2. `npm test` (or applicable test command)
-3. **AAR created** in `000-docs/` using `docs/templates/aar-template.md`
+1. `npm test` (or applicable test command)
+2. **AAR created** in `000-docs/` using `docs/templates/aar-template.md`
    - Filename: `NNN-AA-AACR-phase-<n>-short-description.md`
-   - Include Beads IDs and AgentFS metadata
-4. Commit + push with bead ID reference
+3. Commit + push
 
 ### Subagent Routing (Mandatory)
 
@@ -358,9 +301,3 @@ At phase end, print:
 - Test/ARV results
 - AAR filename
 - Commit hash
-
-### AgentFS + Beads Metadata
-
-Every AAR must include:
-- **Beads**: Bead IDs or `bd list` snapshot
-- **AgentFS**: Agent ID + mount path + db path (if known)

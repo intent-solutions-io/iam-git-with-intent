@@ -4,39 +4,21 @@ Instructions for AI agents working in this repository.
 
 ---
 
-## BEFORE ANYTHING ELSE
+## Before Starting
 
-Run `bd onboard` and follow the instructions.
-
----
-
-## Required Tools
-
-1. **Beads** (`bd`) - Task tracking system
-2. **AgentFS** - Agent filesystem (FUSE mount on Linux)
+Read `CLAUDE.md` for full project context and guidelines.
 
 ## Session Start
 
 ```bash
-# First time only
-bd onboard
-
-# Every session
-bd ready           # Pick work from queue
-npm run agentfs:mount  # Mount agent filesystem
-```
-
-## Session End
-
-```bash
-bd sync
-git add .beads/issues.jsonl
-git commit -m "chore: sync beads"
-npm run agentfs:umount
+npm run hooks:preflight     # Validate setup
+npm run build               # Build all packages
+npm run test                # Run tests
 ```
 
 ## Rules
 
-- **No markdown TODO lists** - Use Beads for all task tracking
-- Reference bead IDs in commits and PRs
-- Work inside `agents/gwi/` when AgentFS is mounted
+- Follow patterns established in the codebase
+- Run `npm run arv` before committing
+- Reference issue numbers in commits and PRs
+- Keep changes focused and minimal

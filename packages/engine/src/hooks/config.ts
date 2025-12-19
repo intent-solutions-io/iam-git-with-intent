@@ -12,8 +12,8 @@
  * @module @gwi/engine/hooks
  */
 
-import type { HookConfig, BeadsHookConfig, AgentHook } from './types.js';
-import { DEFAULT_HOOK_CONFIG, DEFAULT_BEADS_HOOK_CONFIG } from './types.js';
+import type { HookConfig, AgentHook } from './types.js';
+import { DEFAULT_HOOK_CONFIG } from './types.js';
 import { AgentHookRunner } from './runner.js';
 
 /**
@@ -25,29 +25,6 @@ export function readHookConfigFromEnv(): HookConfig {
     hookTimeoutMs: parseInt(process.env.GWI_HOOK_TIMEOUT_MS || '', 10) || DEFAULT_HOOK_CONFIG.hookTimeoutMs,
     parallelExecution: process.env.GWI_HOOK_PARALLEL !== 'false',
     debug: process.env.GWI_HOOK_DEBUG === 'true',
-  };
-}
-
-/**
- * Read Beads-specific configuration from environment (internal dev only)
- */
-export function readBeadsConfigFromEnv(): BeadsHookConfig {
-  const runTypes = process.env.GWI_BEADS_RUN_TYPES;
-  const createIssueForRunTypes = runTypes
-    ? (runTypes.split(',').map((s) => s.trim().toUpperCase()) as BeadsHookConfig['createIssueForRunTypes'])
-    : DEFAULT_BEADS_HOOK_CONFIG.createIssueForRunTypes;
-
-  return {
-    createIssueForRunTypes,
-    minComplexityForIssue:
-      parseInt(process.env.GWI_BEADS_MIN_COMPLEXITY || '', 10) ||
-      DEFAULT_BEADS_HOOK_CONFIG.minComplexityForIssue,
-    createOnPartialSuccess:
-      process.env.GWI_BEADS_CREATE_ON_PARTIAL !== 'false',
-    createOnDeferral:
-      process.env.GWI_BEADS_CREATE_ON_DEFERRAL !== 'false',
-    updateExistingIssues:
-      process.env.GWI_BEADS_UPDATE_EXISTING !== 'false',
   };
 }
 

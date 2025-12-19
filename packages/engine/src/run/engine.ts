@@ -181,7 +181,7 @@ export async function createEngine(
   // Get TenantStore from deps or environment-based singleton
   const tenantStore: TenantStore = deps?.tenantStore ?? getTenantStore();
 
-  // Build hook runner (will load state/Beads hooks if enabled)
+  // Build hook runner (will load configured hooks if enabled)
   let hookRunner: AgentHookRunner | null = null;
   try {
     hookRunner = await buildDefaultHookRunner();

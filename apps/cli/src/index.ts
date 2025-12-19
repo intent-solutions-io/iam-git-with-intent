@@ -22,8 +22,7 @@
  * Phase 14: Enhanced CLI with workflow management, configuration,
  * and improved developer experience.
  *
- * IMPORTANT: This CLI works without AgentFS or Beads.
- * It uses pluggable storage (SQLite by default).
+ * Uses pluggable storage (SQLite by default).
  * Set GWI_STORAGE to change storage backend.
  */
 

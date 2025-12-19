@@ -9,8 +9,7 @@
 #    - Gateway architecture (no agent imports in gateways)
 #
 # 2. HARD MODE (HARD_MODE=true): Internal ops checks
-#    - AgentFS state requirements
-#    - Beads task tracking requirements
+#    - Documentation organization
 #    - These are OPT-IN for internal development
 #
 # Usage:
@@ -23,7 +22,7 @@ echo "🔍 Git With Intent - Drift Check"
 echo "==========================================="
 
 VIOLATIONS=0
-EXCLUDE_DIRS="node_modules|dist|.turbo|.beads|internal"
+EXCLUDE_DIRS="node_modules|dist|.turbo|internal"
 
 # Check if Hard Mode is enabled
 if [ "$HARD_MODE" = "true" ]; then
@@ -107,34 +106,6 @@ if [ "$HARD_MODE" = "true" ]; then
     echo "==========================================="
     echo "⚡ HARD MODE CHECKS (Internal Ops)"
     echo "==========================================="
-
-    # R1: Check for in-memory state in agents (should use AgentFS)
-    echo ""
-    echo "R1: Checking for in-memory state violations..."
-    if grep -rE "private\s+(state|history|cache)\s*[:=].*Map|new Map\(\)" \
-        packages/agents/src/ \
-        --exclude-dir=node_modules \
-        --include="*.ts" 2>/dev/null | grep -v "// AgentFS" | grep -v "Mock" | grep -v "// internal"; then
-        echo "⚠️  WARNING R1: Found potential in-memory state"
-        echo "   Internal ops guideline: Use AgentFS for agent state"
-        # Warning only, not a violation
-    else
-        echo "✅ R1: No in-memory state issues"
-    fi
-
-    # R5: Check for markdown TODO files (should use Beads)
-    echo ""
-    echo "R5: Checking for markdown TODO files..."
-    TODO_FILES=$(find . -type f \( -name "TODO.md" -o -name "TODOS.md" -o -name "todo.md" \) \
-        2>/dev/null | grep -vE "$EXCLUDE_DIRS" || true)
-    if [ -n "$TODO_FILES" ]; then
-        echo "⚠️  WARNING R5: Markdown TODO files found"
-        echo "$TODO_FILES"
-        echo "   Internal ops guideline: Use Beads (bd create, bd list)"
-        # Warning only in Hard Mode, not blocking
-    else
-        echo "✅ R5: No markdown TODO files"
-    fi
 
     # R6: Check docs are in 000-docs/
     echo ""

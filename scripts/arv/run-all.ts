@@ -71,9 +71,9 @@ async function main(): Promise<void> {
 
   const checks: { name: string; command: string; args: string[] }[] = [
     {
-      name: 'No AgentFS in Runtime',
+      name: 'No Internal Tools in Runtime',
       command: 'bash',
-      args: [join(__dirname, '..', 'ci', 'check_no_agentfs_runtime.sh')],
+      args: [join(__dirname, '..', 'ci', 'check_no_internal_tools.sh')],
     },
     {
       name: 'Forbidden Patterns',

@@ -4,7 +4,6 @@
  * Analyze PR complexity and determine resolution strategy.
  * This is the first step in the GWI workflow.
  *
- * IMPORTANT: This command works without AgentFS or Beads.
  * Uses pluggable storage (SQLite by default).
  */
 

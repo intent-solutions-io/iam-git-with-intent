@@ -219,13 +219,6 @@ describe('LocalFsRunIndexStore', () => {
 });
 
 // =============================================================================
-// NOTE: AgentFS is INTERNAL DEV TOOLING ONLY
-// =============================================================================
-// AgentFsRunIndexStore has been removed from runtime code.
-// AgentFS integration is in internal/agentfs-tools/ for dev use only.
-// Production code MUST NOT depend on AgentFS.
-
-// =============================================================================
 // Factory Function Tests
 // =============================================================================
 

@@ -7,9 +7,6 @@
  * - Required metadata fields present
  * - 000-docs/ must be flat (no subdirectories)
  *
- * NOTE: Beads and AgentFS are INTERNAL DEV TOOLS, not product requirements.
- * They are NOT validated by this gate.
- *
  * @module scripts/arv/docs-gate
  */
 

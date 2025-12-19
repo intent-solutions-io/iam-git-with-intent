@@ -128,17 +128,6 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
   }
 
   console.log();
-
-  // Internal dev tools status - only show if explicitly enabled for debugging
-  // NOTE: AgentFS and Beads are INTERNAL DEV TOOLS ONLY - never show to end users
-  if (process.env.INTERNAL_DEVTOOLS_ENABLED === 'true') {
-    if (process.env.GWI_USE_AGENTFS === 'true') {
-      console.log(chalk.dim('  [Dev] AgentFS enabled (internal-only)'));
-    }
-    if (process.env.GWI_USE_BEADS === 'true') {
-      console.log(chalk.dim('  [Dev] Beads enabled (internal-only)'));
-    }
-  }
 }
 
 /**

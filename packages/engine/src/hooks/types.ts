@@ -224,51 +224,6 @@ export const DEFAULT_HOOK_CONFIG: HookConfig = {
 };
 
 // =============================================================================
-// Beads Hook Configuration
-// =============================================================================
-
-/**
- * Configuration for when Beads should create issues
- */
-export interface BeadsHookConfig {
-  /**
-   * Run types that can create Beads issues
-   */
-  createIssueForRunTypes: RunType[];
-
-  /**
-   * Minimum complexity score to create an issue
-   */
-  minComplexityForIssue: number;
-
-  /**
-   * Create issue on partial success
-   */
-  createOnPartialSuccess: boolean;
-
-  /**
-   * Create issue on deferral
-   */
-  createOnDeferral: boolean;
-
-  /**
-   * Update existing issues vs create new ones
-   */
-  updateExistingIssues: boolean;
-}
-
-/**
- * Default Beads hook configuration
- */
-export const DEFAULT_BEADS_HOOK_CONFIG: BeadsHookConfig = {
-  createIssueForRunTypes: ['autopilot', 'resolve'],
-  minComplexityForIssue: 3,
-  createOnPartialSuccess: true,
-  createOnDeferral: true,
-  updateExistingIssues: true,
-};
-
-// =============================================================================
 // Hook Runner Interface
 // =============================================================================
 

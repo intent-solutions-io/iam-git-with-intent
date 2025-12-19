@@ -36,12 +36,10 @@ export type {
   AgentRunContextWithPR,
   AgentHook,
   HookConfig,
-  BeadsHookConfig,
 } from './types.js';
 
 export {
   DEFAULT_HOOK_CONFIG,
-  DEFAULT_BEADS_HOOK_CONFIG,
 } from './types.js';
 
 // Runner
@@ -51,7 +49,6 @@ export type { HookRunResult } from './runner.js';
 // Configuration
 export {
   readHookConfigFromEnv,
-  readBeadsConfigFromEnv,
   buildDefaultHookRunner,
   buildHookRunner,
 } from './config.js';

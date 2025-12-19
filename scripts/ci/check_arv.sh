@@ -8,7 +8,6 @@
 # - Required interfaces
 #
 # HARD MODE (HARD_MODE=true) adds additional checks:
-# - AgentFS initialization
 # - SPIFFE ID configuration
 # - Audit logging
 #
@@ -90,15 +89,7 @@ for agent_dir in packages/agents/src/*/; do
         # =============================================================================
 
         if [ "$HARD_MODE" = "true" ]; then
-            # ARV-4: Check AgentFS initialization (Hard Mode only)
-            if grep -q "openAgentFS\|AgentFS" "$agent_file" 2>/dev/null; then
-                echo "  ✅ [HM] Has AgentFS initialization"
-            else
-                echo "  ⚠️  [HM] Missing AgentFS initialization"
-                # Warning only in Hard Mode
-            fi
-
-            # ARV-5: Check SPIFFE ID (Hard Mode only)
+            # ARV-4: Check SPIFFE ID (Hard Mode only)
             if grep -q "spiffe://" "$agent_file" 2>/dev/null; then
                 echo "  ✅ [HM] Has SPIFFE ID"
             else

@@ -222,7 +222,6 @@ git-with-intent/
 │   ├── integrations/        # GitHub, Airbyte, etc.
 │   └── sdk/                 # TypeScript client SDK
 ├── scripts/                 # Operational scripts
-│   ├── agentfs/             # AgentFS tooling
 │   ├── arv/                 # Agent readiness checks
 │   ├── ci/                  # CI helper scripts
 │   └── hooks/               # Pre/post-flight hooks
