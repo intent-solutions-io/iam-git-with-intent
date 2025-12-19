@@ -202,7 +202,12 @@ npm run arv:smoke     # Boot check
 
 ## License
 
-MIT
+**Proprietary** - Copyright (c) 2025 Intent Solutions LLC. All Rights Reserved.
+
+This software is proprietary and confidential. No license is granted for use,
+modification, or distribution. See [LICENSE](./LICENSE) for details.
+
+For licensing inquiries: jeremy@intentsolutions.io
 
 ---
 
