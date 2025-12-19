@@ -49,6 +49,27 @@ interface RunDoc {
   updatedAt: Timestamp;
   completedAt?: Timestamp;
   durationMs?: number;
+  /** Version field for optimistic locking (A2.s3) */
+  version: number;
+  /** Schema version for migrations (A1.s4) */
+  schemaVersion: number;
+}
+
+/**
+ * Error thrown when optimistic locking fails due to concurrent modification
+ */
+export class OptimisticLockError extends Error {
+  constructor(
+    public readonly runId: string,
+    public readonly expectedVersion: number,
+    public readonly actualVersion: number
+  ) {
+    super(
+      `Optimistic lock failed for run ${runId}: ` +
+      `expected version ${expectedVersion}, but found ${actualVersion}`
+    );
+    this.name = 'OptimisticLockError';
+  }
 }
 
 interface StepDoc {
@@ -69,7 +90,7 @@ interface StepDoc {
 // Conversion Functions
 // =============================================================================
 
-function runDocToModel(doc: RunDoc, steps: RunStep[]): Run {
+function runDocToModel(doc: RunDoc, steps: RunStep[]): Run & { version?: number } {
   return {
     id: doc.id,
     prId: doc.prId,
@@ -84,6 +105,9 @@ function runDocToModel(doc: RunDoc, steps: RunStep[]): Run {
     updatedAt: timestampToDate(doc.updatedAt)!,
     completedAt: timestampToDate(doc.completedAt),
     durationMs: doc.durationMs,
+    schemaVersion: doc.schemaVersion,
+    // Include version for optimistic locking
+    version: doc.version,
   };
 }
 
@@ -158,6 +182,10 @@ export class FirestoreRunStore implements RunStore {
       status: 'pending',
       createdAt: dateToTimestamp(now)!,
       updatedAt: dateToTimestamp(now)!,
+      // A2.s3: Initialize version for optimistic locking
+      version: 1,
+      // A1.s4: Schema version for migrations
+      schemaVersion: 1,
     };
 
     await this.runDoc(runId).set(runDoc);
@@ -213,21 +241,46 @@ export class FirestoreRunStore implements RunStore {
     return runs;
   }
 
-  async updateRunStatus(runId: string, status: RunStatus): Promise<void> {
-    // Validate state transition
-    const snapshot = await this.runDoc(runId).get();
-    if (!snapshot.exists) {
-      throw new Error(`Run not found: ${runId}`);
-    }
+  /**
+   * Update run status with atomic transaction and optimistic locking (A2.s3)
+   *
+   * Uses Firestore transaction to:
+   * 1. Validate state transition
+   * 2. Check version for optimistic locking
+   * 3. Atomically update status and increment version
+   *
+   * @throws {Error} if run not found
+   * @throws {InvalidRunStatusTransitionError} if transition is invalid
+   * @throws {OptimisticLockError} if concurrent modification detected
+   */
+  async updateRunStatus(runId: string, status: RunStatus, expectedVersion?: number): Promise<void> {
+    const runRef = this.runDoc(runId);
 
-    const currentStatus = (snapshot.data() as RunDoc).status as RunStatus;
+    await this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(runRef);
 
-    // Validate the transition (throws InvalidRunStatusTransitionError if invalid)
-    validateRunStatusTransition(currentStatus, status, runId);
+      if (!snapshot.exists) {
+        throw new Error(`Run not found: ${runId}`);
+      }
 
-    await this.runDoc(runId).update({
-      status,
-      updatedAt: Timestamp.now(),
+      const runDoc = snapshot.data() as RunDoc;
+      const currentStatus = runDoc.status as RunStatus;
+      const currentVersion = runDoc.version ?? 1;
+
+      // Validate state transition (throws InvalidRunStatusTransitionError if invalid)
+      validateRunStatusTransition(currentStatus, status, runId);
+
+      // Optimistic locking: check version if provided
+      if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+        throw new OptimisticLockError(runId, expectedVersion, currentVersion);
+      }
+
+      // Atomic update with version increment
+      transaction.update(runRef, {
+        status,
+        version: currentVersion + 1,
+        updatedAt: Timestamp.now(),
+      });
     });
   }
 
@@ -288,53 +341,89 @@ export class FirestoreRunStore implements RunStore {
   // Run Completion
   // ---------------------------------------------------------------------------
 
+  /**
+   * Complete a run with atomic transaction (A2.s3)
+   */
   async completeRun(runId: string, result: RunResult): Promise<void> {
-    const snapshot = await this.runDoc(runId).get();
-    if (!snapshot.exists) return;
+    const runRef = this.runDoc(runId);
 
-    const runDoc = snapshot.data() as RunDoc;
-    const completedAt = new Date();
-    const durationMs = completedAt.getTime() - timestampToDate(runDoc.createdAt)!.getTime();
+    await this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(runRef);
+      if (!snapshot.exists) return;
 
-    await this.runDoc(runId).update({
-      status: 'completed',
-      result,
-      completedAt: Timestamp.fromDate(completedAt),
-      durationMs,
-      updatedAt: Timestamp.now(),
+      const runDoc = snapshot.data() as RunDoc;
+      const currentVersion = runDoc.version ?? 1;
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - timestampToDate(runDoc.createdAt)!.getTime();
+
+      // Validate transition
+      validateRunStatusTransition(runDoc.status as RunStatus, 'completed', runId);
+
+      transaction.update(runRef, {
+        status: 'completed',
+        result,
+        completedAt: Timestamp.fromDate(completedAt),
+        durationMs,
+        version: currentVersion + 1,
+        updatedAt: Timestamp.now(),
+      });
     });
   }
 
+  /**
+   * Fail a run with atomic transaction (A2.s3)
+   */
   async failRun(runId: string, error: string): Promise<void> {
-    const snapshot = await this.runDoc(runId).get();
-    if (!snapshot.exists) return;
+    const runRef = this.runDoc(runId);
 
-    const runDoc = snapshot.data() as RunDoc;
-    const completedAt = new Date();
-    const durationMs = completedAt.getTime() - timestampToDate(runDoc.createdAt)!.getTime();
+    await this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(runRef);
+      if (!snapshot.exists) return;
 
-    await this.runDoc(runId).update({
-      status: 'failed',
-      error,
-      completedAt: Timestamp.fromDate(completedAt),
-      durationMs,
-      updatedAt: Timestamp.now(),
+      const runDoc = snapshot.data() as RunDoc;
+      const currentVersion = runDoc.version ?? 1;
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - timestampToDate(runDoc.createdAt)!.getTime();
+
+      // Validate transition
+      validateRunStatusTransition(runDoc.status as RunStatus, 'failed', runId);
+
+      transaction.update(runRef, {
+        status: 'failed',
+        error,
+        completedAt: Timestamp.fromDate(completedAt),
+        durationMs,
+        version: currentVersion + 1,
+        updatedAt: Timestamp.now(),
+      });
     });
   }
 
+  /**
+   * Cancel a run with atomic transaction (A2.s3)
+   */
   async cancelRun(runId: string): Promise<void> {
-    const snapshot = await this.runDoc(runId).get();
-    if (!snapshot.exists) return;
+    const runRef = this.runDoc(runId);
 
-    const runDoc = snapshot.data() as RunDoc;
-    const completedAt = new Date();
-    const durationMs = completedAt.getTime() - timestampToDate(runDoc.createdAt)!.getTime();
+    await this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(runRef);
+      if (!snapshot.exists) return;
 
-    await this.runDoc(runId).update({
-      status: 'cancelled',
-      completedAt: Timestamp.fromDate(completedAt),
-      durationMs,
-      updatedAt: Timestamp.now(),
+      const runDoc = snapshot.data() as RunDoc;
+      const currentVersion = runDoc.version ?? 1;
+      const completedAt = new Date();
+      const durationMs = completedAt.getTime() - timestampToDate(runDoc.createdAt)!.getTime();
+
+      // Validate transition
+      validateRunStatusTransition(runDoc.status as RunStatus, 'cancelled', runId);
+
+      transaction.update(runRef, {
+        status: 'cancelled',
+        completedAt: Timestamp.fromDate(completedAt),
+        durationMs,
+        version: currentVersion + 1,
+        updatedAt: Timestamp.now(),
+      });
     });
   }
 }
