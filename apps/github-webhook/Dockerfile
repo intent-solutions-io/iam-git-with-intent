@@ -21,7 +21,6 @@ RUN npm ci --workspace=@gwi/core --workspace=@gwi/github-webhook
 # Copy source files
 COPY packages/core ./packages/core
 COPY apps/github-webhook ./apps/github-webhook
-COPY tsconfig.base.json ./
 
 # Build core first, then webhook
 RUN npm run build --workspace=@gwi/core

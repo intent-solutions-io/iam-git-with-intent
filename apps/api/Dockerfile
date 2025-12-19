@@ -20,7 +20,6 @@ RUN npm ci --workspace=@gwi/core --workspace=@gwi/api
 # Copy source files
 COPY packages/core ./packages/core
 COPY apps/api ./apps/api
-COPY tsconfig.base.json ./
 
 # Build core first, then api
 RUN npm run build --workspace=@gwi/core

@@ -29,7 +29,6 @@ COPY packages/agents ./packages/agents
 COPY packages/engine ./packages/engine
 COPY packages/integrations ./packages/integrations
 COPY apps/worker ./apps/worker
-COPY tsconfig.base.json ./
 
 # Build in dependency order
 RUN npm run build --workspace=@gwi/core
