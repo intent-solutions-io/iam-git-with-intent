@@ -127,8 +127,8 @@ jobs:
 
       - name: Build and push API
         run: |
-          cd apps/api
-          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }} .
+          docker build -f apps/api/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }}
           docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:${{ github.sha }} \
                      ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/api:latest
@@ -136,8 +136,8 @@ jobs:
 
       - name: Build and push A2A Gateway
         run: |
-          cd apps/gateway
-          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
+          docker build -f apps/gateway/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
           docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} \
                      ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:latest
@@ -145,8 +145,8 @@ jobs:
 
       - name: Build and push GitHub Webhook
         run: |
-          cd apps/github-webhook
-          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }} .
+          docker build -f apps/github-webhook/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }}
           docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:${{ github.sha }} \
                      ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/github-webhook:latest
