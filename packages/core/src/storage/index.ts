@@ -90,6 +90,14 @@ import type { StoreFactory, StorageConfig, TenantStore, RunStore, SignalStore, W
 import { getStorageConfig } from './interfaces.js';
 import { SQLiteStoreFactory } from './sqlite.js';
 import { InMemoryTenantStore, InMemoryRunStore, InMemorySignalStore, InMemoryWorkItemStore, InMemoryPRCandidateStore, InMemoryInstanceStore, InMemoryScheduleStore } from './inmemory.js';
+// Import Firestore stores for internal use in getter functions
+import { FirestoreTenantStore } from './firestore-tenant.js';
+import { FirestoreRunStore } from './firestore-run.js';
+import { FirestoreInstanceStore } from './firestore-instance.js';
+import { FirestoreScheduleStore } from './firestore-schedule.js';
+import { FirestoreSignalStore } from './firestore-signal.js';
+import { FirestoreWorkItemStore } from './firestore-workitem.js';
+import { FirestorePRCandidateStore } from './firestore-candidate.js';
 
 /**
  * Create a store factory based on configuration
@@ -196,8 +204,7 @@ export function getTenantStore(): TenantStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestoreTenantStore } = require('./firestore-tenant.js');
+    // Use statically imported Firestore store
     tenantStoreInstance = new FirestoreTenantStore() as TenantStore;
   } else {
     tenantStoreInstance = new InMemoryTenantStore();
@@ -221,8 +228,7 @@ export function getRunStore(): RunStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestoreRunStore } = require('./firestore-run.js');
+    // Use statically imported Firestore store
     runStoreInstance = new FirestoreRunStore() as RunStore;
   } else {
     runStoreInstance = new InMemoryRunStore();
@@ -267,8 +273,7 @@ export function getInstanceStore(): InstanceStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestoreInstanceStore } = require('./firestore-instance.js');
+    // Use statically imported Firestore store
     instanceStoreInstance = new FirestoreInstanceStore() as InstanceStore;
   } else {
     instanceStoreInstance = new InMemoryInstanceStore();
@@ -292,8 +297,7 @@ export function getScheduleStore(): ScheduleStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestoreScheduleStore } = require('./firestore-schedule.js');
+    // Use statically imported Firestore store
     scheduleStoreInstance = new FirestoreScheduleStore() as ScheduleStore;
   } else {
     scheduleStoreInstance = new InMemoryScheduleStore();
@@ -326,8 +330,7 @@ export function getSignalStore(): SignalStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestoreSignalStore } = require('./firestore-signal.js');
+    // Use statically imported Firestore store
     signalStoreInstance = new FirestoreSignalStore() as SignalStore;
   } else {
     signalStoreInstance = new InMemorySignalStore();
@@ -351,8 +354,7 @@ export function getWorkItemStore(): WorkItemStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestoreWorkItemStore } = require('./firestore-workitem.js');
+    // Use statically imported Firestore store
     workItemStoreInstance = new FirestoreWorkItemStore() as WorkItemStore;
   } else {
     workItemStoreInstance = new InMemoryWorkItemStore();
@@ -376,8 +378,7 @@ export function getPRCandidateStore(): PRCandidateStore {
   const backend = getStoreBackend();
 
   if (backend === 'firestore') {
-    // Dynamic import to avoid requiring firebase-admin when not using Firestore
-    const { FirestorePRCandidateStore } = require('./firestore-candidate.js');
+    // Use statically imported Firestore store
     prCandidateStoreInstance = new FirestorePRCandidateStore() as PRCandidateStore;
   } else {
     prCandidateStoreInstance = new InMemoryPRCandidateStore();

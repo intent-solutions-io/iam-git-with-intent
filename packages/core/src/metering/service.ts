@@ -14,6 +14,7 @@ import type {
   TokenUsage,
 } from './types.js';
 import { DEFAULT_PLANS, getPlanById } from './types.js';
+import { createFirestoreMeteringEventStorage } from './firestore-storage.js';
 
 // =============================================================================
 // Types
@@ -436,9 +437,7 @@ export function getMeteringService(): MeteringService {
     let storage: MeteringEventStorage | undefined;
 
     if (backend === 'firestore') {
-      // Lazy import to avoid circular dependencies
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { createFirestoreMeteringEventStorage } = require('./firestore-storage.js');
+      // Use statically imported Firestore storage
       storage = createFirestoreMeteringEventStorage();
     }
 
