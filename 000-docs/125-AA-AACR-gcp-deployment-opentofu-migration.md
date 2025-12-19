@@ -10,7 +10,7 @@ Deployed Git With Intent infrastructure to GCP and migrated from Terraform to Op
 
 ## Tasks Completed
 
-| Task | Bead ID | Description | Evidence |
+| Task | Task ID | Description | Evidence |
 |------|---------|-------------|----------|
 | T1 | git-with-intent-jzhl.1 | GCP project bootstrap | Project exists, billing enabled, APIs enabled |
 | T2 | git-with-intent-jzhl.2 | OpenTofu migration | tofu validate passes, 47 resources planned |

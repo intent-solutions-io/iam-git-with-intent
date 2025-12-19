@@ -90,7 +90,7 @@ test/contracts/onboarding.test.ts: 33 tests passed
 
 ## Evidence Packet
 
-### Bead IDs
+### Task IDs
 - Phase Epic: `git-with-intent-ucqk`
 - P0: `git-with-intent-togx` (closed)
 - P1: `git-with-intent-68j7`, `git-with-intent-zx3q`, `git-with-intent-rdco`, `git-with-intent-ngn4`, `git-with-intent-l2cg`, `git-with-intent-wc9q` (all closed)

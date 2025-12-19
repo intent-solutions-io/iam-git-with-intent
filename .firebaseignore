@@ -1,6 +1,4 @@
 # Internal Dev Tooling - NEVER deploy to Firebase
-.agentfs/
-.beads/
 workspace/
 
 # Git and IDE

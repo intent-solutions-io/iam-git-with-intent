@@ -11,7 +11,6 @@ export default defineConfig({
     // Mock environment variables for tests
     env: {
       NODE_ENV: 'test',
-      GWI_AGENTFS_MOCK: 'true',
       GWI_STORE_BACKEND: 'memory',
     },
   },

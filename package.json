@@ -43,7 +43,6 @@
     "arv:contracts": "npx vitest run test/contracts/ --reporter=verbose",
     "arv:goldens": "npx vitest run test/goldens/ --reporter=verbose",
     "arv:smoke": "npx tsx scripts/arv/smoke-test.ts",
-    "arv:no-internal-tools": "bash scripts/ci/check_no_internal_tools.sh",
     "tools:verify": "bash scripts/verify-tools.sh",
     "hooks:preflight": "bash scripts/hooks/preflight.sh",
     "hooks:postflight": "bash scripts/hooks/postflight.sh",

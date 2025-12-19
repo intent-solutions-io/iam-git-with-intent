@@ -1,6 +1,4 @@
 # Internal Dev Tooling - NEVER include in production images
-.agentfs/
-.beads/
 workspace/
 
 # Git and IDE

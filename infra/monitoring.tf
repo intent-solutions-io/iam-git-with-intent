@@ -85,7 +85,7 @@ resource "google_monitoring_notification_channel" "email" {
   user_labels = {
     environment = var.environment
     app         = var.app_name
-    phase       = "bead-13"
+    phase       = "phase-13"
   }
 }
 
@@ -559,7 +559,7 @@ resource "google_monitoring_alert_policy" "gateway_uptime_alert" {
     component   = "gateway"
     environment = var.environment
     severity    = "critical"
-    phase       = "bead-13"
+    phase       = "phase-13"
   }
 
   documentation {
@@ -628,7 +628,7 @@ resource "google_monitoring_alert_policy" "api_uptime_alert" {
     component   = "api"
     environment = var.environment
     severity    = "critical"
-    phase       = "bead-13"
+    phase       = "phase-13"
   }
 
   documentation {
@@ -775,7 +775,7 @@ resource "google_monitoring_alert_policy" "critical_error_rate" {
     component   = "all"
     environment = var.environment
     severity    = "critical"
-    phase       = "bead-13"
+    phase       = "phase-13"
   }
 
   documentation {
@@ -854,7 +854,7 @@ resource "google_pubsub_topic" "budget_alerts" {
   labels = {
     environment = var.environment
     app         = var.app_name
-    phase       = "bead-13"
+    phase       = "phase-13"
   }
 }
 

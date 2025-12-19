@@ -86,7 +86,7 @@ Comprehensive enterprise architecture audit of Git With Intent v0.2.0 against Go
 ## Artifacts
 
 - Full audit report: `internal/rest-zone/architecture-audit.md`
-- Beads updated with 5 new gap tasks
+- Task tracking updated with 5 new gap tasks
 - All 91 tasks have proper dependencies configured
 
 ---
