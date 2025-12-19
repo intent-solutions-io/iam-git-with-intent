@@ -49,9 +49,10 @@ __snapshots__/
 
 # Workspace (internal dev/ops - ephemeral artifacts, planning, evidence)
 # This entire directory is local-only, never committed
-workspace/runs/
+workspace/
 
 # OpenTofu / Terraform
+infra/tfplan
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
