@@ -22,6 +22,8 @@ import type {
   RunStatus,
   RunResult,
   RunStore,
+  RunCancellation,
+  CompensationLogEntry,
 } from './interfaces.js';
 import {
   getFirestoreClient,
@@ -53,6 +55,25 @@ interface RunDoc {
   version: number;
   /** Schema version for migrations (A1.s4) */
   schemaVersion: number;
+  /** A2.s4: Cancellation details */
+  cancellation?: {
+    initiator: string;
+    reason: string;
+    userId?: string;
+    requestedAt: Timestamp;
+    completedAt?: Timestamp;
+    interruptedStep?: string;
+    context?: Record<string, unknown>;
+  };
+  /** A2.s4: Compensation log */
+  compensationLog?: Array<{
+    actionId: string;
+    description: string;
+    success: boolean;
+    error?: string;
+    durationMs: number;
+    executedAt: Timestamp;
+  }>;
 }
 
 /**
@@ -91,6 +112,27 @@ interface StepDoc {
 // =============================================================================
 
 function runDocToModel(doc: RunDoc, steps: RunStep[]): Run & { version?: number } {
+  // Convert cancellation timestamps if present
+  const cancellation: RunCancellation | undefined = doc.cancellation ? {
+    initiator: doc.cancellation.initiator as RunCancellation['initiator'],
+    reason: doc.cancellation.reason,
+    userId: doc.cancellation.userId,
+    requestedAt: timestampToDate(doc.cancellation.requestedAt)!,
+    completedAt: timestampToDate(doc.cancellation.completedAt),
+    interruptedStep: doc.cancellation.interruptedStep,
+    context: doc.cancellation.context,
+  } : undefined;
+
+  // Convert compensation log timestamps if present
+  const compensationLog: CompensationLogEntry[] | undefined = doc.compensationLog?.map(entry => ({
+    actionId: entry.actionId,
+    description: entry.description,
+    success: entry.success,
+    error: entry.error,
+    durationMs: entry.durationMs,
+    executedAt: timestampToDate(entry.executedAt)!,
+  }));
+
   return {
     id: doc.id,
     prId: doc.prId,
@@ -106,6 +148,9 @@ function runDocToModel(doc: RunDoc, steps: RunStep[]): Run & { version?: number 
     completedAt: timestampToDate(doc.completedAt),
     durationMs: doc.durationMs,
     schemaVersion: doc.schemaVersion,
+    // A2.s4: Include cancellation details
+    cancellation,
+    compensationLog,
     // Include version for optimistic locking
     version: doc.version,
   };
@@ -400,9 +445,17 @@ export class FirestoreRunStore implements RunStore {
   }
 
   /**
-   * Cancel a run with atomic transaction (A2.s3)
+   * Cancel a run with atomic transaction (A2.s3, A2.s4)
+   *
+   * @param runId - Run to cancel
+   * @param cancellation - Optional cancellation details for audit trail
+   * @param compensationLog - Optional log of compensation actions executed
    */
-  async cancelRun(runId: string): Promise<void> {
+  async cancelRun(
+    runId: string,
+    cancellation?: Omit<RunCancellation, 'completedAt'>,
+    compensationLog?: CompensationLogEntry[]
+  ): Promise<void> {
     const runRef = this.runDoc(runId);
 
     await this.db.runTransaction(async (transaction) => {
@@ -417,13 +470,41 @@ export class FirestoreRunStore implements RunStore {
       // Validate transition
       validateRunStatusTransition(runDoc.status as RunStatus, 'cancelled', runId);
 
-      transaction.update(runRef, {
+      // Build update object
+      const updateData: Record<string, unknown> = {
         status: 'cancelled',
         completedAt: Timestamp.fromDate(completedAt),
         durationMs,
         version: currentVersion + 1,
         updatedAt: Timestamp.now(),
-      });
+      };
+
+      // A2.s4: Add cancellation details if provided
+      if (cancellation) {
+        updateData.cancellation = {
+          initiator: cancellation.initiator,
+          reason: cancellation.reason,
+          userId: cancellation.userId,
+          requestedAt: dateToTimestamp(cancellation.requestedAt)!,
+          completedAt: Timestamp.fromDate(completedAt),
+          interruptedStep: cancellation.interruptedStep ?? runDoc.currentStep,
+          context: cancellation.context,
+        };
+      }
+
+      // A2.s4: Add compensation log if provided
+      if (compensationLog && compensationLog.length > 0) {
+        updateData.compensationLog = compensationLog.map(entry => ({
+          actionId: entry.actionId,
+          description: entry.description,
+          success: entry.success,
+          error: entry.error,
+          durationMs: entry.durationMs,
+          executedAt: dateToTimestamp(entry.executedAt)!,
+        }));
+      }
+
+      transaction.update(runRef, updateData);
     });
   }
 }

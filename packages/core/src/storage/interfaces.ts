@@ -94,6 +94,49 @@ export interface RunStep {
 }
 
 /**
+ * Cancellation initiator type (A2.s4)
+ */
+export type CancellationInitiator = 'user' | 'system' | 'timeout' | 'policy';
+
+/**
+ * Cancellation details for run (A2.s4)
+ */
+export interface RunCancellation {
+  /** Who initiated cancellation */
+  initiator: CancellationInitiator;
+  /** Human-readable reason */
+  reason: string;
+  /** User ID if user-initiated */
+  userId?: string;
+  /** When cancellation was requested */
+  requestedAt: Date;
+  /** When cancellation was completed */
+  completedAt?: Date;
+  /** Step that was running when cancelled */
+  interruptedStep?: string;
+  /** Additional context */
+  context?: Record<string, unknown>;
+}
+
+/**
+ * Compensation action result (A2.s4)
+ */
+export interface CompensationLogEntry {
+  /** Action ID */
+  actionId: string;
+  /** Description of the compensation */
+  description: string;
+  /** Whether compensation succeeded */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Duration in milliseconds */
+  durationMs: number;
+  /** When executed */
+  executedAt: Date;
+}
+
+/**
  * A multi-agent run (pipeline execution)
  */
 export interface Run {
@@ -112,6 +155,10 @@ export interface Run {
   updatedAt: Date;
   completedAt?: Date;
   durationMs?: number;
+  /** A2.s4: Cancellation details (populated when status = 'cancelled') */
+  cancellation?: RunCancellation;
+  /** A2.s4: Log of compensation actions executed on cancellation */
+  compensationLog?: CompensationLogEntry[];
 }
 
 /**
@@ -558,9 +605,17 @@ export interface RunStore {
   failRun(runId: string, error: string): Promise<void>;
 
   /**
-   * Cancel a run
+   * Cancel a run (A2.s4: enhanced with cancellation details)
+   *
+   * @param runId - Run to cancel
+   * @param cancellation - Optional cancellation details for audit trail
+   * @param compensationLog - Optional log of compensation actions executed
    */
-  cancelRun(runId: string): Promise<void>;
+  cancelRun(
+    runId: string,
+    cancellation?: Omit<RunCancellation, 'completedAt'>,
+    compensationLog?: CompensationLogEntry[]
+  ): Promise<void>;
 }
 
 /**

@@ -16,6 +16,8 @@ import type {
   RunStatus,
   RunResult,
   RunStore,
+  RunCancellation,
+  CompensationLogEntry,
   Tenant,
   TenantRepo,
   TenantConnectorConfig,
@@ -183,13 +185,32 @@ export class InMemoryRunStore implements RunStore {
     }
   }
 
-  async cancelRun(runId: string): Promise<void> {
+  async cancelRun(
+    runId: string,
+    cancellation?: Omit<RunCancellation, 'completedAt'>,
+    compensationLog?: CompensationLogEntry[]
+  ): Promise<void> {
     const run = this.runs.get(runId);
     if (run) {
+      const completedAt = now();
       run.status = 'cancelled';
-      run.completedAt = now();
+      run.completedAt = completedAt;
       run.updatedAt = now();
-      run.durationMs = run.completedAt.getTime() - run.createdAt.getTime();
+      run.durationMs = completedAt.getTime() - run.createdAt.getTime();
+
+      // A2.s4: Store cancellation details if provided
+      if (cancellation) {
+        run.cancellation = {
+          ...cancellation,
+          completedAt,
+          interruptedStep: cancellation.interruptedStep ?? run.currentStep,
+        };
+      }
+
+      // A2.s4: Store compensation log if provided
+      if (compensationLog && compensationLog.length > 0) {
+        run.compensationLog = compensationLog;
+      }
     }
   }
 }
