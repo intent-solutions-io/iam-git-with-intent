@@ -215,3 +215,32 @@ export * from './system-health/index.js';
 
 // GA Readiness exports (Phase 70: Production Launch Gate)
 export * from './ga-readiness/index.js';
+
+// Secrets exports (A9: Secrets Model)
+export * from './secrets/index.js';
+
+// SLO exports (A12: SLO Definitions + Perf Tests)
+// Explicit exports to resolve naming conflicts with observability-v2/telemetry
+export {
+  // Types (canonical definitions - prefer these over observability-v2/telemetry)
+  type SLOCategory,
+  type SLOWindow,
+  type SLODefinition,
+  type SLOStatus,
+  // Constants
+  LATENCY_TARGETS,
+  SLO_DEFINITIONS,
+  // Query Helpers
+  getSLOById,
+  getSLOsByService,
+  getSLOsByCategory,
+  getSLOsByTag,
+  getCriticalSLOs,
+  // Calculations
+  calculateErrorBudgetMinutes,
+  windowToMinutes,
+  calculateBurnRate,
+  determineSLOStatus,
+  calculateSLOStatus,
+  getLatencyThresholds,
+} from './slo/index.js';

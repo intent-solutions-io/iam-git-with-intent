@@ -150,7 +150,7 @@ export type RiskMode = 'comment_only' | 'suggest_patch' | 'auto_patch' | 'auto_p
 /**
  * Tenant status
  */
-export type TenantStatus = 'active' | 'suspended' | 'deactivated';
+export type TenantStatus = 'active' | 'suspended' | 'deactivated' | 'paused';
 
 /**
  * Tenant (GitHub org installation)
@@ -608,6 +608,12 @@ export interface TenantStore {
   }): Promise<SaaSRun[]>;
   updateRun(tenantId: string, runId: string, update: Partial<SaaSRun>): Promise<SaaSRun>;
   countRuns(tenantId: string, sinceDate?: string): Promise<number>;
+
+  /**
+   * Count in-flight runs (pending + running) for concurrency limiting
+   * Phase A6: Concurrency caps
+   */
+  countInFlightRuns(tenantId: string): Promise<number>;
 
   // Phase 12: Connector Config management
   getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null>;

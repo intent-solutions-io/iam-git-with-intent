@@ -43,12 +43,18 @@ Thumbs.db
 .gwi/
 .engine/
 
+# Internal Dev Tooling (NEVER commit - local workspace only)
+# These are internal tools for dev/ops evidence - NOT production
+.agentfs/
+.beads/
+
 # Test artifacts
 __snapshots__/
 *.snap
 
-# Sandbox workspace (ephemeral, generated code artifacts)
-workspace/
+# Workspace (internal dev/ops - ephemeral artifacts, planning, evidence)
+# This entire directory is local-only, never committed
+workspace/runs/
 
 # OpenTofu / Terraform
 infra/.terraform/
@@ -57,3 +63,6 @@ infra/*.tfstate.*
 infra/.terraform.lock.hcl
 infra/*.tfplan
 *.backup
+
+# bv (beads viewer) local config and caches
+.bv/

@@ -349,6 +349,15 @@ export class InMemoryTenantStore implements TenantStore {
     return runs.filter(r => r.createdAt >= since).length;
   }
 
+  /**
+   * Count in-flight runs (pending + running) for concurrency limiting
+   * Phase A6: Concurrency caps
+   */
+  async countInFlightRuns(tenantId: string): Promise<number> {
+    const runs = this.runs.get(tenantId) ?? [];
+    return runs.filter(r => r.status === 'pending' || r.status === 'running').length;
+  }
+
   // Phase 12: Connector Config management
   async getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null> {
     const configs = this.connectorConfigs.get(tenantId) ?? [];

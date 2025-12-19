@@ -1,0 +1,35 @@
+# Internal Dev Tooling - NEVER include in production images
+.agentfs/
+.beads/
+workspace/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Documentation (not needed in runtime)
+docs/
+000-docs/
+*.md
+!README.md
+
+# Development files
+*.log
+coverage/
+__snapshots__/
+*.snap
+
+# Build artifacts from other workspaces (built fresh in Docker)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Terraform/OpenTofu
+infra/.terraform/
+infra/*.tfstate*
+infra/*.tfplan
+
+# Environment files
+.env*

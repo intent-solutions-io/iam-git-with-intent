@@ -406,3 +406,77 @@ export async function emitPlanLimitEvent(
     },
   });
 }
+
+// =============================================================================
+// A10: Auth Failure Events
+// =============================================================================
+
+/**
+ * Emit authentication failure event
+ */
+export async function emitAuthFailureEvent(
+  reason: string,
+  options?: {
+    ip?: string;
+    userAgent?: string;
+    path?: string;
+    method?: string;
+    userId?: string;
+    tenantId?: string;
+  }
+): Promise<SecurityAuditEvent> {
+  return emitAuditEvent({
+    eventType: 'auth.login.failure',
+    outcome: 'failure',
+    tenantId: options?.tenantId ?? 'unknown',
+    actor: {
+      type: 'user',
+      id: options?.userId ?? 'anonymous',
+      ip: options?.ip,
+      userAgent: options?.userAgent,
+    },
+    data: {
+      reason,
+      path: options?.path,
+      method: options?.method,
+    },
+    error: reason,
+  });
+}
+
+/**
+ * Emit authorization denied event (tenant access)
+ */
+export async function emitAuthzDeniedEvent(
+  tenantId: string,
+  userId: string,
+  reason: string,
+  options?: {
+    ip?: string;
+    userAgent?: string;
+    path?: string;
+    method?: string;
+    requiredRole?: string;
+    userRole?: string;
+  }
+): Promise<SecurityAuditEvent> {
+  return emitAuditEvent({
+    eventType: 'rbac.check.denied',
+    outcome: 'denied',
+    tenantId,
+    actor: {
+      type: 'user',
+      id: userId,
+      ip: options?.ip,
+      userAgent: options?.userAgent,
+    },
+    data: {
+      reason,
+      path: options?.path,
+      method: options?.method,
+      requiredRole: options?.requiredRole,
+      userRole: options?.userRole,
+    },
+    error: reason,
+  });
+}

@@ -30,6 +30,7 @@ import {
   dateToTimestamp,
   generateFirestoreId,
 } from './firestore-client.js';
+import { validateRunStatusTransition } from './run-status-machine.js';
 
 // =============================================================================
 // Firestore Document Types
@@ -213,6 +214,17 @@ export class FirestoreRunStore implements RunStore {
   }
 
   async updateRunStatus(runId: string, status: RunStatus): Promise<void> {
+    // Validate state transition
+    const snapshot = await this.runDoc(runId).get();
+    if (!snapshot.exists) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+
+    const currentStatus = (snapshot.data() as RunDoc).status as RunStatus;
+
+    // Validate the transition (throws InvalidRunStatusTransitionError if invalid)
+    validateRunStatusTransition(currentStatus, status, runId);
+
     await this.runDoc(runId).update({
       status,
       updatedAt: Timestamp.now(),

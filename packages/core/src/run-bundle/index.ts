@@ -101,3 +101,18 @@ export {
   getRunIndexStore,
   contextToIndexEntry,
 } from './run-index.js';
+
+// GCS Artifact Store (A8: Cloud Storage)
+export {
+  GcsArtifactStore,
+  getGcsArtifactStore,
+  resetGcsArtifactStore,
+  type GcsArtifactStoreConfig,
+  type ArtifactMetadata,
+  type ArtifactUploadResult,
+  type DetectedSecret,
+  detectSecrets,
+  validateNoSecrets,
+  computeHash,
+  verifyHash,
+} from './gcs-artifact-store.js';

@@ -1,0 +1,9 @@
+{
+  "method": "GET",
+  "url": "https://api.github.com/repos/test-owner/test-repo/issues/123",
+  "headers": {
+    "accept": "application/vnd.github.v3+json",
+    "authorization": "Bearer REDACTED_TOKEN",
+    "user-agent": "octokit.js/1.0.0"
+  }
+}

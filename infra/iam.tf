@@ -149,3 +149,131 @@ resource "google_service_account_iam_member" "github_actions_wif" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/intent-solutions-io/git-with-intent"
 }
+
+# =============================================================================
+# A9: Least-Privilege Secret Access (Per-Secret IAM Bindings)
+# =============================================================================
+# Each service only gets access to the secrets it needs.
+# This replaces broad project-level secretmanager.secretAccessor role.
+#
+# Secret Inventory:
+# - gwi-github-app-private-key: gateway, worker, github-webhook
+# - gwi-github-webhook-secret: github-webhook
+# - gwi-anthropic-api-key: worker
+# - gwi-google-ai-api-key: worker
+# - gwi-stripe-secret-key: api
+# - gwi-stripe-webhook-secret: api
+# =============================================================================
+
+# Note: Using data sources would fail if secrets don't exist yet.
+# These bindings are applied after secrets are created via gcloud.
+# The secret resources are managed outside Terraform (manual/CLI creation).
+
+locals {
+  # Secret access map: secret_id -> list of service accounts
+  secret_access_map = {
+    "gwi-github-app-private-key" = [
+      google_service_account.a2a_gateway.email,
+      google_service_account.github_webhook.email,
+    ]
+    "gwi-github-webhook-secret" = [
+      google_service_account.github_webhook.email,
+    ]
+  }
+
+  # Flatten for for_each
+  secret_bindings = flatten([
+    for secret_id, emails in local.secret_access_map : [
+      for email in emails : {
+        key       = "${secret_id}-${email}"
+        secret_id = secret_id
+        email     = email
+      }
+    ]
+  ])
+}
+
+# Per-secret IAM bindings for gateway/webhook (only if gwi_api_image is set)
+resource "google_secret_manager_secret_iam_member" "service_secret_access" {
+  for_each = { for b in local.secret_bindings : b.key => b }
+
+  project   = var.project_id
+  secret_id = each.value.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${each.value.email}"
+
+  # Only create if the secret might exist (we can't check, so always try)
+  # This will fail gracefully if secret doesn't exist yet
+
+  lifecycle {
+    # Ignore changes to prevent recreation if secret is recreated
+    ignore_changes = [secret_id]
+  }
+}
+
+# API service secret access (conditional on API being deployed)
+resource "google_secret_manager_secret_iam_member" "api_stripe_key" {
+  count = var.gwi_api_image != "" ? 1 : 0
+
+  project   = var.project_id
+  secret_id = "gwi-stripe-secret-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gwi_api[0].email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "api_stripe_webhook" {
+  count = var.gwi_api_image != "" ? 1 : 0
+
+  project   = var.project_id
+  secret_id = "gwi-stripe-webhook-secret"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gwi_api[0].email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+# Worker service secret access (conditional on Worker being deployed)
+resource "google_secret_manager_secret_iam_member" "worker_github_key" {
+  count = var.gwi_worker_image != "" ? 1 : 0
+
+  project   = var.project_id
+  secret_id = "gwi-github-app-private-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gwi_worker[0].email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "worker_anthropic_key" {
+  count = var.gwi_worker_image != "" ? 1 : 0
+
+  project   = var.project_id
+  secret_id = "gwi-anthropic-api-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gwi_worker[0].email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "worker_google_ai_key" {
+  count = var.gwi_worker_image != "" ? 1 : 0
+
+  project   = var.project_id
+  secret_id = "gwi-google-ai-api-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.gwi_worker[0].email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}

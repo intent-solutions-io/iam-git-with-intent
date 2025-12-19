@@ -35,7 +35,7 @@ import cors from 'cors';
 import { z } from 'zod';
 import { createEngine, idempotencyMiddleware, getIdempotencyMetrics } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
-import { getTenantStore } from '@gwi/core';
+import { getTenantStore, checkConcurrencyLimit, type PlanId, generateTraceId } from '@gwi/core';
 import { marketplaceRouter } from './marketplace-routes.js';
 import { onboardingRouter } from './onboarding-routes.js';
 
@@ -64,6 +64,56 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '1mb' }));
+
+// A7: Request logging middleware with trace ID correlation
+app.use((req, res, next) => {
+  const startTime = Date.now();
+
+  // Extract or generate trace ID
+  const traceparent = req.headers['traceparent'] as string | undefined;
+  let traceId: string;
+  if (traceparent) {
+    const parts = traceparent.split('-');
+    traceId = parts.length >= 2 && parts[1].length === 32 ? parts[1] : generateTraceId();
+  } else {
+    traceId = generateTraceId();
+  }
+
+  const requestId = (req.headers['x-request-id'] as string)
+    || `req-${startTime}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Add trace headers to response
+  res.setHeader('X-Request-ID', requestId);
+  res.setHeader('X-Trace-ID', traceId);
+
+  // Store on request for downstream use
+  (req as typeof req & { traceId?: string; requestId?: string }).traceId = traceId;
+  (req as typeof req & { traceId?: string; requestId?: string }).requestId = requestId;
+
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    const path = req.route?.path || req.path;
+    const projectId = process.env.GCP_PROJECT_ID || process.env.GCLOUD_PROJECT;
+
+    console.log(JSON.stringify({
+      severity: res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARNING' : 'INFO',
+      type: 'http_request',
+      message: `${req.method} ${path} ${res.statusCode} ${duration}ms`,
+      ...(projectId && { 'logging.googleapis.com/trace': `projects/${projectId}/traces/${traceId}` }),
+      'logging.googleapis.com/spanId': requestId.slice(0, 16),
+      requestId,
+      traceId,
+      method: req.method,
+      path,
+      statusCode: res.statusCode,
+      durationMs: duration,
+      service: 'gateway',
+      timestamp: new Date().toISOString(),
+    }));
+  });
+
+  next();
+});
 
 // Mount marketplace routes (Phase 29: Connector Marketplace)
 app.use(marketplaceRouter);
@@ -272,6 +322,24 @@ app.post('/a2a/foreman', idempotencyMiddleware({
     }
 
     if (tenant.status !== 'active') {
+      // Phase A6: Differentiate between paused (temporary) and suspended/deactivated
+      if (tenant.status === 'paused') {
+        console.log(JSON.stringify({
+          type: 'foreman_rejected',
+          reason: 'TENANT_PAUSED',
+          tenantId: input.tenantId,
+          status: tenant.status,
+          durationMs: Date.now() - startTime,
+        }));
+        return res.status(503).json({
+          error: 'Tenant is temporarily paused',
+          tenantId: input.tenantId,
+          status: tenant.status,
+          message: 'Run processing is temporarily suspended. Try again later.',
+          retryAfter: 60,
+        });
+      }
+
       console.log(JSON.stringify({
         type: 'foreman_rejected',
         reason: 'TENANT_SUSPENDED',
@@ -283,6 +351,31 @@ app.post('/a2a/foreman', idempotencyMiddleware({
         error: 'Tenant is not active',
         tenantId: input.tenantId,
         status: tenant.status,
+      });
+    }
+
+    // Phase A6: Check concurrency limit
+    const planId = (tenant.plan || 'free') as PlanId;
+    const inFlightRuns = await tenantStore.countInFlightRuns(input.tenantId);
+    const concurrencyCheck = checkConcurrencyLimit(inFlightRuns, planId);
+
+    if (!concurrencyCheck.allowed) {
+      console.log(JSON.stringify({
+        type: 'foreman_rejected',
+        reason: 'PLAN_LIMIT_CONCURRENCY',
+        tenantId: input.tenantId,
+        plan: planId,
+        inFlightRuns,
+        limit: concurrencyCheck.limit,
+        durationMs: Date.now() - startTime,
+      }));
+      return res.status(429).json({
+        error: 'Concurrency limit exceeded',
+        reason: concurrencyCheck.reason,
+        currentUsage: concurrencyCheck.currentUsage,
+        limit: concurrencyCheck.limit,
+        plan: planId,
+        retryAfter: 30,
       });
     }
 

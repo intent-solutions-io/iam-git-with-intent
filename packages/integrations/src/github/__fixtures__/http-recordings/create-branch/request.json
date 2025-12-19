@@ -1,0 +1,14 @@
+{
+  "method": "POST",
+  "url": "https://api.github.com/repos/test-owner/test-repo/git/refs",
+  "headers": {
+    "accept": "application/vnd.github.v3+json",
+    "authorization": "Bearer REDACTED_TOKEN",
+    "content-type": "application/json",
+    "user-agent": "octokit.js/1.0.0"
+  },
+  "body": {
+    "ref": "refs/heads/feature/new-feature-123",
+    "sha": "abc123def456789012345678901234567890abcd"
+  }
+}

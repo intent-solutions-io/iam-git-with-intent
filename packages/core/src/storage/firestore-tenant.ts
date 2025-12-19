@@ -30,6 +30,7 @@ import {
   dateToTimestamp,
   generateFirestoreId,
 } from './firestore-client.js';
+import { validateRunStatusTransition } from './run-status-machine.js';
 
 // =============================================================================
 // Firestore Document Types (with Timestamps)
@@ -560,6 +561,11 @@ export class FirestoreTenantStore implements TenantStore {
       throw new Error(`Run not found: ${runId}`);
     }
 
+    // Validate state transition if status is being updated
+    if (update.status && update.status !== existing.status) {
+      validateRunStatusTransition(existing.status, update.status, runId);
+    }
+
     const updated: SaaSRun = {
       ...existing,
       ...update,
@@ -607,6 +613,28 @@ export class FirestoreTenantStore implements TenantStore {
 
     const snapshot = await query.count().get();
     return snapshot.data().count;
+  }
+
+  /**
+   * Count in-flight runs (pending + running) for concurrency limiting
+   * Phase A6: Concurrency caps
+   */
+  async countInFlightRuns(tenantId: string): Promise<number> {
+    // Firestore doesn't support 'in' with count(), so we need two queries
+    const [pendingSnapshot, runningSnapshot] = await Promise.all([
+      this.runsRef()
+        .where('tenantId', '==', tenantId)
+        .where('status', '==', 'pending')
+        .count()
+        .get(),
+      this.runsRef()
+        .where('tenantId', '==', tenantId)
+        .where('status', '==', 'running')
+        .count()
+        .get(),
+    ]);
+
+    return pendingSnapshot.data().count + runningSnapshot.data().count;
   }
 
   // ---------------------------------------------------------------------------

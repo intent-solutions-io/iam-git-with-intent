@@ -26,6 +26,17 @@
 
 export * from './interfaces.js';
 export { SQLiteStoreFactory } from './sqlite.js';
+
+// Run status state machine (Critical C3: State machine validation)
+export {
+  RUN_STATUS_TRANSITIONS,
+  InvalidRunStatusTransitionError,
+  isValidRunStatusTransition,
+  validateRunStatusTransition,
+  isTerminalRunStatus,
+  isRunInProgress,
+  isRunFinished,
+} from './run-status-machine.js';
 export {
   InMemoryRunStore,
   InMemoryTenantStore,

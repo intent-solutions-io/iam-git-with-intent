@@ -1,0 +1,31 @@
+# Internal Dev Tooling - NEVER deploy to Firebase
+.agentfs/
+.beads/
+workspace/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Development files
+*.log
+coverage/
+__snapshots__/
+*.snap
+node_modules/
+
+# Build artifacts
+dist/
+*.tsbuildinfo
+
+# Terraform/OpenTofu
+infra/
+
+# Environment files
+.env*
+
+# Documentation (deployed separately if needed)
+docs/
+000-docs/

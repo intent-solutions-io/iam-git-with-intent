@@ -289,3 +289,25 @@ variable "reviewer_engine_id" {
   type        = string
   default     = ""
 }
+
+# ============================================================================
+# A8: Run Artifacts Configuration
+# ============================================================================
+
+variable "artifact_retention_days" {
+  description = "Days to retain run artifacts (json, diff, md files)"
+  type        = number
+  default     = 90
+}
+
+variable "audit_log_retention_days" {
+  description = "Days to retain audit logs (compliance requirement)"
+  type        = number
+  default     = 365
+}
+
+variable "artifact_signed_url_expiry_minutes" {
+  description = "Signed URL expiration time in minutes"
+  type        = number
+  default     = 15
+}

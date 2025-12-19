@@ -55,6 +55,18 @@ variable "uptime_check_timeout" {
   default     = 10
 }
 
+variable "queue_depth_threshold" {
+  description = "Pub/Sub queue depth threshold for alerts (undelivered messages)"
+  type        = number
+  default     = 100
+}
+
+variable "queue_depth_critical_threshold" {
+  description = "Critical Pub/Sub queue depth threshold (severe backlog)"
+  type        = number
+  default     = 500
+}
+
 # ============================================================================
 # Notification Channels
 # ============================================================================
@@ -1346,6 +1358,240 @@ resource "google_monitoring_alert_policy" "high_duplicate_rate" {
 }
 
 # ============================================================================
+# A6: Queue Depth Alerts (Concurrency/Backpressure)
+# ============================================================================
+#
+# Phase A6: Pub/Sub queue depth monitoring for worker job queue.
+# Alerts when undelivered messages exceed thresholds, indicating:
+# - Worker processing bottleneck
+# - Sudden traffic spike
+# - Worker service issues
+#
+
+# Warning alert - queue depth elevated
+resource "google_monitoring_alert_policy" "queue_depth_warning" {
+  count        = var.enable_alerts && var.gwi_worker_image != "" ? 1 : 0
+  display_name = "GWI Worker Queue Depth Warning (${var.environment})"
+  project      = var.project_id
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Queue depth > ${var.queue_depth_threshold} messages"
+
+    condition_threshold {
+      filter = <<-EOT
+        resource.type = "pubsub_subscription"
+        AND resource.labels.subscription_id = "${var.gwi_worker_subscription}"
+        AND metric.type = "pubsub.googleapis.com/subscription/num_undelivered_messages"
+      EOT
+
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.queue_depth_threshold
+      duration        = "300s"  # 5 minutes sustained
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  notification_channels = local.all_notification_channels
+
+  user_labels = {
+    component   = "worker"
+    environment = var.environment
+    severity    = "warning"
+    phase       = "a6"
+  }
+
+  documentation {
+    content   = <<-EOT
+      ## Worker Queue Depth Warning
+
+      The Pub/Sub worker queue has accumulated ${var.queue_depth_threshold}+ undelivered messages.
+
+      ### Possible Causes
+      - Worker processing slower than ingest rate
+      - Temporary traffic spike
+      - Worker pod scaling issues
+      - Downstream service latency (AI APIs, Firestore)
+
+      ### Investigation Steps
+      1. Check worker Cloud Run instance count and scaling
+      2. Review worker logs for processing errors
+      3. Check if concurrency limits are being hit frequently
+      4. Verify AI API latency and rate limits
+      5. Check Firestore query performance
+
+      ### Resolution
+      - If sustained: Consider increasing worker max instances
+      - If temporary: Monitor for auto-recovery
+      - Check for stuck runs that may be blocking resources
+    EOT
+    mime_type = "text/markdown"
+  }
+}
+
+# Critical alert - queue depth severe
+resource "google_monitoring_alert_policy" "queue_depth_critical" {
+  count        = var.enable_alerts && var.gwi_worker_image != "" ? 1 : 0
+  display_name = "GWI Worker Queue Depth Critical (${var.environment})"
+  project      = var.project_id
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Queue depth > ${var.queue_depth_critical_threshold} messages"
+
+    condition_threshold {
+      filter = <<-EOT
+        resource.type = "pubsub_subscription"
+        AND resource.labels.subscription_id = "${var.gwi_worker_subscription}"
+        AND metric.type = "pubsub.googleapis.com/subscription/num_undelivered_messages"
+      EOT
+
+      comparison      = "COMPARISON_GT"
+      threshold_value = var.queue_depth_critical_threshold
+      duration        = "300s"  # 5 minutes sustained
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  notification_channels = local.all_notification_channels
+
+  user_labels = {
+    component   = "worker"
+    environment = var.environment
+    severity    = "critical"
+    phase       = "a6"
+  }
+
+  documentation {
+    content   = <<-EOT
+      ## Worker Queue Depth CRITICAL
+
+      The Pub/Sub worker queue has ${var.queue_depth_critical_threshold}+ undelivered messages.
+      This indicates severe processing backlog requiring immediate attention.
+
+      ### Immediate Actions
+      1. Check worker service health: `gcloud run services describe ${var.app_name}-worker-${var.environment} --region=${var.region}`
+      2. Scale workers manually if needed
+      3. Consider pausing new run submissions
+      4. Check for cascading failures
+
+      ### Commands
+      ```bash
+      # Check subscription stats
+      gcloud pubsub subscriptions describe ${var.gwi_worker_subscription} --format='value(numUndelivered)'
+
+      # Check oldest unacked message age
+      gcloud pubsub subscriptions describe ${var.gwi_worker_subscription} --format='value(ackDeadlineSeconds)'
+
+      # View worker logs
+      gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="${var.app_name}-worker-${var.environment}"' --limit=50
+      ```
+
+      ### Escalation
+      - If queue continues growing: Page on-call
+      - If worker is completely down: Restart service
+      - If systematic: Consider emergency tenant pausing
+    EOT
+    mime_type = "text/markdown"
+  }
+}
+
+# Oldest unacked message age alert (messages stuck for too long)
+resource "google_monitoring_alert_policy" "queue_age_warning" {
+  count        = var.enable_alerts && var.gwi_worker_image != "" ? 1 : 0
+  display_name = "GWI Worker Queue Age Warning (${var.environment})"
+  project      = var.project_id
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Oldest unacked message > 10 minutes"
+
+    condition_threshold {
+      filter = <<-EOT
+        resource.type = "pubsub_subscription"
+        AND resource.labels.subscription_id = "${var.gwi_worker_subscription}"
+        AND metric.type = "pubsub.googleapis.com/subscription/oldest_unacked_message_age"
+      EOT
+
+      comparison      = "COMPARISON_GT"
+      threshold_value = 600  # 10 minutes in seconds
+      duration        = "60s"
+
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MAX"
+      }
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  notification_channels = local.all_notification_channels
+
+  user_labels = {
+    component   = "worker"
+    environment = var.environment
+    severity    = "warning"
+    phase       = "a6"
+  }
+
+  documentation {
+    content   = <<-EOT
+      ## Worker Queue Message Age Warning
+
+      Messages have been sitting unprocessed for over 10 minutes.
+      This indicates worker is either stuck or not processing messages.
+
+      ### Investigation Steps
+      1. Check if worker pods are running
+      2. Look for stuck/long-running jobs
+      3. Check for deadlock or resource exhaustion
+      4. Verify Pub/Sub subscription is healthy
+
+      ### Commands
+      ```bash
+      # Check subscription pull rate
+      gcloud pubsub subscriptions describe ${var.gwi_worker_subscription}
+
+      # Check DLQ for failed messages
+      gcloud pubsub subscriptions pull ${var.gwi_worker_subscription}-dlq-sub --limit=10
+      ```
+    EOT
+    mime_type = "text/markdown"
+  }
+}
+
+# ============================================================================
 # Dashboard Outputs
 # ============================================================================
 
@@ -1357,4 +1603,13 @@ output "idempotency_dashboard_name" {
 output "idempotency_duplicate_metric" {
   description = "Log-based metric for duplicate detection"
   value       = var.enable_alerts ? google_logging_metric.idempotency_duplicates[0].name : "NOT_CONFIGURED"
+}
+
+output "queue_depth_alerts" {
+  description = "Queue depth alert policy names (A6)"
+  value = var.enable_alerts && var.gwi_worker_image != "" ? [
+    google_monitoring_alert_policy.queue_depth_warning[0].display_name,
+    google_monitoring_alert_policy.queue_depth_critical[0].display_name,
+    google_monitoring_alert_policy.queue_age_warning[0].display_name,
+  ] : []
 }

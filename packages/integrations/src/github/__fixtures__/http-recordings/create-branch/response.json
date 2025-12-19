@@ -1,0 +1,20 @@
+{
+  "status": 201,
+  "statusText": "Created",
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "location": "https://api.github.com/repos/test-owner/test-repo/git/refs/heads/feature/new-feature-123",
+    "x-ratelimit-limit": "5000",
+    "x-ratelimit-remaining": "4998"
+  },
+  "body": {
+    "ref": "refs/heads/feature/new-feature-123",
+    "node_id": "REF_kwDOAbc123",
+    "url": "https://api.github.com/repos/test-owner/test-repo/git/refs/heads/feature/new-feature-123",
+    "object": {
+      "sha": "abc123def456789012345678901234567890abcd",
+      "type": "commit",
+      "url": "https://api.github.com/repos/test-owner/test-repo/git/commits/abc123def456789012345678901234567890abcd"
+    }
+  }
+}

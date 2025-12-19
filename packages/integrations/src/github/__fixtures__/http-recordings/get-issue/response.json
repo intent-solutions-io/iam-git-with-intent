@@ -1,0 +1,42 @@
+{
+  "status": 200,
+  "statusText": "OK",
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "x-ratelimit-limit": "5000",
+    "x-ratelimit-remaining": "4999"
+  },
+  "body": {
+    "id": 123456789,
+    "number": 123,
+    "state": "open",
+    "title": "Add new feature X",
+    "body": "We need to implement feature X to improve user experience.\n\n## Requirements\n- Requirement 1\n- Requirement 2",
+    "user": {
+      "login": "test-user",
+      "id": 987654,
+      "type": "User"
+    },
+    "labels": [
+      {
+        "id": 111,
+        "name": "enhancement",
+        "color": "84b6eb"
+      },
+      {
+        "id": 222,
+        "name": "priority-high",
+        "color": "d93f0b"
+      }
+    ],
+    "assignees": [],
+    "milestone": null,
+    "locked": false,
+    "comments": 5,
+    "created_at": "2025-12-01T10:00:00Z",
+    "updated_at": "2025-12-15T14:30:00Z",
+    "closed_at": null,
+    "html_url": "https://github.com/test-owner/test-repo/issues/123",
+    "repository_url": "https://api.github.com/repos/test-owner/test-repo"
+  }
+}

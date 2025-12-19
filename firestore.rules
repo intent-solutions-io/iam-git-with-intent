@@ -94,6 +94,49 @@ service cloud.firestore {
         allow read: if hasTenantAccess(tenantId) || isServiceAccount();
         allow write: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
       }
+
+      // Phase 12: Connector configs - admins can manage
+      match /connector_configs/{connectorId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow write: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+      }
+
+      // Phase 13: Workflow instances - developers can read, admins can manage
+      match /instances/{instanceId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow create, update: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+        allow delete: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+      }
+
+      // Phase 13: Workflow schedules - admins can manage
+      match /schedules/{scheduleId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow write: if (isTenantAdmin(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+      }
+
+      // Phase 14: Signals - members can read, service accounts write
+      match /signals/{signalId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow write: if isServiceAccount();
+      }
+
+      // Phase 14: Work items - members can read, developers can update status
+      match /work_items/{workItemId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow create: if isServiceAccount();
+        // Developers can claim/assign work items
+        allow update: if (isDeveloper(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+        allow delete: if isServiceAccount();
+      }
+
+      // Phase 14: PR candidates - members can read, developers can approve
+      match /pr_candidates/{candidateId} {
+        allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+        allow create: if isServiceAccount();
+        // Developers can approve/reject candidates
+        allow update: if (isDeveloper(tenantId) && isTenantActive(tenantId)) || isServiceAccount();
+        allow delete: if isServiceAccount();
+      }
     }
 
     // =================================================================
@@ -185,14 +228,36 @@ service cloud.firestore {
     }
 
     // =================================================================
-    // Audit Logs Collection (Phase 11: Observability)
+    // Phase 11: Approvals Collection
+    // =================================================================
+
+    match /gwi_approvals/{approvalId} {
+      // Admins can read approvals for their tenant
+      allow read: if isTenantAdmin(resource.data.tenantId) || isServiceAccount();
+
+      // Only service accounts can write approvals
+      allow write: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Phase 11: Audit Events Collection (Immutable)
+    // =================================================================
+
+    match /gwi_audit_events/{eventId} {
+      // Admins can read audit events for their tenant
+      allow read: if isTenantAdmin(resource.data.tenantId) || isServiceAccount();
+
+      // Only service accounts can write (and never update/delete)
+      allow create: if isServiceAccount();
+      allow update, delete: if false;  // Immutable audit trail
+    }
+
+    // =================================================================
+    // Legacy: Audit Logs Collection (deprecated, use gwi_audit_events)
     // =================================================================
 
     match /gwi_audit_logs/{logId} {
-      // Admins can read audit logs for their tenant
       allow read: if isTenantAdmin(resource.data.tenantId) || isServiceAccount();
-
-      // Only service accounts can write audit logs
       allow write: if isServiceAccount();
     }
 
@@ -212,6 +277,56 @@ service cloud.firestore {
         allow read: if hasTenantAccess(tenantId) || isServiceAccount();
         allow write: if isServiceAccount();
       }
+    }
+
+    // =================================================================
+    // Phase 16: Reliability Infrastructure (Service Account Only)
+    // =================================================================
+
+    // Distributed run locks
+    match /gwi_run_locks/{lockId} {
+      allow read, write: if isServiceAccount();
+    }
+
+    // Idempotency records
+    match /gwi_idempotency/{idempotencyKey} {
+      allow read, write: if isServiceAccount();
+    }
+
+    // Run checkpoints
+    match /gwi_checkpoints/{checkpointId} {
+      allow read, write: if isServiceAccount();
+    }
+
+    // =================================================================
+    // Phase 22: Usage Metering Collections
+    // =================================================================
+
+    // Usage events (append-only ledger)
+    match /gwi_usage_events/{eventId} {
+      // Members can read their tenant's usage events
+      allow read: if hasTenantAccess(resource.data.tenantId) || isServiceAccount();
+      // Only service accounts can append
+      allow create: if isServiceAccount();
+      allow update, delete: if false;  // Append-only
+    }
+
+    // Daily usage aggregates
+    match /gwi_usage_daily/{aggregateId} {
+      allow read: if hasTenantAccess(resource.data.tenantId) || isServiceAccount();
+      allow write: if isServiceAccount();
+    }
+
+    // Monthly usage aggregates
+    match /gwi_usage_monthly/{aggregateId} {
+      allow read: if hasTenantAccess(resource.data.tenantId) || isServiceAccount();
+      allow write: if isServiceAccount();
+    }
+
+    // Usage snapshots (current state)
+    match /gwi_usage_snapshots/{tenantId} {
+      allow read: if hasTenantAccess(tenantId) || isServiceAccount();
+      allow write: if isServiceAccount();
     }
 
     // =================================================================

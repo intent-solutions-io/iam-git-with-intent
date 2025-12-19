@@ -1,0 +1,135 @@
+/**
+ * Run Status State Machine Tests
+ *
+ * Tests the state machine validation for RunStatus transitions.
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  RUN_STATUS_TRANSITIONS,
+  InvalidRunStatusTransitionError,
+  isValidRunStatusTransition,
+  validateRunStatusTransition,
+  isTerminalRunStatus,
+  isRunInProgress,
+  isRunFinished,
+} from '../run-status-machine.js';
+
+describe('Run Status State Machine', () => {
+  describe('RUN_STATUS_TRANSITIONS', () => {
+    it('should define transitions from pending', () => {
+      expect(RUN_STATUS_TRANSITIONS.pending).toEqual(['running', 'failed', 'cancelled']);
+    });
+
+    it('should define transitions from running', () => {
+      expect(RUN_STATUS_TRANSITIONS.running).toEqual(['completed', 'failed', 'cancelled']);
+    });
+
+    it('should have no transitions from terminal states', () => {
+      expect(RUN_STATUS_TRANSITIONS.completed).toEqual([]);
+      expect(RUN_STATUS_TRANSITIONS.failed).toEqual([]);
+      expect(RUN_STATUS_TRANSITIONS.cancelled).toEqual([]);
+    });
+  });
+
+  describe('isValidRunStatusTransition', () => {
+    it('should return true for valid transitions', () => {
+      expect(isValidRunStatusTransition('pending', 'running')).toBe(true);
+      expect(isValidRunStatusTransition('pending', 'failed')).toBe(true);
+      expect(isValidRunStatusTransition('pending', 'cancelled')).toBe(true);
+      expect(isValidRunStatusTransition('running', 'completed')).toBe(true);
+      expect(isValidRunStatusTransition('running', 'failed')).toBe(true);
+      expect(isValidRunStatusTransition('running', 'cancelled')).toBe(true);
+    });
+
+    it('should return false for invalid transitions', () => {
+      expect(isValidRunStatusTransition('pending', 'completed')).toBe(false);
+      expect(isValidRunStatusTransition('completed', 'running')).toBe(false);
+      expect(isValidRunStatusTransition('failed', 'pending')).toBe(false);
+      expect(isValidRunStatusTransition('cancelled', 'running')).toBe(false);
+    });
+
+    it('should return false for self-transitions', () => {
+      expect(isValidRunStatusTransition('pending', 'pending')).toBe(false);
+      expect(isValidRunStatusTransition('running', 'running')).toBe(false);
+      expect(isValidRunStatusTransition('completed', 'completed')).toBe(false);
+    });
+  });
+
+  describe('validateRunStatusTransition', () => {
+    it('should not throw for valid transitions', () => {
+      expect(() => validateRunStatusTransition('pending', 'running', 'test-run')).not.toThrow();
+      expect(() => validateRunStatusTransition('running', 'completed', 'test-run')).not.toThrow();
+      expect(() => validateRunStatusTransition('running', 'failed', 'test-run')).not.toThrow();
+    });
+
+    it('should throw InvalidRunStatusTransitionError for invalid transitions', () => {
+      expect(() => validateRunStatusTransition('pending', 'completed', 'test-run'))
+        .toThrow(InvalidRunStatusTransitionError);
+      expect(() => validateRunStatusTransition('completed', 'running', 'test-run'))
+        .toThrow(InvalidRunStatusTransitionError);
+    });
+
+    it('should include run ID in error message', () => {
+      try {
+        validateRunStatusTransition('pending', 'completed', 'my-test-run-123');
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidRunStatusTransitionError);
+        expect((error as InvalidRunStatusTransitionError).runId).toBe('my-test-run-123');
+        expect((error as InvalidRunStatusTransitionError).message).toContain('my-test-run-123');
+      }
+    });
+
+    it('should include valid transitions in error message', () => {
+      try {
+        validateRunStatusTransition('pending', 'completed', 'test-run');
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidRunStatusTransitionError);
+        expect((error as InvalidRunStatusTransitionError).message).toContain('running');
+        expect((error as InvalidRunStatusTransitionError).message).toContain('failed');
+        expect((error as InvalidRunStatusTransitionError).message).toContain('cancelled');
+      }
+    });
+  });
+
+  describe('isTerminalRunStatus', () => {
+    it('should return true for terminal states', () => {
+      expect(isTerminalRunStatus('completed')).toBe(true);
+      expect(isTerminalRunStatus('failed')).toBe(true);
+      expect(isTerminalRunStatus('cancelled')).toBe(true);
+    });
+
+    it('should return false for non-terminal states', () => {
+      expect(isTerminalRunStatus('pending')).toBe(false);
+      expect(isTerminalRunStatus('running')).toBe(false);
+    });
+  });
+
+  describe('isRunInProgress', () => {
+    it('should return true for in-progress states', () => {
+      expect(isRunInProgress('pending')).toBe(true);
+      expect(isRunInProgress('running')).toBe(true);
+    });
+
+    it('should return false for finished states', () => {
+      expect(isRunInProgress('completed')).toBe(false);
+      expect(isRunInProgress('failed')).toBe(false);
+      expect(isRunInProgress('cancelled')).toBe(false);
+    });
+  });
+
+  describe('isRunFinished', () => {
+    it('should return true for finished states', () => {
+      expect(isRunFinished('completed')).toBe(true);
+      expect(isRunFinished('failed')).toBe(true);
+      expect(isRunFinished('cancelled')).toBe(true);
+    });
+
+    it('should return false for in-progress states', () => {
+      expect(isRunFinished('pending')).toBe(false);
+      expect(isRunFinished('running')).toBe(false);
+    });
+  });
+});

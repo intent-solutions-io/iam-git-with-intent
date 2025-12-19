@@ -44,7 +44,13 @@ import {
   checkRunLimit,
   checkRepoLimit,
   checkMemberLimit,
+  checkConcurrencyLimit,
   type Role,
+  // A7: Telemetry
+  createContextFromRequest,
+  runWithContextAsync,
+  type TelemetryContext,
+  generateTraceId,
   type Action,
   type PlanId,
 } from '@gwi/core';
@@ -289,13 +295,30 @@ const metrics = {
 /**
  * Request logging middleware
  * Produces structured JSON logs for Cloud Logging
+ * Phase A7: Enhanced with trace ID correlation
  */
 app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
   const startTime = Date.now();
-  const requestId = `req-${startTime}-${Math.random().toString(36).slice(2, 8)}`;
 
-  // Add request ID to response headers
+  // A7: Extract or generate trace ID from W3C traceparent header
+  const traceparent = req.headers['traceparent'] as string | undefined;
+  let traceId: string;
+  if (traceparent) {
+    const parts = traceparent.split('-');
+    traceId = parts.length >= 2 && parts[1].length === 32 ? parts[1] : generateTraceId();
+  } else {
+    traceId = generateTraceId();
+  }
+
+  const requestId = req.headers['x-request-id'] as string
+    || `req-${startTime}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // Add trace headers to response
   res.setHeader('X-Request-ID', requestId);
+  res.setHeader('X-Trace-ID', traceId);
+
+  // Store trace context on request for downstream use
+  (req as Express.Request & { traceId?: string }).traceId = traceId;
 
   // Log request
   const logRequest = () => {
@@ -312,15 +335,23 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
       metrics.errorsTotal++;
     }
 
-    // Structured log for Cloud Logging
+    // A7: Structured log for Cloud Logging with trace correlation
+    const projectId = process.env.GCP_PROJECT_ID || process.env.GCLOUD_PROJECT;
     console.log(JSON.stringify({
       severity: res.statusCode >= 500 ? 'ERROR' : res.statusCode >= 400 ? 'WARNING' : 'INFO',
       type: 'http_request',
+      message: `${req.method} ${path} ${res.statusCode} ${duration}ms`,
+      // Cloud Logging trace correlation
+      ...(projectId && { 'logging.googleapis.com/trace': `projects/${projectId}/traces/${traceId}` }),
+      'logging.googleapis.com/spanId': requestId.slice(0, 16),
+      // Request fields
       requestId,
+      traceId,
       method: req.method,
       path,
       statusCode: res.statusCode,
       durationMs: duration,
+      // Context fields
       tenantId: req.context?.tenantId,
       userId: req.context?.userId,
       userAgent: req.headers['user-agent'],
@@ -1470,6 +1501,23 @@ app.post('/tenants/:tenantId/runs', rateLimitMiddleware('expensive'), authMiddle
 
     // Check if tenant is active
     if (tenant.status !== 'active') {
+      // Phase A6: Differentiate between paused (temporary) and suspended/deactivated
+      if (tenant.status === 'paused') {
+        console.log(JSON.stringify({
+          type: 'run_rejected',
+          reason: 'TENANT_PAUSED',
+          tenantId,
+          status: tenant.status,
+          durationMs: Date.now() - startTime,
+        }));
+        return res.status(503).json({
+          error: 'Tenant is temporarily paused',
+          status: tenant.status,
+          message: 'Run processing is temporarily suspended. Try again later.',
+          retryAfter: 60, // Suggest retry after 60 seconds
+        });
+      }
+
       console.log(JSON.stringify({
         type: 'run_rejected',
         reason: 'TENANT_SUSPENDED',
@@ -1505,6 +1553,30 @@ app.post('/tenants/:tenantId/runs', rateLimitMiddleware('expensive'), authMiddle
         limit: runLimitCheck.limit,
         plan: planId,
         upgradeUrl: '/billing/upgrade',
+      });
+    }
+
+    // Phase A6: Check concurrency limit
+    const inFlightRuns = await store.countInFlightRuns(tenantId);
+    const concurrencyCheck = checkConcurrencyLimit(inFlightRuns, planId);
+
+    if (!concurrencyCheck.allowed) {
+      console.log(JSON.stringify({
+        type: 'run_rejected',
+        reason: 'PLAN_LIMIT_CONCURRENCY',
+        tenantId,
+        plan: planId,
+        inFlightRuns,
+        limit: concurrencyCheck.limit,
+        durationMs: Date.now() - startTime,
+      }));
+      return res.status(429).json({
+        error: 'Concurrency limit exceeded',
+        reason: concurrencyCheck.reason,
+        currentUsage: concurrencyCheck.currentUsage,
+        limit: concurrencyCheck.limit,
+        plan: planId,
+        retryAfter: 30, // Suggest retry after 30 seconds
       });
     }
 
@@ -1886,6 +1958,114 @@ app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, re
     console.error('Failed to update settings:', error);
     res.status(500).json({
       error: 'Failed to update settings',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
+// Routes: Tenant Pause/Resume (Phase A6)
+// =============================================================================
+
+/**
+ * POST /tenants/:tenantId/pause - Pause tenant (ADMIN+)
+ *
+ * Phase A6: Emergency brake for overloaded tenants.
+ * Paused tenants return 503 for new runs until resumed.
+ */
+app.post('/tenants/:tenantId/pause', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { reason } = req.body as { reason?: string };
+
+  try {
+    const store = getStore();
+    const tenant = await store.getTenant(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    if (tenant.status === 'paused') {
+      return res.status(409).json({
+        error: 'Tenant is already paused',
+        status: tenant.status,
+      });
+    }
+
+    if (tenant.status !== 'active') {
+      return res.status(409).json({
+        error: 'Can only pause active tenants',
+        status: tenant.status,
+      });
+    }
+
+    const updated = await store.updateTenant(tenantId, {
+      status: 'paused',
+    });
+
+    console.log(JSON.stringify({
+      type: 'tenant_paused',
+      tenantId,
+      reason: reason || 'admin_action',
+      pausedBy: req.context?.userId,
+    }));
+
+    res.json({
+      success: true,
+      status: updated.status,
+      message: 'Tenant paused. New runs will be rejected until resumed.',
+    });
+  } catch (error) {
+    console.error('Failed to pause tenant:', error);
+    res.status(500).json({
+      error: 'Failed to pause tenant',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /tenants/:tenantId/resume - Resume paused tenant (ADMIN+)
+ *
+ * Phase A6: Resume a paused tenant to accept new runs.
+ */
+app.post('/tenants/:tenantId/resume', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const store = getStore();
+    const tenant = await store.getTenant(tenantId);
+
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    if (tenant.status !== 'paused') {
+      return res.status(409).json({
+        error: 'Tenant is not paused',
+        status: tenant.status,
+      });
+    }
+
+    const updated = await store.updateTenant(tenantId, {
+      status: 'active',
+    });
+
+    console.log(JSON.stringify({
+      type: 'tenant_resumed',
+      tenantId,
+      resumedBy: req.context?.userId,
+    }));
+
+    res.json({
+      success: true,
+      status: updated.status,
+      message: 'Tenant resumed. New runs will be accepted.',
+    });
+  } catch (error) {
+    console.error('Failed to resume tenant:', error);
+    res.status(500).json({
+      error: 'Failed to resume tenant',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -2619,6 +2799,178 @@ app.get('/tenants/:tenantId/billing/invoices', authMiddleware, tenantAuthMiddlew
     console.error('Failed to list invoices:', error);
     res.status(500).json({
       error: 'Failed to list invoices',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
+// Usage Metering Endpoints (A11)
+// =============================================================================
+
+/**
+ * GET /tenants/:tenantId/usage - Get current usage status
+ * Returns plan limits, current usage, and remaining capacity
+ */
+app.get('/tenants/:tenantId/usage', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const { getMeteringService, isMeteringEnabled, getTenantStore } = await import('@gwi/core');
+
+    if (!isMeteringEnabled()) {
+      return res.status(501).json({ error: 'Metering not enabled', code: 'METERING_DISABLED' });
+    }
+
+    const tenantStore = getTenantStore();
+    const tenant = await tenantStore.getTenant(tenantId);
+    const planId = (tenant?.plan || 'free') as string;
+
+    const meteringService = getMeteringService();
+    meteringService.setTenantPlan(tenantId, planId);
+
+    const status = await meteringService.getPlanUsageStatus(tenantId);
+
+    res.json({
+      plan: {
+        id: status.plan.id,
+        name: status.plan.name,
+        tier: status.plan.tier,
+      },
+      usage: {
+        tokens: {
+          used: status.plan.token_limit - status.tokens_remaining,
+          limit: status.plan.token_limit,
+          remaining: status.tokens_remaining,
+          percent: status.token_usage_percent,
+        },
+        runs: {
+          used: status.plan.run_limit - status.runs_remaining,
+          limit: status.plan.run_limit,
+          remaining: status.runs_remaining,
+          percent: status.run_usage_percent,
+        },
+      },
+      limits: {
+        softLimitReached: status.soft_limit_reached,
+        hardLimitReached: status.hard_limit_reached,
+      },
+      periodResetsAt: status.period_resets_at,
+    });
+  } catch (error) {
+    console.error('Failed to get usage:', error);
+    res.status(500).json({
+      error: 'Failed to get usage',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /tenants/:tenantId/usage/aggregate - Get detailed usage aggregate
+ * Returns breakdown by provider, model, and time period
+ */
+app.get('/tenants/:tenantId/usage/aggregate', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:read'), async (req, res) => {
+  const { tenantId } = req.params;
+  const { start, end } = req.query;
+
+  try {
+    const { getMeteringService, isMeteringEnabled, getTenantStore } = await import('@gwi/core');
+
+    if (!isMeteringEnabled()) {
+      return res.status(501).json({ error: 'Metering not enabled', code: 'METERING_DISABLED' });
+    }
+
+    const tenantStore = getTenantStore();
+    const tenant = await tenantStore.getTenant(tenantId);
+    const planId = (tenant?.plan || 'free') as string;
+
+    const meteringService = getMeteringService();
+    meteringService.setTenantPlan(tenantId, planId);
+
+    let aggregate;
+    if (start && end) {
+      aggregate = await meteringService.computeAggregate(
+        tenantId,
+        new Date(start as string),
+        new Date(end as string)
+      );
+    } else {
+      aggregate = await meteringService.getCurrentAggregate(tenantId);
+    }
+
+    res.json({
+      tenantId: aggregate.tenant_id,
+      period: {
+        start: aggregate.period_start,
+        end: aggregate.period_end,
+      },
+      summary: {
+        totalRuns: aggregate.total_runs,
+        totalLlmCalls: aggregate.total_llm_calls,
+        totalTokens: aggregate.total_tokens,
+        totalLatencyMs: aggregate.total_latency_ms,
+        totalCostUsd: aggregate.total_cost_usd,
+      },
+      byProvider: aggregate.by_provider,
+      byModel: aggregate.by_model,
+      updatedAt: aggregate.updated_at,
+    });
+  } catch (error) {
+    console.error('Failed to get usage aggregate:', error);
+    res.status(500).json({
+      error: 'Failed to get usage aggregate',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /tenants/:tenantId/usage/check - Check if tenant can proceed (budget guardrails)
+ * Returns whether the tenant is within limits
+ */
+app.get('/tenants/:tenantId/usage/check', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+  const { tenantId } = req.params;
+
+  try {
+    const { getMeteringService, isMeteringEnabled, getTenantStore } = await import('@gwi/core');
+
+    if (!isMeteringEnabled()) {
+      // When metering is disabled, always allow
+      return res.json({ allowed: true, reason: 'Metering disabled' });
+    }
+
+    const tenantStore = getTenantStore();
+    const tenant = await tenantStore.getTenant(tenantId);
+    const planId = (tenant?.plan || 'free') as string;
+
+    const meteringService = getMeteringService();
+    meteringService.setTenantPlan(tenantId, planId);
+
+    const result = await meteringService.checkLimits(tenantId);
+
+    res.json({
+      allowed: result.allowed,
+      reason: result.reason,
+      usage: {
+        tokens: {
+          percent: result.status.token_usage_percent,
+          remaining: result.status.tokens_remaining,
+        },
+        runs: {
+          percent: result.status.run_usage_percent,
+          remaining: result.status.runs_remaining,
+        },
+      },
+      limits: {
+        softLimitReached: result.status.soft_limit_reached,
+        hardLimitReached: result.status.hard_limit_reached,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to check limits:', error);
+    res.status(500).json({
+      error: 'Failed to check limits',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

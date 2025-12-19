@@ -375,6 +375,37 @@ export function checkMemberLimit(
   };
 }
 
+/**
+ * Check if a tenant can start a new run (concurrency limit)
+ * Phase A6: Concurrency caps
+ *
+ * @param inFlightRuns - Current number of pending + running runs
+ * @param planId - Tenant's plan ID
+ * @returns Whether the tenant can start another concurrent run
+ */
+export function checkConcurrencyLimit(
+  inFlightRuns: number,
+  planId: PlanId
+): PlanLimitCheck {
+  const config = getPlanConfig(planId);
+  const limit = config.limits.maxConcurrentRuns;
+
+  if (inFlightRuns >= limit) {
+    return {
+      allowed: false,
+      reason: `Concurrent run limit reached (${limit} concurrent runs on ${config.name} plan). Wait for existing runs to complete.`,
+      currentUsage: inFlightRuns,
+      limit,
+    };
+  }
+
+  return {
+    allowed: true,
+    currentUsage: inFlightRuns,
+    limit,
+  };
+}
+
 // =============================================================================
 // Tenant Membership
 // =============================================================================

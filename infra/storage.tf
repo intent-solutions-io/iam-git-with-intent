@@ -216,6 +216,130 @@ output "org_storage_bucket_name" {
 }
 
 # ==============================================================================
+# RUN ARTIFACTS BUCKET (A8: Artifact Model)
+# ==============================================================================
+# Multi-tenant artifact storage for run outputs, evidence bundles, and audit logs.
+#
+# Directory Layout (tenant-isolated):
+#   {tenantId}/{repoId}/{runId}/run.json        - Run context/metadata
+#   {tenantId}/{repoId}/{runId}/triage.json     - Triage analysis
+#   {tenantId}/{repoId}/{runId}/plan.json       - Execution plan
+#   {tenantId}/{repoId}/{runId}/patch.diff      - Generated code changes
+#   {tenantId}/{repoId}/{runId}/review.json     - Review output
+#   {tenantId}/{repoId}/{runId}/approval.json   - Approval record
+#   {tenantId}/{repoId}/{runId}/audit.log       - Audit trail (JSON Lines)
+#
+# Security:
+#   - Tenant isolation enforced at application layer (signed URLs)
+#   - No direct bucket access from UI
+#   - All access via Cloud Run services with proper IAM
+#
+# Retention:
+#   - Run artifacts: 90 days (configurable per plan)
+#   - Audit logs: 1 year (compliance)
+# ==============================================================================
+
+resource "google_storage_bucket" "run_artifacts" {
+  name          = "${var.project_id}-run-artifacts"
+  location      = var.region
+  project       = var.project_id
+  force_destroy = false # Protect run evidence
+
+  # Security: Block public access, enforce uniform IAM
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  # Lifecycle: Tiered retention based on artifact type
+  lifecycle_rule {
+    # Delete general run artifacts after 90 days
+    condition {
+      age                   = var.artifact_retention_days
+      matches_suffix        = [".json", ".diff", ".md"]
+      send_age_if_zero      = true
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  lifecycle_rule {
+    # Keep audit logs for 1 year (compliance)
+    condition {
+      age            = var.audit_log_retention_days
+      matches_suffix = [".log"]
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  lifecycle_rule {
+    # Move to Nearline after 30 days for cost optimization
+    condition {
+      age              = 30
+      matches_suffix   = [".json", ".diff", ".md"]
+      send_age_if_zero = true
+    }
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+  }
+
+  # Versioning: Track artifact history for audit
+  versioning {
+    enabled = true
+  }
+
+  # Soft delete for accidental deletion protection
+  soft_delete_policy {
+    retention_duration_seconds = 604800 # 7 days
+  }
+
+  # Labels for resource management
+  labels = merge(
+    var.labels,
+    {
+      component = "run-artifacts"
+      purpose   = "multi-tenant-evidence"
+      phase     = "a8-artifact-model"
+    }
+  )
+}
+
+# Grant Cloud Run services access to artifacts bucket
+resource "google_storage_bucket_iam_member" "run_artifacts_api" {
+  count  = var.gwi_api_image != "" ? 1 : 0
+  bucket = google_storage_bucket.run_artifacts.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.gwi_api[0].email}"
+}
+
+resource "google_storage_bucket_iam_member" "run_artifacts_gateway" {
+  bucket = google_storage_bucket.run_artifacts.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.a2a_gateway.email}"
+}
+
+resource "google_storage_bucket_iam_member" "run_artifacts_worker" {
+  count  = var.gwi_worker_image != "" ? 1 : 0
+  bucket = google_storage_bucket.run_artifacts.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.gwi_worker[0].email}"
+}
+
+# Output for application configuration
+output "run_artifacts_bucket_url" {
+  description = "GCS bucket URL for run artifacts"
+  value       = "gs://${google_storage_bucket.run_artifacts.name}"
+}
+
+output "run_artifacts_bucket_name" {
+  description = "GCS bucket name for run artifacts"
+  value       = google_storage_bucket.run_artifacts.name
+}
+
+# ==============================================================================
 # IMPORTANT NOTES FOR OPENTOFU APPLY:
 # ==============================================================================
 # 1. Do NOT run `tofu apply` from local; deployment is CI-controlled
