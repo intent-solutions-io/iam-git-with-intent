@@ -38,8 +38,12 @@ resolver_model         = "claude-sonnet-4-20250514"
 resolver_complex_model = "claude-opus-4-20250514"
 reviewer_model         = "claude-sonnet-4-20250514"
 
-# Networking (restricted in prod)
-allow_public_access = false
+# Networking
+# Public access required for:
+# - GitHub webhooks (GitHub can't authenticate to Cloud Run IAM)
+# - A2A Gateway (external agents need to call it)
+# - API health endpoints (actual ops protected by Firebase Auth)
+allow_public_access = true
 
 # Telemetry
 enable_telemetry = true
