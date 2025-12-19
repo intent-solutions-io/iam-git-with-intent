@@ -1042,12 +1042,18 @@ resource "google_logging_metric" "idempotency_cleanup" {
 
   metric_descriptor {
     metric_kind = "DELTA"
-    value_type  = "INT64"
+    value_type  = "DISTRIBUTION"
     unit        = "1"
   }
 
-  # Extract totalDeleted from log
+  # Extract totalDeleted from log (requires DISTRIBUTION type)
   value_extractor = "EXTRACT(jsonPayload.totalDeleted)"
+
+  bucket_options {
+    explicit_buckets {
+      bounds = [0, 10, 50, 100, 500, 1000, 5000, 10000]
+    }
+  }
 }
 
 # Dashboard for Idempotency Monitoring
