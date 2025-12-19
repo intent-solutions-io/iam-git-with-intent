@@ -15,8 +15,8 @@ COPY package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/github-webhook/package.json ./apps/github-webhook/
 
-# Install dependencies
-RUN npm ci --workspace=@gwi/core --workspace=@gwi/github-webhook
+# Install dependencies (--ignore-scripts skips husky prepare)
+RUN npm ci --workspace=@gwi/core --workspace=@gwi/github-webhook --ignore-scripts
 
 # Copy source files
 COPY packages/core ./packages/core

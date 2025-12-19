@@ -20,8 +20,8 @@ COPY packages/engine/package.json ./packages/engine/
 COPY packages/integrations/package.json ./packages/integrations/
 COPY apps/worker/package.json ./apps/worker/
 
-# Install dependencies for all required workspaces
-RUN npm ci --workspace=@gwi/core --workspace=@gwi/agents --workspace=@gwi/engine --workspace=@gwi/integrations --workspace=@gwi/worker
+# Install dependencies for all required workspaces (--ignore-scripts skips husky prepare)
+RUN npm ci --workspace=@gwi/core --workspace=@gwi/agents --workspace=@gwi/engine --workspace=@gwi/integrations --workspace=@gwi/worker --ignore-scripts
 
 # Copy source files
 COPY packages/core ./packages/core

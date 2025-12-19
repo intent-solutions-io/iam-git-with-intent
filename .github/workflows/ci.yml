@@ -136,8 +136,8 @@ jobs:
 
       - name: Build and push A2A Gateway
         run: |
-          docker build -f apps/gateway/Dockerfile \
-            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
+          cd apps/gateway
+          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
           docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} \
                      ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:latest

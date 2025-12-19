@@ -14,8 +14,8 @@ COPY package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY apps/api/package.json ./apps/api/
 
-# Install dependencies
-RUN npm ci --workspace=@gwi/core --workspace=@gwi/api
+# Install dependencies (--ignore-scripts skips husky prepare)
+RUN npm ci --workspace=@gwi/core --workspace=@gwi/api --ignore-scripts
 
 # Copy source files
 COPY packages/core ./packages/core
