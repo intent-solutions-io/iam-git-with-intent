@@ -1,0 +1,2 @@
+# A9.s4: Pre-commit secret detection
+bash scripts/check-secrets.sh

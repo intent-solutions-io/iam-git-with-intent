@@ -22,6 +22,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
+      - name: Secret Scanning (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify .env Files Are Gitignored
+        run: |
+          # Check that .env patterns exist in .gitignore
+          if ! grep -q "^\.env$" .gitignore; then
+            echo "::error::.env is not in .gitignore - plaintext secrets may leak!"
+            exit 1
+          fi
+          # Check for any tracked .env files
+          if git ls-files | grep -E "^\.env|\.env\."; then
+            echo "::error::Found tracked .env files - these should be gitignored!"
+            exit 1
+          fi
+          echo "✓ .env files properly gitignored"
 
       - name: Security & Architecture Checks
         run: |
