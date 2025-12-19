@@ -93,12 +93,12 @@ export {
 export * from './schemas/index.js';
 
 // Run Index
+// NOTE: AgentFS is INTERNAL DEV TOOLING ONLY - see CLAUDE.md "Golden Rule"
 export {
   RunIndexEntry,
   type RunIndexFilter,
   type RunIndexStore,
   LocalFsRunIndexStore,
-  AgentFsRunIndexStore,
   getRunIndexStore,
   contextToIndexEntry,
 } from './run-index.js';

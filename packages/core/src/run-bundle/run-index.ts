@@ -216,73 +216,11 @@ export class LocalFsRunIndexStore implements RunIndexStore {
 }
 
 // =============================================================================
-// AgentFS Run Index (Minimal Integration)
+// NOTE: AgentFS is INTERNAL DEV TOOLING ONLY
 // =============================================================================
-
-/**
- * AgentFS-backed run index
- *
- * Uses AgentFS CLI for metadata storage.
- * Falls back to LocalFsRunIndexStore if AgentFS is not available.
- */
-export class AgentFsRunIndexStore implements RunIndexStore {
-  private _agentId: string;
-  private fallback: LocalFsRunIndexStore;
-  private agentFsAvailable: boolean | null = null;
-
-  constructor(agentId: string = 'gwi', basePath: string = process.cwd()) {
-    this._agentId = agentId;
-    this.fallback = new LocalFsRunIndexStore(basePath);
-  }
-
-  get agentId(): string {
-    return this._agentId;
-  }
-
-  private async checkAgentFs(): Promise<boolean> {
-    if (this.agentFsAvailable !== null) {
-      return this.agentFsAvailable;
-    }
-
-    try {
-      // Check if agentfs CLI is available
-      const { execSync } = await import('child_process');
-      execSync('agentfs --help', { stdio: 'ignore' });
-      this.agentFsAvailable = true;
-    } catch {
-      this.agentFsAvailable = false;
-    }
-
-    return this.agentFsAvailable;
-  }
-
-  async putRun(runId: string, metadata: RunIndexEntry): Promise<void> {
-    const available = await this.checkAgentFs();
-    if (!available) {
-      return this.fallback.putRun(runId, metadata);
-    }
-
-    // For now, use fallback with AgentFS indexing as future enhancement
-    // AgentFS stores the run bundle itself; the index can be local
-    return this.fallback.putRun(runId, metadata);
-  }
-
-  async getRun(runId: string): Promise<RunIndexEntry | null> {
-    return this.fallback.getRun(runId);
-  }
-
-  async listRuns(filter?: RunIndexFilter): Promise<RunIndexEntry[]> {
-    return this.fallback.listRuns(filter);
-  }
-
-  async deleteRun(runId: string): Promise<void> {
-    return this.fallback.deleteRun(runId);
-  }
-
-  async syncFromBundles(basePath?: string): Promise<number> {
-    return this.fallback.syncFromBundles(basePath);
-  }
-}
+// AgentFS integration has been moved to internal/agentfs-tools/.
+// Production code MUST NOT depend on AgentFS. See CLAUDE.md "Golden Rule":
+// "Any user-visible code path MUST work without AgentFS or Beads."
 
 // =============================================================================
 // Factory Function
@@ -293,28 +231,16 @@ let defaultStore: RunIndexStore | null = null;
 /**
  * Get the configured run index store
  *
- * Uses environment variables:
- * - GWI_RUN_INDEX=local|agentfs (default: local)
- * - GWI_AGENTFS_ID=gwi (for agentfs backend)
+ * Uses local filesystem storage only.
+ * AgentFS is internal dev tooling and is NOT available as a runtime backend.
  */
 export function getRunIndexStore(basePath?: string): RunIndexStore {
   if (defaultStore && !basePath) {
     return defaultStore;
   }
 
-  const indexType = process.env.GWI_RUN_INDEX ?? 'local';
-  const agentId = process.env.GWI_AGENTFS_ID ?? 'gwi';
   const bp = basePath ?? process.cwd();
-
-  let store: RunIndexStore;
-  switch (indexType) {
-    case 'agentfs':
-      store = new AgentFsRunIndexStore(agentId, bp);
-      break;
-    case 'local':
-    default:
-      store = new LocalFsRunIndexStore(bp);
-  }
+  const store = new LocalFsRunIndexStore(bp);
 
   if (!basePath) {
     defaultStore = store;

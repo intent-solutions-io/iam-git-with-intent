@@ -12,7 +12,6 @@ import { tmpdir } from 'os';
 
 import {
   LocalFsRunIndexStore,
-  AgentFsRunIndexStore,
   getRunIndexStore,
   contextToIndexEntry,
   type RunIndexEntry,
@@ -220,62 +219,20 @@ describe('LocalFsRunIndexStore', () => {
 });
 
 // =============================================================================
-// AgentFsRunIndexStore Tests
+// NOTE: AgentFS is INTERNAL DEV TOOLING ONLY
 // =============================================================================
-
-describe('AgentFsRunIndexStore', () => {
-  it('should fall back to LocalFsRunIndexStore when AgentFS not available', async () => {
-    const store = new AgentFsRunIndexStore('gwi', testBaseDir);
-    const entry = createTestEntry();
-
-    await store.putRun(entry.runId, entry);
-    const retrieved = await store.getRun(entry.runId);
-
-    expect(retrieved).toEqual(entry);
-  });
-
-  it('should support all interface methods', async () => {
-    const store = new AgentFsRunIndexStore('gwi', testBaseDir);
-
-    const entry1 = createTestEntry();
-    const entry2 = createTestEntry();
-
-    await store.putRun(entry1.runId, entry1);
-    await store.putRun(entry2.runId, entry2);
-
-    const runs = await store.listRuns();
-    expect(runs.length).toBe(2);
-
-    await store.deleteRun(entry1.runId);
-    const remaining = await store.listRuns();
-    expect(remaining.length).toBe(1);
-  });
-});
+// AgentFsRunIndexStore has been removed from runtime code.
+// AgentFS integration is in internal/agentfs-tools/ for dev use only.
+// Production code MUST NOT depend on AgentFS.
 
 // =============================================================================
 // Factory Function Tests
 // =============================================================================
 
 describe('getRunIndexStore', () => {
-  it('should return LocalFsRunIndexStore by default', () => {
+  it('should return LocalFsRunIndexStore (only supported runtime backend)', () => {
     const store = getRunIndexStore(testBaseDir);
     expect(store).toBeInstanceOf(LocalFsRunIndexStore);
-  });
-
-  it('should return AgentFsRunIndexStore when configured', () => {
-    const originalEnv = process.env.GWI_RUN_INDEX;
-    process.env.GWI_RUN_INDEX = 'agentfs';
-
-    try {
-      const store = getRunIndexStore(testBaseDir);
-      expect(store).toBeInstanceOf(AgentFsRunIndexStore);
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.GWI_RUN_INDEX;
-      } else {
-        process.env.GWI_RUN_INDEX = originalEnv;
-      }
-    }
   });
 });
 

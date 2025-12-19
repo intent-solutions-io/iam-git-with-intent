@@ -130,12 +130,13 @@ apps/gateway, apps/github-webhook → @gwi/core
 
 > **Golden Rule**: Any user-visible code path MUST work without AgentFS or Beads.
 
-### AgentFS + Beads: REQUIRED for Development
+### AgentFS + Beads: INTERNAL DEV TOOLS ONLY
 
-**These tools are non-negotiable for internal development work:**
+**These tools are for internal development only and are NOT required:**
 
-- **AgentFS**: All agent state and artifacts. Uses FUSE mount on Linux.
-- **Beads**: All task tracking. **No markdown TODOs**—use Beads; reference bead IDs in PRs/commits.
+- **AgentFS**: Optional dev tool for agent state inspection. Uses FUSE mount on Linux.
+- **Beads**: Optional task tracking tool. Reference bead IDs in PRs/commits when available.
+- **IMPORTANT**: Production code MUST NOT depend on AgentFS or Beads. They are internal dev tools only.
 - **Reference**: See `bobs-brain` repo for canonical Agent Engine deployment + ARV + drift control.
 
 #### Session Boot: AgentFS FUSE (Linux)
