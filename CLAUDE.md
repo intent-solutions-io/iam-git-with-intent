@@ -4,34 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## BEADS BACKLOG (452 OPEN TASKS)
-
-**This project uses [beads](https://github.com/Dicklesworthstone/beads_viewer) for task tracking.**
-
-```bash
-bd list --status open          # View all open tasks
-bd list --status open | wc -l  # Count remaining tasks
-bd close <id> -r "reason"      # Close completed tasks with evidence
-```
-
-### Current Backlog by Epic
-
-| Epic | Tasks | Assignee | Focus Area |
-|------|-------|----------|------------|
-| A (A1-A12) | 74 | @backend, @security | Security hardening, auth, limits |
-| B (B1-B10) | 60 | @backend | Core platform features |
-| C (C1-C10) | 61 | @connectors | GitHub/GitLab integrations |
-| D (D1-D8) | 48 | @security | Policy engine, audit |
-| E (E1-E7) | 52 | @orchestrator | Agent orchestration |
-| F (F1-F9) | 54 | @orchestrator | Run execution |
-| G (G1-G6) | 36 | @frontend | Web UI |
-| H (H1-H7) | 44 | @infra | Infrastructure, DR |
-| I (I1-I6) | 36 | @ai | AI/ML features |
-
-**After completing work, ALWAYS close the corresponding beads with evidence.**
-
----
-
 ## SESSION BOOT (MANDATORY)
 
 **You MUST start by invoking the foreman subagent to route the task.**
