@@ -114,6 +114,9 @@ vi.mock('@gwi/engine', () => ({
     }),
     cancelRun: vi.fn().mockResolvedValue(undefined),
   })),
+  // Mock idempotency middleware as passthrough
+  idempotencyMiddleware: vi.fn(() => (_req: unknown, _res: unknown, next: () => void) => next()),
+  requireIdempotency: vi.fn(() => (_req: unknown, _res: unknown, next: () => void) => next()),
 }));
 
 describe('API Integration Tests', () => {

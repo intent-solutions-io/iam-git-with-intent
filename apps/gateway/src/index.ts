@@ -33,7 +33,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { z } from 'zod';
-import { createEngine } from '@gwi/engine';
+import { createEngine, idempotencyMiddleware, getIdempotencyMetrics } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 import { getTenantStore } from '@gwi/core';
 import { marketplaceRouter } from './marketplace-routes.js';
@@ -155,6 +155,42 @@ app.get('/health', (_req, res) => {
 });
 
 /**
+ * GET /metrics - Idempotency and gateway metrics
+ */
+app.get('/metrics', (_req, res) => {
+  const idempotencyMetrics = getIdempotencyMetrics().getMetrics();
+  const duplicateRate = idempotencyMetrics.checksTotal > 0
+    ? (idempotencyMetrics.duplicatesSkipped / idempotencyMetrics.checksTotal * 100).toFixed(2)
+    : '0.00';
+
+  res.json({
+    app: config.appName,
+    version: config.appVersion,
+    env: config.env,
+    idempotency: {
+      checksTotal: idempotencyMetrics.checksTotal,
+      newRequests: idempotencyMetrics.newRequests,
+      duplicatesSkipped: idempotencyMetrics.duplicatesSkipped,
+      duplicateRate: `${duplicateRate}%`,
+      processingConflicts: idempotencyMetrics.processingConflicts,
+      completedTotal: idempotencyMetrics.completedTotal,
+      failedTotal: idempotencyMetrics.failedTotal,
+      bySource: idempotencyMetrics.bySource,
+    },
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/**
+ * GET /metrics/prometheus - Prometheus-format metrics
+ */
+app.get('/metrics/prometheus', (_req, res) => {
+  const collector = getIdempotencyMetrics();
+  res.set('Content-Type', 'text/plain; charset=utf-8');
+  res.send(collector.toPrometheusFormat());
+});
+
+/**
  * Agent card discovery endpoint (A2A protocol)
  */
 app.get('/.well-known/agent.json', (_req, res) => {
@@ -197,8 +233,13 @@ app.get('/.well-known/agent.json', (_req, res) => {
  * In production, routes to Vertex AI Agent Engine.
  *
  * Phase 11: Verifies tenant exists and is active before processing.
+ * A5: Added idempotency middleware for duplicate request prevention.
  */
-app.post('/a2a/foreman', async (req, res) => {
+app.post('/a2a/foreman', idempotencyMiddleware({
+  // Idempotency key is optional for this endpoint but recommended
+  required: false,
+  getTenantId: (req) => (req.body as { tenantId?: string }).tenantId || 'default',
+}), async (req, res) => {
   const startTime = Date.now();
 
   try {
@@ -383,8 +424,13 @@ app.post('/a2a/:agent', async (req, res) => {
 
 /**
  * Workflow endpoint - start a new workflow via orchestrator
+ *
+ * A5: Added idempotency middleware for duplicate request prevention.
  */
-app.post('/api/workflows', async (req, res) => {
+app.post('/api/workflows', idempotencyMiddleware({
+  required: false,
+  getTenantId: (req) => (req.body as { input?: { tenantId?: string } }).input?.tenantId || 'default',
+}), async (req, res) => {
   const startTime = Date.now();
 
   try {

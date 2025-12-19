@@ -6,6 +6,7 @@
  *
  * - Hook system for agent lifecycle events
  * - Run management (start, query, cancel)
+ * - Step execution contract (typed envelopes)
  * - Configuration management
  * - Agent orchestration (future phases)
  *
@@ -17,3 +18,9 @@ export * from './hooks/index.js';
 
 // Re-export run module
 export * from './run/index.js';
+
+// Re-export step contract module (A3: Agent abstraction layer)
+export * from './step-contract/index.js';
+
+// Re-export idempotency module (A4: Idempotency layer)
+export * from './idempotency/index.js';

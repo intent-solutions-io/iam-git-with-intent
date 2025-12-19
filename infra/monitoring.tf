@@ -958,3 +958,397 @@ output "budget_pubsub_topic" {
   description = "Pub/Sub topic for budget alerts"
   value       = var.enable_budget_alerts ? google_pubsub_topic.budget_alerts[0].id : "NOT_CONFIGURED"
 }
+
+# ============================================================================
+# Idempotency Metrics Dashboard
+# ============================================================================
+
+# Log-based metric for duplicate requests
+resource "google_logging_metric" "idempotency_duplicates" {
+  count       = var.enable_alerts ? 1 : 0
+  name        = "gwi-idempotency-duplicates-${var.environment}"
+  project     = var.project_id
+  description = "Count of duplicate requests detected by idempotency layer"
+
+  filter = <<-EOT
+    resource.type="cloud_run_revision"
+    resource.labels.service_name=~"${var.app_name}-(api|gateway|worker)-${var.environment}"
+    jsonPayload.type="webhook_duplicate_skipped" OR
+    jsonPayload.type="idempotency_duplicate" OR
+    textPayload=~"duplicate.*skipped"
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "service"
+      value_type  = "STRING"
+      description = "Service that detected the duplicate"
+    }
+  }
+
+  label_extractors = {
+    "service" = "EXTRACT(resource.labels.service_name)"
+  }
+}
+
+# Log-based metric for idempotency checks
+resource "google_logging_metric" "idempotency_checks" {
+  count       = var.enable_alerts ? 1 : 0
+  name        = "gwi-idempotency-checks-${var.environment}"
+  project     = var.project_id
+  description = "Count of idempotency checks performed"
+
+  filter = <<-EOT
+    resource.type="cloud_run_revision"
+    resource.labels.service_name=~"${var.app_name}-(api|gateway|worker)-${var.environment}"
+    (jsonPayload.type="webhook_processed" OR
+     jsonPayload.type="webhook_duplicate_skipped" OR
+     jsonPayload.type="idempotency_check")
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "status"
+      value_type  = "STRING"
+      description = "Check result (new, duplicate, processing)"
+    }
+  }
+
+  label_extractors = {
+    "status" = "EXTRACT(jsonPayload.status)"
+  }
+}
+
+# Log-based metric for TTL cleanup
+resource "google_logging_metric" "idempotency_cleanup" {
+  count       = var.enable_alerts ? 1 : 0
+  name        = "gwi-idempotency-cleanup-${var.environment}"
+  project     = var.project_id
+  description = "Records cleaned up by idempotency TTL job"
+
+  filter = <<-EOT
+    resource.type="cloud_run_revision"
+    resource.labels.service_name="${var.app_name}-worker-${var.environment}"
+    jsonPayload.message=~"Idempotency cleanup completed"
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+
+  # Extract totalDeleted from log
+  value_extractor = "EXTRACT(jsonPayload.totalDeleted)"
+}
+
+# Dashboard for Idempotency Monitoring
+resource "google_monitoring_dashboard" "idempotency" {
+  count          = var.enable_alerts ? 1 : 0
+  dashboard_json = jsonencode({
+    displayName = "GWI Idempotency Dashboard (${var.environment})"
+    mosaicLayout = {
+      columns = 12
+      tiles = [
+        # Row 1: Overview metrics
+        {
+          xPos   = 0
+          yPos   = 0
+          width  = 4
+          height = 4
+          widget = {
+            title = "Duplicate Rate"
+            scorecard = {
+              timeSeriesQuery = {
+                timeSeriesFilter = {
+                  filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-duplicates-${var.environment}\" resource.type=\"cloud_run_revision\""
+                  aggregation = {
+                    alignmentPeriod  = "3600s"
+                    perSeriesAligner = "ALIGN_RATE"
+                  }
+                }
+              }
+              thresholds = [
+                {
+                  value     = 0.1
+                  color     = "YELLOW"
+                  direction = "ABOVE"
+                },
+                {
+                  value     = 0.5
+                  color     = "RED"
+                  direction = "ABOVE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          xPos   = 4
+          yPos   = 0
+          width  = 4
+          height = 4
+          widget = {
+            title = "Idempotency Checks (Last Hour)"
+            scorecard = {
+              timeSeriesQuery = {
+                timeSeriesFilter = {
+                  filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-checks-${var.environment}\" resource.type=\"cloud_run_revision\""
+                  aggregation = {
+                    alignmentPeriod  = "3600s"
+                    perSeriesAligner = "ALIGN_SUM"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          xPos   = 8
+          yPos   = 0
+          width  = 4
+          height = 4
+          widget = {
+            title = "Records Cleaned (Last Day)"
+            scorecard = {
+              timeSeriesQuery = {
+                timeSeriesFilter = {
+                  filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-cleanup-${var.environment}\" resource.type=\"cloud_run_revision\""
+                  aggregation = {
+                    alignmentPeriod  = "86400s"
+                    perSeriesAligner = "ALIGN_SUM"
+                  }
+                }
+              }
+            }
+          }
+        },
+        # Row 2: Time series charts
+        {
+          xPos   = 0
+          yPos   = 4
+          width  = 6
+          height = 6
+          widget = {
+            title = "Duplicates Over Time"
+            xyChart = {
+              dataSets = [
+                {
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-duplicates-${var.environment}\" resource.type=\"cloud_run_revision\""
+                      aggregation = {
+                        alignmentPeriod    = "300s"
+                        perSeriesAligner   = "ALIGN_SUM"
+                        crossSeriesReducer = "REDUCE_SUM"
+                        groupByFields      = ["resource.label.service_name"]
+                      }
+                    }
+                  }
+                  plotType = "LINE"
+                }
+              ]
+              yAxis = {
+                label = "Duplicates"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        {
+          xPos   = 6
+          yPos   = 4
+          width  = 6
+          height = 6
+          widget = {
+            title = "Idempotency Checks Over Time"
+            xyChart = {
+              dataSets = [
+                {
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-checks-${var.environment}\" resource.type=\"cloud_run_revision\""
+                      aggregation = {
+                        alignmentPeriod    = "300s"
+                        perSeriesAligner   = "ALIGN_SUM"
+                        crossSeriesReducer = "REDUCE_SUM"
+                        groupByFields      = ["resource.label.service_name"]
+                      }
+                    }
+                  }
+                  plotType = "STACKED_AREA"
+                }
+              ]
+              yAxis = {
+                label = "Checks"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        # Row 3: Service breakdown
+        {
+          xPos   = 0
+          yPos   = 10
+          width  = 12
+          height = 6
+          widget = {
+            title = "Duplicates by Service"
+            xyChart = {
+              dataSets = [
+                {
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-duplicates-${var.environment}\" resource.type=\"cloud_run_revision\""
+                      aggregation = {
+                        alignmentPeriod    = "3600s"
+                        perSeriesAligner   = "ALIGN_SUM"
+                        crossSeriesReducer = "REDUCE_SUM"
+                        groupByFields      = ["metric.label.service"]
+                      }
+                    }
+                  }
+                  plotType = "STACKED_BAR"
+                }
+              ]
+              yAxis = {
+                label = "Duplicates"
+                scale = "LINEAR"
+              }
+            }
+          }
+        },
+        # Row 4: TTL Cleanup
+        {
+          xPos   = 0
+          yPos   = 16
+          width  = 12
+          height = 4
+          widget = {
+            title = "TTL Cleanup History"
+            xyChart = {
+              dataSets = [
+                {
+                  timeSeriesQuery = {
+                    timeSeriesFilter = {
+                      filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-cleanup-${var.environment}\" resource.type=\"cloud_run_revision\""
+                      aggregation = {
+                        alignmentPeriod  = "3600s"
+                        perSeriesAligner = "ALIGN_SUM"
+                      }
+                    }
+                  }
+                  plotType = "LINE"
+                }
+              ]
+              yAxis = {
+                label = "Records Deleted"
+                scale = "LINEAR"
+              }
+            }
+          }
+        }
+      ]
+    }
+  })
+
+  project = var.project_id
+
+  depends_on = [
+    google_logging_metric.idempotency_duplicates,
+    google_logging_metric.idempotency_checks,
+    google_logging_metric.idempotency_cleanup,
+  ]
+}
+
+# Alert for high duplicate rate
+resource "google_monitoring_alert_policy" "high_duplicate_rate" {
+  count        = var.enable_alerts ? 1 : 0
+  display_name = "GWI High Duplicate Rate (${var.environment})"
+  project      = var.project_id
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Duplicate Rate > 50%"
+
+    condition_threshold {
+      filter = "metric.type=\"logging.googleapis.com/user/gwi-idempotency-duplicates-${var.environment}\" resource.type=\"cloud_run_revision\""
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0.5
+      duration        = "300s"
+
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  notification_channels = local.all_notification_channels
+
+  alert_strategy {
+    auto_close = "604800s" # 7 days
+  }
+
+  user_labels = {
+    environment = var.environment
+    app         = var.app_name
+    component   = "idempotency"
+  }
+
+  documentation {
+    content   = <<-EOT
+      ## High Duplicate Rate Alert
+
+      The idempotency layer is detecting a high rate of duplicate requests.
+
+      ### Possible Causes
+      - Client retries due to timeouts or network issues
+      - Webhook redeliveries from GitHub or other sources
+      - Misconfigured client applications sending duplicate requests
+
+      ### Investigation Steps
+      1. Check Cloud Run logs for duplicate patterns
+      2. Review client application retry logic
+      3. Verify network stability between client and service
+      4. Check if webhook sources are redelivering events
+
+      ### Resolution
+      - This is informational; duplicates are being correctly handled
+      - If rate is very high, investigate client configuration
+      - Review TTL settings if records are expiring too quickly
+    EOT
+    mime_type = "text/markdown"
+  }
+
+  depends_on = [
+    google_logging_metric.idempotency_duplicates,
+  ]
+}
+
+# ============================================================================
+# Dashboard Outputs
+# ============================================================================
+
+output "idempotency_dashboard_name" {
+  description = "Idempotency monitoring dashboard name"
+  value       = var.enable_alerts ? google_monitoring_dashboard.idempotency[0].id : "NOT_CONFIGURED"
+}
+
+output "idempotency_duplicate_metric" {
+  description = "Log-based metric for duplicate detection"
+  value       = var.enable_alerts ? google_logging_metric.idempotency_duplicates[0].name : "NOT_CONFIGURED"
+}

@@ -22,6 +22,7 @@ resource "google_project_service" "required_apis" {
     "iam.googleapis.com",                  # IAM
     "cloudresourcemanager.googleapis.com", # Resource Manager
     "artifactregistry.googleapis.com",     # Artifact Registry
+    "cloudscheduler.googleapis.com",       # Cloud Scheduler (scheduled tasks)
   ])
 
   project            = var.project_id

@@ -22,6 +22,7 @@ import {
   getFirestoreCheckpointManager,
   getLogger,
 } from '@gwi/core';
+import { getIdempotencyService } from '@gwi/engine';
 import { WorkerProcessor, type WorkerJob, type JobResult } from './processor.js';
 import { createMessageBroker, type MessageBroker, type BrokerMessage } from './pubsub.js';
 import { registerHandlers } from './handlers/index.js';
@@ -232,6 +233,84 @@ app.post('/process', async (req, res) => {
 
   const result = await processor.processJob(brokerMessage);
   return res.json(result);
+});
+
+// =============================================================================
+// Scheduled Task Endpoints (for Cloud Scheduler)
+// =============================================================================
+
+/**
+ * POST /tasks/cleanup-idempotency - Clean up expired idempotency records
+ *
+ * Called by Cloud Scheduler to remove expired idempotency records from Firestore.
+ * Runs every hour to keep the collection size manageable.
+ *
+ * Security: Should be protected by Cloud Scheduler OIDC token validation.
+ */
+app.post('/tasks/cleanup-idempotency', async (req, res) => {
+  const startTime = Date.now();
+
+  try {
+    // Validate Cloud Scheduler request (optional - for extra security)
+    const userAgent = req.headers['user-agent'];
+    const isCloudScheduler = userAgent?.includes('Google-Cloud-Scheduler');
+    const isLocalDev = config.env === 'dev' || config.env === 'local';
+
+    if (!isCloudScheduler && !isLocalDev) {
+      logger.warn('Cleanup endpoint called from non-scheduler source', {
+        userAgent,
+        env: config.env,
+      });
+      // Still allow the request but log it
+    }
+
+    // Run cleanup in batches
+    const idempotencyService = getIdempotencyService();
+    let totalDeleted = 0;
+    let batchCount = 0;
+    const maxBatches = 20; // Limit to prevent runaway cleanup
+
+    // Run multiple batches until no more expired records
+    while (batchCount < maxBatches) {
+      const deleted = await idempotencyService.cleanup();
+      totalDeleted += deleted;
+      batchCount++;
+
+      if (deleted < 500) {
+        // Last batch was less than full, we're done
+        break;
+      }
+    }
+
+    const durationMs = Date.now() - startTime;
+
+    logger.info('Idempotency cleanup completed', {
+      totalDeleted,
+      batchCount,
+      durationMs,
+    });
+
+    return res.json({
+      status: 'completed',
+      totalDeleted,
+      batchCount,
+      durationMs,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    const durationMs = Date.now() - startTime;
+
+    logger.error('Idempotency cleanup failed', {
+      error: error instanceof Error ? error.message : String(error),
+      durationMs,
+    });
+
+    return res.status(500).json({
+      status: 'failed',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      durationMs,
+    });
+  }
 });
 
 // =============================================================================

@@ -26,7 +26,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { z } from 'zod';
-import { createEngine } from '@gwi/engine';
+import { createEngine, idempotencyMiddleware, requireIdempotency, getIdempotencyMetrics } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 import {
   getTenantStore,
@@ -622,6 +622,12 @@ app.get('/metrics', (_req, res) => {
     requestsByStatus[status.toString()] = count;
   });
 
+  // Get idempotency metrics
+  const idempotencyMetrics = getIdempotencyMetrics().getMetrics();
+  const duplicateRate = idempotencyMetrics.checksTotal > 0
+    ? (idempotencyMetrics.duplicatesSkipped / idempotencyMetrics.checksTotal * 100).toFixed(2)
+    : '0.00';
+
   res.json({
     app: config.appName,
     version: config.appVersion,
@@ -643,8 +649,52 @@ app.get('/metrics', (_req, res) => {
       avgMs: Math.round(avgLatency),
       totalMs: metrics.latencySum,
     },
+    idempotency: {
+      checksTotal: idempotencyMetrics.checksTotal,
+      newRequests: idempotencyMetrics.newRequests,
+      duplicatesSkipped: idempotencyMetrics.duplicatesSkipped,
+      duplicateRate: `${duplicateRate}%`,
+      processingConflicts: idempotencyMetrics.processingConflicts,
+      lockRecoveries: idempotencyMetrics.lockRecoveries,
+      completedTotal: idempotencyMetrics.completedTotal,
+      failedTotal: idempotencyMetrics.failedTotal,
+      ttlCleanups: idempotencyMetrics.ttlCleanups,
+      bySource: idempotencyMetrics.bySource,
+    },
     timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * GET /metrics/prometheus - Prometheus-format metrics
+ *
+ * Returns metrics in Prometheus text format for scraping.
+ */
+app.get('/metrics/prometheus', (_req, res) => {
+  const idempotencyCollector = getIdempotencyMetrics();
+
+  // Add app-level metrics
+  const lines: string[] = [];
+  const labels = `app="${config.appName}",env="${config.env}"`;
+
+  // Request metrics
+  lines.push(`# HELP gwi_requests_total Total HTTP requests`);
+  lines.push(`# TYPE gwi_requests_total counter`);
+  lines.push(`gwi_requests_total{${labels}} ${metrics.requestsTotal}`);
+
+  lines.push(`# HELP gwi_errors_total Total HTTP errors`);
+  lines.push(`# TYPE gwi_errors_total counter`);
+  lines.push(`gwi_errors_total{${labels}} ${metrics.errorsTotal}`);
+
+  lines.push(`# HELP gwi_latency_sum_ms Total latency in milliseconds`);
+  lines.push(`# TYPE gwi_latency_sum_ms counter`);
+  lines.push(`gwi_latency_sum_ms{${labels}} ${metrics.latencySum}`);
+
+  // Idempotency metrics
+  lines.push(idempotencyCollector.toPrometheusFormat());
+
+  res.set('Content-Type', 'text/plain; charset=utf-8');
+  res.send(lines.join('\n'));
 });
 
 // =============================================================================
@@ -806,7 +856,9 @@ app.get('/github/install', (_req, res) => {
  * Phase 12: Self-serve tenant creation
  * Creates a tenant and assigns the current user as owner.
  */
-app.post('/tenants', authMiddleware, async (req, res) => {
+app.post('/tenants', authMiddleware, idempotencyMiddleware({
+  getTenantId: (req) => req.context?.userId || 'default',
+}), async (req, res) => {
   const parseResult = CreateTenantSchema.safeParse(req.body);
   if (!parseResult.success) {
     return res.status(400).json({
@@ -963,7 +1015,9 @@ app.get('/tenants/:tenantId', authMiddleware, tenantAuthMiddleware, requirePermi
  *
  * Phase 12: Self-serve member invitations
  */
-app.post('/tenants/:tenantId/invites', authMiddleware, tenantAuthMiddleware, requirePermission('member:invite'), async (req, res) => {
+app.post('/tenants/:tenantId/invites', authMiddleware, tenantAuthMiddleware, requirePermission('member:invite'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
 
   const parseResult = InviteMemberSchema.safeParse(req.body);
@@ -1256,7 +1310,9 @@ app.get('/tenants/:tenantId/repos', authMiddleware, tenantAuthMiddleware, requir
  *
  * Phase 11: Checks repo limit before connecting.
  */
-app.post('/tenants/:tenantId/repos:connect', authMiddleware, tenantAuthMiddleware, requirePermission('repo:connect'), async (req, res) => {
+app.post('/tenants/:tenantId/repos:connect', authMiddleware, tenantAuthMiddleware, requirePermission('repo:connect'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
 
   const parseResult = ConnectRepoSchema.safeParse(req.body);
@@ -1383,7 +1439,9 @@ app.get('/tenants/:tenantId/runs', authMiddleware, tenantAuthMiddleware, require
  * This is the main entrypoint for starting agent workflows.
  * Phase 11: Plan limits are checked before creating the run.
  */
-app.post('/tenants/:tenantId/runs', rateLimitMiddleware('expensive'), authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/tenants/:tenantId/runs', rateLimitMiddleware('expensive'), authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
   const startTime = Date.now();
 
@@ -1545,7 +1603,9 @@ const RejectRunSchema = z.object({
  * Phase 11: Creates an ApprovalRecord and updates run status.
  * Only works for runs with approvalStatus='pending'.
  */
-app.post('/tenants/:tenantId/runs/:runId/approve', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+app.post('/tenants/:tenantId/runs/:runId/approve', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId, runId } = req.params;
 
   const parseResult = ApproveRunSchema.safeParse(req.body);
@@ -1637,7 +1697,9 @@ app.post('/tenants/:tenantId/runs/:runId/approve', authMiddleware, tenantAuthMid
  *
  * Phase 11: Creates an ApprovalRecord with rejection and fails the run.
  */
-app.post('/tenants/:tenantId/runs/:runId/reject', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+app.post('/tenants/:tenantId/runs/:runId/reject', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId, runId } = req.params;
 
   const parseResult = RejectRunSchema.safeParse(req.body);
@@ -1783,7 +1845,9 @@ app.get('/tenants/:tenantId/runs/:runId/audit', authMiddleware, tenantAuthMiddle
 /**
  * POST /tenants/:tenantId/settings - Update tenant settings (ADMIN+)
  */
-app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+app.post('/tenants/:tenantId/settings', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
 
   const parseResult = UpdateSettingsSchema.safeParse(req.body);
@@ -2210,7 +2274,9 @@ const StartWorkflowSchema = z.object({
  *
  * Phase 13: Direct workflow execution endpoint
  */
-app.post('/tenants/:tenantId/workflows', rateLimitMiddleware('expensive'), authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/tenants/:tenantId/workflows', rateLimitMiddleware('expensive'), authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
   const startTime = Date.now();
 
@@ -2370,7 +2436,9 @@ app.get('/tenants/:tenantId/workflows/:workflowId', authMiddleware, tenantAuthMi
  *
  * Phase 13: For workflows waiting for human approval
  */
-app.post('/tenants/:tenantId/workflows/:workflowId/approve', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), async (req, res) => {
+app.post('/tenants/:tenantId/workflows/:workflowId/approve', authMiddleware, tenantAuthMiddleware, requirePermission('settings:update'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { workflowId } = req.params;
   const { approved } = req.body as { approved?: boolean };
 
@@ -2740,7 +2808,9 @@ const CreateInstanceSchema = z.object({
 /**
  * POST /v1/tenants/:tenantId/instances - Create a workflow instance
  */
-app.post('/v1/tenants/:tenantId/instances', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:update'), async (req, res) => {
+app.post('/v1/tenants/:tenantId/instances', authMiddleware, tenantAuthMiddleware, requirePermission('tenant:update'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
 
   const parseResult = CreateInstanceSchema.safeParse(req.body);
@@ -2870,7 +2940,9 @@ app.get('/v1/instances/:instanceId', authMiddleware, async (req, res) => {
 /**
  * POST /v1/instances/:instanceId/run - Trigger a workflow run
  */
-app.post('/v1/instances/:instanceId/run', authMiddleware, async (req, res) => {
+app.post('/v1/instances/:instanceId/run', authMiddleware, idempotencyMiddleware({
+  getTenantId: (req) => req.params.instanceId,
+}), async (req, res) => {
   const { instanceId } = req.params;
 
   try {
@@ -3009,7 +3081,9 @@ const CreateScheduleSchema = z.object({
 /**
  * POST /v1/instances/:instanceId/schedules - Create a schedule
  */
-app.post('/v1/instances/:instanceId/schedules', authMiddleware, async (req, res) => {
+app.post('/v1/instances/:instanceId/schedules', authMiddleware, idempotencyMiddleware({
+  getTenantId: (req) => req.params.instanceId,
+}), async (req, res) => {
   const { instanceId } = req.params;
 
   const parseResult = CreateScheduleSchema.safeParse(req.body);
@@ -3245,7 +3319,9 @@ const ApproveCandidateSchema = z.object({
 /**
  * POST /v1/tenants/:tenantId/signals - Create a signal (DEVELOPER+)
  */
-app.post('/v1/tenants/:tenantId/signals', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/v1/tenants/:tenantId/signals', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId } = req.params;
 
   const parseResult = CreateSignalSchema.safeParse(req.body);
@@ -3500,7 +3576,9 @@ app.patch('/v1/tenants/:tenantId/queue/:itemId', authMiddleware, tenantAuthMiddl
 /**
  * POST /v1/tenants/:tenantId/queue/:itemId/dismiss - Dismiss work item (DEVELOPER+)
  */
-app.post('/v1/tenants/:tenantId/queue/:itemId/dismiss', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/v1/tenants/:tenantId/queue/:itemId/dismiss', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId, itemId } = req.params;
 
   try {
@@ -3542,7 +3620,9 @@ app.post('/v1/tenants/:tenantId/queue/:itemId/dismiss', authMiddleware, tenantAu
 /**
  * POST /v1/tenants/:tenantId/queue/:itemId/candidate - Generate PR candidate (DEVELOPER+)
  */
-app.post('/v1/tenants/:tenantId/queue/:itemId/candidate', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), async (req, res) => {
+app.post('/v1/tenants/:tenantId/queue/:itemId/candidate', authMiddleware, tenantAuthMiddleware, requirePermission('run:create'), idempotencyMiddleware({
+  getTenantId: (req) => req.params.tenantId,
+}), async (req, res) => {
   const { tenantId, itemId } = req.params;
 
   const parseResult = GenerateCandidateSchema.safeParse(req.body);
@@ -3707,7 +3787,9 @@ app.get('/v1/candidates/:candidateId', authMiddleware, async (req, res) => {
 /**
  * POST /v1/candidates/:candidateId/approve - Approve/reject candidate (DEVELOPER+)
  */
-app.post('/v1/candidates/:candidateId/approve', authMiddleware, async (req, res) => {
+app.post('/v1/candidates/:candidateId/approve', authMiddleware, idempotencyMiddleware({
+  getTenantId: (req) => req.params.candidateId,
+}), async (req, res) => {
   const { candidateId } = req.params;
 
   const parseResult = ApproveCandidateSchema.safeParse(req.body);

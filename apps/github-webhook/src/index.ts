@@ -27,6 +27,11 @@ import {
   enqueueJob,
   createWorkflowJob,
 } from '@gwi/core';
+import {
+  getIdempotencyService,
+  IdempotencyProcessingError,
+  type GitHubIdempotencyKey,
+} from '@gwi/engine';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -89,12 +94,27 @@ app.get('/health', (_req, res) => {
 
 /**
  * GitHub webhook endpoint
+ *
+ * A5: Integrated with idempotency layer to prevent duplicate processing.
+ * Uses X-GitHub-Delivery header as unique identifier per webhook delivery.
  */
 app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) => {
   const startTime = Date.now();
   const event = req.headers['x-github-event'] as string;
   const delivery = req.headers['x-github-delivery'] as string;
   const signature = req.headers['x-hub-signature-256'] as string;
+
+  // Validate delivery ID exists (required for idempotency)
+  if (!delivery) {
+    console.log(JSON.stringify({
+      severity: 'WARNING',
+      type: 'webhook_missing_delivery_id',
+      event,
+    }));
+    return res.status(400).json({
+      error: 'Missing X-GitHub-Delivery header',
+    });
+  }
 
   try {
     // Validate webhook signature using centralized security function (Phase 17)
@@ -120,20 +140,77 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
       }
     }
 
-    // Route based on event type
-    const result = await handleWebhookEvent(event, req.body, delivery);
+    // A5: Use idempotency service to prevent duplicate processing
+    const idempotencyService = getIdempotencyService();
+    const idempotencyKey: GitHubIdempotencyKey = {
+      source: 'github_webhook',
+      deliveryId: delivery,
+    };
 
-    console.log(JSON.stringify({
-      type: 'webhook_processed',
-      delivery,
-      event,
-      action: req.body.action,
-      durationMs: Date.now() - startTime,
-      ...result,
-    }));
+    // Extract tenant ID from payload for idempotency record
+    // Installation ID is used as a proxy when tenant is not yet resolved
+    const installationId = (req.body.installation?.id || 'unknown').toString();
 
-    return res.json(result);
+    const idempotencyResult = await idempotencyService.process(
+      idempotencyKey,
+      `installation:${installationId}`, // Tenant ID placeholder until resolved
+      req.body,
+      async () => {
+        // Process the webhook event
+        const result = await handleWebhookEvent(event, req.body, delivery);
+        return {
+          runId: result.workflowId,
+          response: result,
+        };
+      }
+    );
+
+    // Log based on whether we processed or returned cached result
+    if (idempotencyResult.processed) {
+      console.log(JSON.stringify({
+        type: 'webhook_processed',
+        delivery,
+        event,
+        action: req.body.action,
+        durationMs: Date.now() - startTime,
+        ...idempotencyResult.result,
+      }));
+    } else {
+      console.log(JSON.stringify({
+        type: 'webhook_duplicate_skipped',
+        delivery,
+        event,
+        action: req.body.action,
+        durationMs: Date.now() - startTime,
+        cachedRunId: idempotencyResult.runId,
+      }));
+    }
+
+    return res.json({
+      ...idempotencyResult.result,
+      duplicate: !idempotencyResult.processed,
+    });
   } catch (error) {
+    // Handle concurrent processing (another instance is handling this webhook)
+    if (error instanceof IdempotencyProcessingError) {
+      console.log(JSON.stringify({
+        type: 'webhook_processing_concurrent',
+        delivery,
+        event,
+        key: error.key,
+        runId: error.runId,
+        durationMs: Date.now() - startTime,
+      }));
+
+      // Return 202 Accepted - another instance is processing
+      return res.status(202).json({
+        status: 'processing',
+        message: 'Webhook is being processed by another instance',
+        key: error.key,
+        runId: error.runId,
+      });
+    }
+
     console.error(JSON.stringify({
       type: 'webhook_error',
       delivery,
