@@ -51,15 +51,10 @@ __snapshots__/
 # This entire directory is local-only, never committed
 workspace/runs/
 
-# Local task tracking (deprecated)
-.beads/
-.agentfs/
-
 # OpenTofu / Terraform
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
 infra/.terraform.lock.hcl
 infra/*.tfplan
-infra/tfplan
 *.backup
