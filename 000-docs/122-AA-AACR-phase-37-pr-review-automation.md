@@ -93,7 +93,7 @@ Tasks: 23 successful, 23 total
 1. **Weighted Risk Factors**: Sum of all weights equals 1.0 for consistent scoring
 2. **EvidenceRiskFactor Naming**: Prefixed to avoid conflict with storage.RiskFactor
 3. **Auto-Approve Defaults**: Conservative thresholds (25 risk score, 70% coverage)
-4. **Excluded Patterns**: By default excludes package files, Dockerfile, GitHub config, Terraform
+4. **Excluded Patterns**: By default excludes package files, Dockerfile, GitHub config, OpenTofu
 5. **Glob Matching**: Custom implementation for pattern matching without external deps
 
 ## Architecture

@@ -7,7 +7,7 @@
 
 ## Summary
 
-Phase 35 implemented the worker deployment infrastructure for autopilot workflows. Created Dockerfile for monorepo-aware builds, added autopilot job handler with GitHub App authentication, updated Terraform for Secret Manager access, and integrated worker build/deploy into CI/CD pipeline.
+Phase 35 implemented the worker deployment infrastructure for autopilot workflows. Created Dockerfile for monorepo-aware builds, added autopilot job handler with GitHub App authentication, updated OpenTofu for Secret Manager access, and integrated worker build/deploy into CI/CD pipeline.
 
 ## What Was Done
 
@@ -29,7 +29,7 @@ Phase 35 implemented the worker deployment infrastructure for autopilot workflow
    - Job state tracking via FirestoreJobStore
    - Support for dry-run and plan-only modes
 
-3. **Terraform Updates**
+3. **OpenTofu Updates**
    - Added Secret Manager access for worker service account
    - Added GITHUB_APP_ID and GITHUB_PRIVATE_KEY environment variables
    - Added GWI_WORKSPACE_DIR environment variable
@@ -55,7 +55,7 @@ Phase 35 implemented the worker deployment infrastructure for autopilot workflow
 |------|---------|
 | `apps/worker/src/handlers/index.ts` | Import and register autopilot handlers |
 | `apps/worker/package.json` | Added @octokit/auth-app dependency |
-| `infra/terraform/cloud_run.tf` | GitHub App env vars, Secret Manager IAM |
+| `infra/cloud_run.tf` | GitHub App env vars, Secret Manager IAM |
 | `.github/workflows/ci.yml` | Worker build and deploy steps |
 
 ## Test Results
@@ -116,11 +116,11 @@ handlers = {
 
 | Variable | Source | Purpose |
 |----------|--------|---------|
-| GITHUB_APP_ID | Terraform var | GitHub App identifier |
+| GITHUB_APP_ID | OpenTofu var | GitHub App identifier |
 | GITHUB_PRIVATE_KEY | Secret Manager | App authentication |
 | GWI_WORKSPACE_DIR | Hardcoded | Workspace isolation path |
-| GCP_PROJECT_ID | Terraform var | Project for Firestore |
-| PUBSUB_SUBSCRIPTION | Terraform var | Job queue subscription |
+| GCP_PROJECT_ID | OpenTofu var | Project for Firestore |
+| PUBSUB_SUBSCRIPTION | OpenTofu var | Job queue subscription |
 
 ## Known Gaps
 

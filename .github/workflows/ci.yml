@@ -136,8 +136,8 @@ jobs:
 
       - name: Build and push A2A Gateway
         run: |
-          cd apps/gateway
-          docker build -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
+          docker build -f apps/gateway/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} .
           docker push ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }}
           docker tag ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:${{ github.sha }} \
                      ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi/gateway:latest
@@ -227,6 +227,16 @@ jobs:
           echo "Deploying agents to Vertex AI Agent Engine (dev)..."
           # Agents are deployed as Vertex AI Reasoning Engines
 
+      - name: Verify Gateway Health
+        run: |
+          GATEWAY_URL=$(gcloud run services describe gwi-gateway --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
+          if [ -n "$GATEWAY_URL" ]; then
+            echo "Checking health at $GATEWAY_URL/health"
+            curl -sf "$GATEWAY_URL/health" | jq .
+          else
+            echo "Gateway service not deployed yet"
+          fi
+
   # =============================================================================
   # Deploy to Prod (main branch)
   # =============================================================================
@@ -284,3 +294,13 @@ jobs:
       - name: Deploy Agents to Agent Engine
         run: |
           echo "Deploying agents to Vertex AI Agent Engine (prod)..."
+
+      - name: Verify Gateway Health
+        run: |
+          GATEWAY_URL=$(gcloud run services describe gwi-gateway --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
+          if [ -n "$GATEWAY_URL" ]; then
+            echo "Checking health at $GATEWAY_URL/health"
+            curl -sf "$GATEWAY_URL/health" | jq .
+          else
+            echo "Gateway service not deployed yet"
+          fi

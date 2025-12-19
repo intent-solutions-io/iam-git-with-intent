@@ -7,16 +7,28 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy root package files for workspace resolution
+# Copy root configuration files
 COPY package.json ./
 COPY package-lock.json ./
+COPY tsconfig.json ./
 
-# Copy workspace package files
+# Copy ALL workspace package.json files (npm ci requires all workspaces to be present)
 COPY packages/core/package.json ./packages/core/
+COPY packages/agents/package.json ./packages/agents/
+COPY packages/integrations/package.json ./packages/integrations/
+COPY packages/engine/package.json ./packages/engine/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY apps/api/package.json ./apps/api/
+COPY apps/cli/package.json ./apps/cli/
+COPY apps/gateway/package.json ./apps/gateway/
 COPY apps/github-webhook/package.json ./apps/github-webhook/
+COPY apps/registry/package.json ./apps/registry/
+COPY apps/web/package.json ./apps/web/
+COPY apps/worker/package.json ./apps/worker/
 
-# Install dependencies (--ignore-scripts skips husky prepare)
-RUN npm ci --workspace=@gwi/core --workspace=@gwi/github-webhook --ignore-scripts
+# Install all dependencies (--ignore-scripts skips husky prepare)
+# Full npm ci is needed because firebase-admin and better-sqlite3 are root dependencies
+RUN npm ci --ignore-scripts
 
 # Copy source files
 COPY packages/core ./packages/core

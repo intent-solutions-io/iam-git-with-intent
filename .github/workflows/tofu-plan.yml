@@ -1,0 +1,216 @@
+name: OpenTofu Plan
+
+# Trigger on PRs that modify infrastructure
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/tofu-plan.yml'
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  TOFU_VERSION: '1.8.7'
+
+jobs:
+  plan:
+    name: OpenTofu Plan
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      # =========================================================================
+      # Format Check - Ensure all .tf files are properly formatted
+      # =========================================================================
+      - name: OpenTofu Format Check
+        id: fmt
+        working-directory: infra
+        run: |
+          tofu fmt -check -recursive
+        continue-on-error: true
+
+      # =========================================================================
+      # Initialize - Download providers and modules
+      # =========================================================================
+      - name: OpenTofu Init
+        id: init
+        working-directory: infra
+        run: tofu init
+
+      # =========================================================================
+      # Validate - Check configuration syntax
+      # =========================================================================
+      - name: OpenTofu Validate
+        id: validate
+        working-directory: infra
+        run: tofu validate -no-color
+
+      # =========================================================================
+      # Plan for each environment (dev, staging, prod)
+      # =========================================================================
+      - name: OpenTofu Plan (Dev)
+        id: plan-dev
+        working-directory: infra
+        continue-on-error: true
+        run: |
+          tofu plan -var-file="envs/dev.tfvars" -no-color -out=tfplan-dev 2>&1 | tee plan-dev.txt
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: OpenTofu Plan (Staging)
+        id: plan-staging
+        working-directory: infra
+        continue-on-error: true
+        run: |
+          tofu plan -var-file="envs/staging.tfvars" -no-color -out=tfplan-staging 2>&1 | tee plan-staging.txt
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: OpenTofu Plan (Prod)
+        id: plan-prod
+        working-directory: infra
+        continue-on-error: true
+        run: |
+          tofu plan -var-file="envs/prod.tfvars" -no-color -out=tfplan-prod 2>&1 | tee plan-prod.txt
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      # =========================================================================
+      # Upload plan artifacts for apply workflow
+      # =========================================================================
+      - name: Upload Plan Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tofu-plans
+          path: |
+            infra/tfplan-dev
+            infra/tfplan-staging
+            infra/tfplan-prod
+            infra/plan-dev.txt
+            infra/plan-staging.txt
+            infra/plan-prod.txt
+          retention-days: 30
+
+      # =========================================================================
+      # Comment PR with plan summary
+      # =========================================================================
+      - name: Post Plan to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            // Read plan outputs
+            const fs = require('fs');
+            const planDev = fs.readFileSync('infra/plan-dev.txt', 'utf8');
+            const planStaging = fs.readFileSync('infra/plan-staging.txt', 'utf8');
+            const planProd = fs.readFileSync('infra/plan-prod.txt', 'utf8');
+
+            // Extract summary lines
+            const extractSummary = (plan) => {
+              const lines = plan.split('\n');
+              const summaryLine = lines.find(l => l.includes('Plan:') || l.includes('No changes'));
+              return summaryLine || 'Plan completed';
+            };
+
+            const devSummary = extractSummary(planDev);
+            const stagingSummary = extractSummary(planStaging);
+            const prodSummary = extractSummary(prodProd);
+
+            // Format check status
+            const fmtStatus = '${{ steps.fmt.outcome }}' === 'success' ? '✅ Passed' : '❌ Failed';
+            const validateStatus = '${{ steps.validate.outcome }}' === 'success' ? '✅ Passed' : '❌ Failed';
+
+            // Truncate plans for PR comment (GitHub has a 65536 char limit)
+            const truncate = (text, maxLength = 10000) => {
+              if (text.length > maxLength) {
+                return text.substring(0, maxLength) + '\n\n... (truncated, see full plan in artifacts)';
+              }
+              return text;
+            };
+
+            const comment = `## OpenTofu Plan Results
+
+            ### Validation
+            - **Format Check**: ${fmtStatus}
+            - **Validate**: ${validateStatus}
+
+            ### Plan Summary
+
+            #### Dev Environment
+            ${devSummary}
+
+            #### Staging Environment
+            ${stagingSummary}
+
+            #### Production Environment
+            ${prodSummary}
+
+            <details>
+            <summary>Show Dev Plan</summary>
+
+            \`\`\`hcl
+            ${truncate(planDev)}
+            \`\`\`
+            </details>
+
+            <details>
+            <summary>Show Staging Plan</summary>
+
+            \`\`\`hcl
+            ${truncate(planStaging)}
+            \`\`\`
+            </details>
+
+            <details>
+            <summary>Show Prod Plan</summary>
+
+            \`\`\`hcl
+            ${truncate(planProd)}
+            \`\`\`
+            </details>
+
+            ---
+            **Plan artifacts**: Download from workflow run artifacts
+            **Workflow run**: [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            `;
+
+            // Post comment on PR
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      # =========================================================================
+      # Fail job if any step failed
+      # =========================================================================
+      - name: Check Results
+        if: |
+          steps.fmt.outcome != 'success' ||
+          steps.validate.outcome != 'success' ||
+          steps.plan-dev.outputs.exitcode == '1' ||
+          steps.plan-staging.outputs.exitcode == '1' ||
+          steps.plan-prod.outputs.exitcode == '1'
+        run: |
+          echo "OpenTofu plan failed. Check the logs above."
+          exit 1

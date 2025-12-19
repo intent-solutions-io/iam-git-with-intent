@@ -50,7 +50,7 @@ Run tests/ARV and paste outputs.
 ## Forbidden Patterns
 
 Check for and block:
-- Direct `gcloud` commands (use Terraform)
+- Direct `gcloud` commands (use OpenTofu)
 - Hard-coded secrets
 - Deletion of protected directories
 - Non-deterministic test outputs

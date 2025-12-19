@@ -17,6 +17,13 @@ import { RunDetail } from './pages/RunDetail';
 import { Settings } from './pages/Settings';
 import { Onboarding } from './pages/Onboarding';
 import { InviteAccept } from './pages/InviteAccept';
+// Product pages
+import { Features } from './pages/Features';
+import { Install } from './pages/Install';
+import { HowItWorks } from './pages/HowItWorks';
+import { Security } from './pages/Security';
+import { Pricing } from './pages/Pricing';
+import { Docs } from './pages/Docs';
 // Phase 12: Admin pages
 import { AdminPolicy } from './pages/AdminPolicy';
 import { AdminConnectors } from './pages/AdminConnectors';
@@ -48,6 +55,13 @@ export function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            {/* Product pages */}
+            <Route path="/features" element={<Features />} />
+            <Route path="/install" element={<Install />} />
+            <Route path="/how-it-works" element={<HowItWorks />} />
+            <Route path="/security" element={<Security />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/docs" element={<Docs />} />
             <Route
               path="/onboarding"
               element={

@@ -70,7 +70,7 @@
 | Single service failure | 5 min | Auto-restart via Cloud Run |
 | Regional outage | 30 min | Manual failover to backup region |
 | Data corruption | 4 hours | Restore from backup |
-| Full disaster | 24 hours | Full rebuild from Terraform |
+| Full disaster | 24 hours | Full rebuild from OpenTofu |
 
 ### 3.2 Recovery Point Objective (RPO)
 

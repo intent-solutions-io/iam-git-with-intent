@@ -14,7 +14,7 @@ Phase 32 focused on GA (General Availability) readiness for Git With Intent. All
 ### P0 Tasks (Critical)
 1. **ARV GA Readiness Gate** (`git-with-intent-onvm`)
    - Created `scripts/arv/ga-readiness-gate.ts`
-   - Validates: Firebase Hosting, Cloud Run, Firestore rules, WIF, Terraform, monitoring, docs
+   - Validates: Firebase Hosting, Cloud Run, Firestore rules, WIF, OpenTofu, monitoring, docs
    - Added to `run-all.ts` ARV suite
    - Result: **10/10 checks PASSED**
 
@@ -25,7 +25,7 @@ Phase 32 focused on GA (General Availability) readiness for Git With Intent. All
 
 3. **Secret Manager** (`git-with-intent-pv8z`)
    - Verified: API enabled, IAM roles, secret_key_ref in Cloud Run
-   - Terraform integration for github_webhook_secret
+   - OpenTofu integration for github_webhook_secret
 
 4. **Firestore Rules** (`git-with-intent-vlyo`)
    - Verified: Comprehensive RBAC rules

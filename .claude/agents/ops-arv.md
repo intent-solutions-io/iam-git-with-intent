@@ -70,7 +70,7 @@ Enforce:
 2. Approved ADK patterns only
 3. Run artifact requirements
 4. Approval gating for destructive writes
-5. Terraform-only infrastructure changes
+5. OpenTofu-only infrastructure changes
 
 ---
 

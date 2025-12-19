@@ -80,9 +80,9 @@ gcloud compute regions list --filter="status=UP"
 2. **Deploy to backup region**
    ```bash
    # From local or CI
-   cd infra/terraform
-   terraform workspace select prod-backup
-   terraform apply -var="region=us-east1"
+   cd infra
+   tofu workspace select prod-backup
+   tofu apply -var="region=us-east1"
    ```
 
 3. **Verify backup deployment**
@@ -189,7 +189,7 @@ gcloud logging read 'resource.type="firestore_database" AND protoPayload.methodN
 **Symptoms**: Complete infrastructure loss (fire/flood/attack)
 
 ### 6.1 Prerequisites
-- Terraform state in GCS (cross-region backup)
+- OpenTofu state in GCS (cross-region backup)
 - Code in GitHub (offsite)
 - Secrets documented in secure location
 
@@ -197,8 +197,8 @@ gcloud logging read 'resource.type="firestore_database" AND protoPayload.methodN
 
 1. **Verify backups accessible**
    ```bash
-   # Terraform state
-   gsutil ls gs://gwi-terraform-state/
+   # OpenTofu state
+   gsutil ls gs://git-with-intent-tofu-state/
 
    # Firestore backups
    gsutil ls gs://gwi-backup-bucket/
@@ -206,9 +206,9 @@ gcloud logging read 'resource.type="firestore_database" AND protoPayload.methodN
 
 2. **Rebuild infrastructure**
    ```bash
-   cd infra/terraform
-   terraform init -backend-config="bucket=gwi-terraform-state"
-   terraform apply -var="environment=prod"
+   cd infra
+   tofu init -backend-config="bucket=git-with-intent-tofu-state"
+   tofu apply -var="environment=prod"
    ```
 
 3. **Restore data**

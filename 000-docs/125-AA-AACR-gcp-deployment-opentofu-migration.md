@@ -16,7 +16,7 @@ Deployed Git With Intent infrastructure to GCP and migrated from Terraform to Op
 | T2 | git-with-intent-jzhl.2 | OpenTofu migration | tofu validate passes, 47 resources planned |
 | T2a | git-with-intent-jzhl.11.1 | Root module setup | tofu fmt/validate/plan clean |
 | T2b | git-with-intent-jzhl.11.2 | State strategy | GREENFIELD - 47 add, 0 change, 0 destroy |
-| T2c | git-with-intent-jzhl.11.3 | Remove Terraform refs | Docs, configs, .gitignore updated |
+| T2c | git-with-intent-jzhl.11.3 | Remove legacy Terraform refs | Docs, configs, .gitignore updated |
 | T2d | git-with-intent-jzhl.11.4 | CI pipeline | .github/workflows/ci.yml uses OpenTofu 1.8.7 |
 | T2e | git-with-intent-jzhl.11.5 | Drift detection | drift-detection.yml with nightly schedule |
 | T3 | git-with-intent-jzhl.3 | Firebase Hosting | https://git-with-intent.web.app HTTP 200 |
@@ -39,7 +39,7 @@ Decision: Fresh deployment rather than import. Clean state, no migration complex
 
 ### Agent Engine: ADK CLI Managed
 
-Vertex AI Agent Engine does not have Terraform/OpenTofu provider support. Resources deployed via:
+Vertex AI Agent Engine does not have OpenTofu provider support. Resources deployed via:
 - ADK CLI: `adk deploy agent_engine --staging_bucket gs://...`
 - gcloud: `gcloud ai reasoning-engines create ...`
 
@@ -126,7 +126,7 @@ projects/git-with-intent/databases/(default)  FIRESTORE_NATIVE  us-central1
 
 ## Lessons Learned
 
-1. **OpenTofu compatibility**: Direct drop-in for Terraform. Same HCL, same providers.
+1. **OpenTofu compatibility**: Uses HCL syntax and existing providers.
 
 2. **Greenfield vs import**: When naming conventions differ, greenfield is cleaner.
 

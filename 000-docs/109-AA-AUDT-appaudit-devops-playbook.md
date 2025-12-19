@@ -18,7 +18,7 @@ This DevOps Playbook provides comprehensive operational guidance for the **Git W
 |-----------|-------|
 | **Architecture** | Multi-agent orchestration (4 specialized agents) |
 | **Infrastructure** | GCP Cloud Run + Vertex AI Reasoning Engine + Firestore |
-| **Deployment** | GitHub Actions → Terraform → Cloud Run (WIF auth) |
+| **Deployment** | GitHub Actions → OpenTofu → Cloud Run (WIF auth) |
 | **Language** | TypeScript (strict), Node.js 20+ |
 | **Build System** | Turbo monorepo (10 packages) |
 | **Current Status** | Beta Ready (Phases 1-31 complete) |
@@ -133,7 +133,7 @@ git-with-intent/
 │   └── sdk/                 # TypeScript SDK for API consumers
 │
 ├── infra/                   # Infrastructure as Code
-│   └── terraform/           # All GCP infrastructure (SOURCE OF TRUTH)
+│   └── *.tf                 # All GCP infrastructure (OpenTofu - SOURCE OF TRUTH)
 │       ├── main.tf          # API enablement, naming
 │       ├── cloud_run.tf     # Cloud Run services
 │       ├── agent_engine.tf  # Vertex AI Reasoning Engines
@@ -194,7 +194,7 @@ apps/* ← Deployable services
 
 ### 3.1 GCP Services
 
-| Service | Purpose | Terraform Resource |
+| Service | Purpose | OpenTofu Resource |
 |---------|---------|-------------------|
 | **Cloud Run** | API, Gateway, Webhook, Worker | `google_cloud_run_v2_service` |
 | **Vertex AI Reasoning Engine** | Agent execution | `google_vertex_ai_reasoning_engine_engine` |
@@ -214,7 +214,7 @@ apps/* ← Deployable services
 
 ### 3.3 Cloud Run Services
 
-```terraform
+```hcl
 # Production service configuration (from cloud_run.tf)
 Service: gwi-api-prod
   - Image: us-central1-docker.pkg.dev/git-with-intent-prod/gwi/api:latest
@@ -364,7 +364,7 @@ gwi workflow start ...   # Start specific workflow
 │ │develop │    │main    │                                        │
 │ │branch  │    │branch  │                                        │
 │ │        │    │        │                                        │
-│ │TF apply│    │TF apply│                                        │
+│ │tofu    │    │tofu    │                                        │
 │ └────────┘    └────────┘                                        │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
@@ -379,7 +379,7 @@ Authentication uses WIF - no service account keys in GitHub secrets.
 vars.GCP_PROJECT_ID: git-with-intent-prod
 vars.WIF_PROVIDER: projects/123456/locations/global/workloadIdentityPools/github-pool/providers/github
 vars.WIF_SERVICE_ACCOUNT: github-actions@git-with-intent-prod.iam.gserviceaccount.com
-vars.TF_STATE_BUCKET: gwi-terraform-state
+vars.TF_STATE_BUCKET: git-with-intent-tofu-state
 ```
 
 ### 5.3 Agent Readiness Verification (ARV)
@@ -422,33 +422,33 @@ git push origin main
 # → CI builds → Deploys to prod environment
 ```
 
-### 6.2 Manual Terraform Operations
+### 6.2 Manual OpenTofu Operations
 
 ```bash
-cd infra/terraform
+cd infra
 
 # Initialize with state bucket
-terraform init -backend-config="bucket=gwi-terraform-state"
+tofu init -backend-config="bucket=git-with-intent-tofu-state"
 
 # Plan changes for specific environment
-terraform plan -var-file="envs/prod.tfvars"
+tofu plan -var-file="envs/prod.tfvars"
 
 # Apply changes
-terraform apply -var-file="envs/prod.tfvars"
+tofu apply -var-file="envs/prod.tfvars"
 
 # View current state
-terraform state list
+tofu state list
 
 # Import existing resource
-terraform import google_cloud_run_v2_service.gwi_api projects/git-with-intent-prod/locations/us-central1/services/gwi-api-prod
+tofu import google_cloud_run_v2_service.gwi_api projects/git-with-intent-prod/locations/us-central1/services/gwi-api-prod
 ```
 
 ### 6.3 Rollback Procedure
 
 ```bash
 # Option 1: Revert to previous image tag
-cd infra/terraform
-terraform apply -var-file="envs/prod.tfvars" \
+cd infra
+tofu apply -var-file="envs/prod.tfvars" \
   -var="gwi_api_image=us-central1-docker.pkg.dev/git-with-intent-prod/gwi/api:previous-sha"
 
 # Option 2: Git revert and re-deploy
@@ -468,7 +468,7 @@ gcloud run services update-traffic gwi-api-prod \
 
 ### 7.1 Alert Policies
 
-From `infra/terraform/monitoring.tf`:
+From `infra/monitoring.tf`:
 
 | Alert | Threshold | Severity |
 |-------|-----------|----------|
@@ -542,7 +542,7 @@ gwi-stripe-webhook-secret      # Stripe webhook validation
 gwi-anthropic-api-key          # Anthropic API key
 
 # Access in Cloud Run via environment variables
-# Configured in Terraform with secret version references
+# Configured in OpenTofu with secret version references
 ```
 
 ### 8.4 Enterprise Identity (Phase 31)
@@ -691,8 +691,8 @@ mkdir packages/agents/src/new-agent
 # 4. Add ARV gate
 # Create scripts/arv/new-agent-gate.ts
 
-# 5. Add Terraform for Vertex AI deployment
-# Edit infra/terraform/agent_engine.tf
+# 5. Add OpenTofu config for Vertex AI deployment
+# Edit infra/agent_engine.tf
 
 # 6. Test locally
 npm run build
@@ -711,8 +711,8 @@ echo -n "$NEW_SECRET" | gcloud secrets versions add gwi-github-webhook-secret --
 # 3. Update GitHub App webhook secret in GitHub settings
 
 # 4. Redeploy services (to pick up new version)
-cd infra/terraform
-terraform apply -var-file="envs/prod.tfvars" -target=google_cloud_run_v2_service.gwi_github_webhook
+cd infra
+tofu apply -var-file="envs/prod.tfvars" -target=google_cloud_run_v2_service.gwi_github_webhook
 
 # 5. Verify webhook still works
 # Check GitHub App → Advanced → Recent Deliveries
@@ -724,14 +724,14 @@ gcloud secrets versions disable 1 --secret=gwi-github-webhook-secret
 ### 10.4 Scale for High Load
 
 ```bash
-# Increase max instances via Terraform
-cd infra/terraform
+# Increase max instances via OpenTofu
+cd infra
 
 # Edit envs/prod.tfvars
 # gateway_max_instances = 50
 # gwi_api_max_instances = 30
 
-terraform apply -var-file="envs/prod.tfvars"
+tofu apply -var-file="envs/prod.tfvars"
 
 # Or emergency scale via gcloud
 gcloud run services update gwi-api-prod \
@@ -793,10 +793,10 @@ npm run lint                 # Lint
 # ARV Gates
 npx tsx scripts/arv/run-all.ts
 
-# Terraform
-terraform init -backend-config="bucket=gwi-terraform-state"
-terraform plan -var-file="envs/prod.tfvars"
-terraform apply -var-file="envs/prod.tfvars"
+# OpenTofu
+tofu init -backend-config="bucket=git-with-intent-tofu-state"
+tofu plan -var-file="envs/prod.tfvars"
+tofu apply -var-file="envs/prod.tfvars"
 
 # Cloud Run
 gcloud run services list --region=us-central1
@@ -811,7 +811,7 @@ gcloud firestore databases list
 | Role | Contact |
 |------|---------|
 | Platform Lead | [Configure in prod.tfvars] |
-| On-Call | [Configure alert channels in Terraform] |
+| On-Call | [Configure alert channels in OpenTofu] |
 
 ---
 

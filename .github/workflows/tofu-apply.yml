@@ -1,0 +1,227 @@
+name: OpenTofu Apply
+
+# Gated apply workflow - requires manual approval via GitHub environment protection
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/tofu-apply.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy (dev, staging, prod)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  TOFU_VERSION: '1.8.7'
+
+jobs:
+  # ===========================================================================
+  # Apply to Dev (auto-approve on main push)
+  # ===========================================================================
+  apply-dev:
+    name: Apply Dev
+    runs-on: ubuntu-latest
+    # Only run on push to main or manual trigger with dev selected
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+    environment: dev
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: OpenTofu Init
+        working-directory: infra
+        run: tofu init
+
+      - name: OpenTofu Apply (Dev)
+        working-directory: infra
+        run: |
+          tofu apply -auto-approve -var-file="envs/dev.tfvars"
+
+      - name: Output Results
+        working-directory: infra
+        run: |
+          echo "Dev infrastructure deployment completed"
+          tofu output -json > dev-outputs.json
+          cat dev-outputs.json
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-outputs
+          path: infra/dev-outputs.json
+          retention-days: 30
+
+  # ===========================================================================
+  # Apply to Staging (requires manual approval)
+  # ===========================================================================
+  apply-staging:
+    name: Apply Staging
+    runs-on: ubuntu-latest
+    # Only run on push to main or manual trigger with staging selected
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
+    environment: staging
+    needs: apply-dev
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: OpenTofu Init
+        working-directory: infra
+        run: tofu init
+
+      - name: OpenTofu Apply (Staging)
+        working-directory: infra
+        run: |
+          tofu apply -auto-approve -var-file="envs/staging.tfvars"
+
+      - name: Output Results
+        working-directory: infra
+        run: |
+          echo "Staging infrastructure deployment completed"
+          tofu output -json > staging-outputs.json
+          cat staging-outputs.json
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-outputs
+          path: infra/staging-outputs.json
+          retention-days: 30
+
+  # ===========================================================================
+  # Apply to Production (requires manual approval + environment protection)
+  # ===========================================================================
+  apply-prod:
+    name: Apply Production
+    runs-on: ubuntu-latest
+    # Only run on push to main or manual trigger with prod selected
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.environment == 'prod')
+    # Production environment with required reviewers (configured in GitHub settings)
+    environment: prod
+    needs: apply-staging
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+
+      - name: OpenTofu Init
+        working-directory: infra
+        run: tofu init
+
+      # Safety check - show plan before applying
+      - name: Show Plan
+        working-directory: infra
+        run: |
+          echo "==================================================================="
+          echo "PRODUCTION DEPLOYMENT - Final safety check"
+          echo "==================================================================="
+          tofu plan -var-file="envs/prod.tfvars"
+
+      - name: OpenTofu Apply (Production)
+        working-directory: infra
+        run: |
+          echo "Applying production infrastructure changes..."
+          tofu apply -auto-approve -var-file="envs/prod.tfvars"
+
+      - name: Output Results
+        working-directory: infra
+        run: |
+          echo "Production infrastructure deployment completed"
+          tofu output -json > prod-outputs.json
+          cat prod-outputs.json
+
+      - name: Upload Outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-outputs
+          path: infra/prod-outputs.json
+          retention-days: 90
+
+      # ===========================================================================
+      # Post-deployment verification
+      # ===========================================================================
+      - name: Verify Deployment
+        run: |
+          echo "==================================================================="
+          echo "Production deployment complete"
+          echo "==================================================================="
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Deployed by: ${{ github.actor }}"
+          echo ""
+          echo "Next steps:"
+          echo "1. Verify services are healthy in GCP Console"
+          echo "2. Run smoke tests against production"
+          echo "3. Monitor logs and metrics for anomalies"
+          echo "==================================================================="
