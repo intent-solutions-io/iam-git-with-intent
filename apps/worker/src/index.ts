@@ -21,6 +21,7 @@ import {
   getDistributedIdempotencyStore,
   getFirestoreCheckpointManager,
   getLogger,
+  getFirestoreClient,
 } from '@gwi/core';
 import { getIdempotencyService } from '@gwi/engine';
 import { WorkerProcessor, type WorkerJob, type JobResult } from './processor.js';
@@ -53,6 +54,11 @@ const logger = getLogger('worker');
 // Security middleware
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
+
+// Initialize Firebase before reliability stores (ensures Firestore is available)
+if (process.env.GWI_STORE_BACKEND === 'firestore') {
+  getFirestoreClient();
+}
 
 // Initialize reliability stores
 initializeReliabilityStores();

@@ -20,6 +20,7 @@ import {
   generateIdempotencyKey,
   hashRequestPayload,
 } from './types.js';
+import { getFirestoreClient } from '@gwi/core';
 
 // =============================================================================
 // Store Interface
@@ -246,14 +247,13 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
   }
 
   /**
-   * Lazy-load Firestore to avoid import issues in non-Firebase environments
+   * Get Firestore client from core (ensures Firebase is initialized)
    */
   private async getFirestore(): Promise<FirebaseFirestore.Firestore> {
     if (this.firestore) return this.firestore;
 
-    // Dynamic import to avoid bundling firebase-admin in all environments
-    const { getFirestore } = await import('firebase-admin/firestore');
-    this.firestore = getFirestore();
+    // Use core's client which handles Firebase initialization
+    this.firestore = getFirestoreClient();
     return this.firestore;
   }
 
