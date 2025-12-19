@@ -17,8 +17,15 @@ export const MODELS = {
     opus: 'claude-opus-4-20250514',
   },
   google: {
-    flash: 'gemini-2.0-flash-exp',
-    pro: 'gemini-1.5-pro',
+    // Gemini 2.5 series (with thinking capabilities)
+    flash25: 'gemini-2.5-flash',        // GA - fast with thinking
+    pro25: 'gemini-2.5-pro',            // GA - high capability with thinking
+    // Gemini 3 series (preview - latest reasoning)
+    flash3: 'gemini-3-flash-preview',   // Preview - advanced reasoning
+    pro3: 'gemini-3-pro-preview',       // Preview - most capable
+    // Legacy (still works)
+    flash: 'gemini-2.0-flash-exp',      // Fast, cost-effective
+    pro: 'gemini-1.5-pro',              // Not available in all projects
   },
   openai: {
     mini: 'gpt-4o-mini',           // Fast, cheap - good for triage
@@ -114,29 +121,42 @@ export async function createAnthropicClient(): Promise<ModelClient> {
 }
 
 /**
- * Create a Google (Gemini) client
+ * Create a Google (Gemini) client via Vertex AI
+ *
+ * Uses Application Default Credentials (ADC) for authentication.
+ * Requires GCP_PROJECT_ID or GOOGLE_CLOUD_PROJECT environment variable.
+ * Auth via: gcloud auth application-default login
  */
 export async function createGoogleClient(): Promise<ModelClient> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    throw new Error('GOOGLE_AI_API_KEY environment variable is required');
+  const projectId = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.VERTEX_LOCATION || 'us-central1';
+
+  if (!projectId) {
+    throw new Error('GCP_PROJECT_ID environment variable is required for Vertex AI');
   }
 
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const { VertexAI } = await import('@google-cloud/vertexai');
+  const vertexAI = new VertexAI({ project: projectId, location });
 
   return {
     provider: 'google',
     async chat(options: ChatOptions): Promise<ChatResponse> {
       const modelId = options.model?.model ?? MODELS.google.flash;
-      const model = genAI.getGenerativeModel({ model: modelId });
+      const model = vertexAI.getGenerativeModel({
+        model: modelId,
+        generationConfig: {
+          maxOutputTokens: options.maxTokens ?? 4096,
+          temperature: options.temperature ?? 0.7,
+          stopSequences: options.stopSequences,
+        },
+      });
 
       // Combine system message with first user message for Gemini
       const systemMessage = options.messages.find((m) => m.role === 'system');
       const userMessages = options.messages.filter((m) => m.role !== 'system');
 
       const contents = userMessages.map((m) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
+        role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
         parts: [{ text: m.content }],
       }));
 
@@ -145,17 +165,9 @@ export async function createGoogleClient(): Promise<ModelClient> {
         contents[0].parts[0].text = `${systemMessage.content}\n\n${contents[0].parts[0].text}`;
       }
 
-      const result = await model.generateContent({
-        contents,
-        generationConfig: {
-          maxOutputTokens: options.maxTokens ?? 4096,
-          temperature: options.temperature ?? 0.7,
-          stopSequences: options.stopSequences,
-        },
-      });
-
+      const result = await model.generateContent({ contents });
       const response = result.response;
-      const text = response.text();
+      const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const usage = response.usageMetadata;
 
       return {

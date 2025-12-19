@@ -5,6 +5,7 @@
  */
 
 export { GoogleLLMProvider, createGoogleProvider } from './google.js';
+export { VertexAILLMProvider, createVertexProvider } from './vertex.js';
 export { AnthropicLLMProvider, createAnthropicProvider } from './anthropic.js';
 export {
   OpenAICompatLLMProvider,

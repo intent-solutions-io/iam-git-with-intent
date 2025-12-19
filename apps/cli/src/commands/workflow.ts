@@ -13,6 +13,7 @@ import type {
   Workflow,
   OrchestratorOutput,
 } from '@gwi/agents';
+import { createGitHubClient, type LegacyPRMetadata } from '@gwi/integrations';
 
 export interface WorkflowOptions {
   verbose?: boolean;
@@ -48,10 +49,19 @@ export async function workflowStartCommand(
       process.exit(1);
     }
 
+    // Fetch real PR data for PR-related workflows
+    let prMetadata: LegacyPRMetadata | undefined;
+    if (['pr-resolve', 'pr-review'].includes(workflowType) && options.prUrl) {
+      spinner.start('Fetching PR details...');
+      const github = createGitHubClient();
+      prMetadata = await github.getPRLegacy(options.prUrl);
+      spinner.succeed(`Found PR #${prMetadata.number}: ${prMetadata.title}`);
+    }
+
     spinner.start(`Starting ${workflowType} workflow...`);
 
     // Build workflow input based on type
-    const workflowInput = buildWorkflowInput(workflowType as WorkflowType, options);
+    const workflowInput = buildWorkflowInput(workflowType as WorkflowType, options, prMetadata);
 
     // Import orchestrator dynamically to avoid initialization issues
     const { OrchestratorAgent } = await import('@gwi/agents');
@@ -241,7 +251,7 @@ export async function workflowRejectCommand(
 // Helper Functions
 // =============================================================================
 
-function buildWorkflowInput(type: WorkflowType, options: WorkflowStartOptions): unknown {
+function buildWorkflowInput(type: WorkflowType, options: WorkflowStartOptions, prMetadata?: LegacyPRMetadata): unknown {
   switch (type) {
     case 'issue-to-code':
       return {
@@ -264,6 +274,15 @@ function buildWorkflowInput(type: WorkflowType, options: WorkflowStartOptions): 
       };
 
     case 'pr-resolve':
+      // Use real PR data if available
+      if (prMetadata) {
+        return {
+          prMetadata,
+          conflicts: prMetadata.conflicts || [],
+          autoMerge: options.autoMerge ?? false,
+          riskMode: 'suggest_patch' as const,
+        };
+      }
       return {
         pr: {
           id: '',
@@ -287,6 +306,14 @@ function buildWorkflowInput(type: WorkflowType, options: WorkflowStartOptions): 
       };
 
     case 'pr-review':
+      // Use real PR data if available
+      if (prMetadata) {
+        return {
+          prMetadata,
+          conflicts: prMetadata.conflicts || [],
+          focusAreas: ['security', 'logic'],
+        };
+      }
       return {
         pr: {
           id: '',

@@ -496,6 +496,38 @@ export class OrchestratorAgent extends BaseAgent {
       }
     }
 
+    // For pr-review workflow
+    if (workflowType === 'pr-review') {
+      switch (agentName) {
+        case 'triage':
+          // Triage expects { prMetadata, conflicts }
+          // If CLI provides { prMetadata }, pass through
+          if ('prMetadata' in typedInput) {
+            return {
+              prMetadata: typedInput.prMetadata,
+              conflicts: typedInput.conflicts || [],
+            };
+          }
+          // If CLI provides { pr } (legacy), adapt it
+          if ('pr' in typedInput && !('prMetadata' in typedInput)) {
+            return {
+              prMetadata: typedInput.pr,
+              conflicts: [],
+            };
+          }
+          return input;
+
+        case 'reviewer':
+          // Reviewer expects PR and triage output
+          return {
+            triageResult: typedInput,
+            pr: typedOriginal.prMetadata || typedOriginal.pr,
+            changedFiles: typedOriginal.changedFiles,
+            focusAreas: typedOriginal.focusAreas,
+          };
+      }
+    }
+
     // Default: pass through unchanged
     return input;
   }

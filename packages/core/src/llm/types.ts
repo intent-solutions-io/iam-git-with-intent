@@ -13,7 +13,8 @@
  * Known LLM provider types
  */
 export type LLMProviderType =
-  | 'google' // Google AI (Gemini)
+  | 'google' // Google AI (Gemini) via API key
+  | 'vertex' // Vertex AI (Gemini) via ADC
   | 'anthropic' // Anthropic (Claude)
   | 'openai' // OpenAI (GPT)
   | 'openai_compat' // OpenAI-compatible (Azure, Ollama, vLLM, LM Studio, etc.)
@@ -31,6 +32,10 @@ export interface LLMProviderConfig {
   apiKey?: string;
   /** Base URL for API (required for openai_compat) */
   baseUrl?: string;
+  /** GCP Project ID (for Vertex AI) */
+  projectId?: string;
+  /** GCP Location/Region (for Vertex AI, defaults to us-central1) */
+  location?: string;
   /** Additional provider-specific options */
   options?: Record<string, unknown>;
 }

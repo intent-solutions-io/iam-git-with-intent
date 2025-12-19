@@ -31,6 +31,35 @@ export interface CodeReviewInput {
 }
 
 /**
+ * Reviewer input for PR quality review (pr-review workflow)
+ */
+export interface PRReviewInput {
+  triageResult: {
+    overallComplexity: number;
+    fileAnalyses?: Array<{
+      file: string;
+      complexity: number;
+      riskLevel: string;
+      concerns: string[];
+    }>;
+    recommendations?: string[];
+    suggestedStrategy?: string;
+  };
+  pr: {
+    title: string;
+    body?: string;
+    number: number;
+    url: string;
+    filesChanged: number;
+    additions: number;
+    deletions: number;
+  };
+  changedFiles?: string[];
+  focusAreas?: string[];
+  workflowType?: 'pr-review';
+}
+
+/**
  * Reviewer output
  */
 export interface ReviewerOutput {
@@ -50,17 +79,45 @@ interface ReviewHistoryEntry {
 }
 
 /**
+ * Get default model config based on available providers
+ * Prefers Vertex AI (Gemini) if GCP_PROJECT_ID is set, falls back to Anthropic
+ */
+function getDefaultModelConfig(): { provider: 'google' | 'anthropic'; model: string; maxTokens: number } {
+  const hasGCP = !!(process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT);
+  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
+
+  if (hasGCP) {
+    return {
+      provider: 'google',
+      model: MODELS.google.flash25, // Gemini 2.5 Flash with thinking capabilities
+      maxTokens: 8192,
+    };
+  }
+
+  if (hasAnthropic) {
+    return {
+      provider: 'anthropic',
+      model: MODELS.anthropic.sonnet,
+      maxTokens: 4096,
+    };
+  }
+
+  // Default to google (will fail at runtime if not configured)
+  return {
+    provider: 'google',
+    model: MODELS.google.flash25,
+    maxTokens: 8192,
+  };
+}
+
+/**
  * Reviewer agent configuration
  */
 const REVIEWER_CONFIG: AgentConfig = {
   name: 'reviewer',
   description: 'Validates merge conflict resolutions for correctness and security',
   capabilities: ['syntax-check', 'code-loss-detection', 'security-scan', 'quality-review'],
-  defaultModel: {
-    provider: 'anthropic',
-    model: MODELS.anthropic.sonnet,
-    maxTokens: 4096,
-  },
+  defaultModel: getDefaultModelConfig(),
 };
 
 /**
@@ -114,6 +171,42 @@ Respond with a JSON object:
 3. Security issues are warnings unless critical
 4. When in doubt, flag for human review (approved: false)
 5. Confidence < 70 should always set approved: false`;
+
+/**
+ * System prompt for PR quality review (pr-review workflow)
+ */
+const PR_REVIEW_SYSTEM_PROMPT = `You are the Reviewer Agent for Git With Intent, an AI-powered DevOps automation platform.
+
+Your role is to review a Pull Request and provide quality feedback based on triage analysis.
+
+## 1. Overall Assessment
+- Is this PR ready for review?
+- What is the risk level?
+- Are there any blocking concerns?
+
+## 2. Code Quality
+- Are the changes well-structured?
+- Is the complexity appropriate?
+- Are there any obvious issues?
+
+## 3. Review Recommendations
+- What areas should reviewers focus on?
+- What tests should be verified?
+- Any suggestions for improvement?
+
+## Output Format
+
+Respond with a JSON object:
+{
+  "approved": true/false,
+  "riskLevel": "low" | "medium" | "high",
+  "summary": "Brief summary of the PR",
+  "focusAreas": ["area1", "area2"],
+  "concerns": ["concern1", "concern2"],
+  "suggestions": ["suggestion1"],
+  "confidence": 85,
+  "reasoning": "Explanation of the review decision"
+}`;
 
 /**
  * System prompt for code generation review (issue-to-code workflow)
@@ -180,7 +273,10 @@ export class ReviewerAgent extends BaseAgent {
   ];
 
   constructor() {
-    super(REVIEWER_CONFIG);
+    super({
+      ...REVIEWER_CONFIG,
+      defaultModel: getDefaultModelConfig(),
+    });
   }
 
   /**
@@ -202,14 +298,14 @@ export class ReviewerAgent extends BaseAgent {
 
   /**
    * Process a review request
-   * Supports both conflict resolution review and code generation review
+   * Supports conflict resolution review, code generation review, and PR quality review
    */
   protected async processTask(payload: TaskRequestPayload): Promise<ReviewerOutput> {
     if (payload.taskType !== 'review') {
       throw new Error(`Unsupported task type: ${payload.taskType}`);
     }
 
-    const input = payload.input as ReviewerInput | CodeReviewInput | Record<string, unknown>;
+    const input = payload.input as ReviewerInput | CodeReviewInput | PRReviewInput | Record<string, unknown>;
 
     // Check if this is a code review (issue-to-code workflow)
     if ('workflowType' in input && input.workflowType === 'issue-to-code') {
@@ -221,6 +317,12 @@ export class ReviewerAgent extends BaseAgent {
     if ('codeResult' in input) {
       const codeInput = input as CodeReviewInput;
       return this.reviewCode(codeInput.codeResult, codeInput.issue);
+    }
+
+    // Check if this is a PR quality review (pr-review workflow)
+    if ('triageResult' in input && 'pr' in input) {
+      const prInput = input as PRReviewInput;
+      return this.reviewPR(prInput);
     }
 
     // Otherwise, treat as conflict resolution review
@@ -354,6 +456,122 @@ export class ReviewerAgent extends BaseAgent {
       shouldEscalate,
       escalationReason: shouldEscalate ? this.getEscalationReason(review) : undefined,
     };
+  }
+
+  /**
+   * Review a PR quality (pr-review workflow)
+   */
+  async reviewPR(input: PRReviewInput): Promise<ReviewerOutput> {
+    const context = this.buildPRReviewContext(input);
+
+    const response = await this.chat({
+      model: this.config.defaultModel,
+      messages: [
+        { role: 'system', content: PR_REVIEW_SYSTEM_PROMPT },
+        { role: 'user', content: context },
+      ],
+      temperature: 0.3,
+    });
+
+    const review = this.parsePRReviewResponse(response, input);
+
+    // Record in history
+    this.recordReview(`pr-${input.pr.number}`, review);
+
+    // Determine escalation
+    const shouldEscalate =
+      !review.approved ||
+      review.confidence < 70;
+
+    return {
+      review,
+      shouldEscalate,
+      escalationReason: shouldEscalate ? this.getEscalationReason(review) : undefined,
+    };
+  }
+
+  /**
+   * Build context for PR quality review
+   */
+  private buildPRReviewContext(input: PRReviewInput): string {
+    const { triageResult, pr, changedFiles, focusAreas } = input;
+
+    const fileAnalysisText = triageResult.fileAnalyses
+      ? triageResult.fileAnalyses.map(f =>
+          `- ${f.file}: complexity ${f.complexity}, risk ${f.riskLevel}${f.concerns.length ? ` (${f.concerns.join(', ')})` : ''}`
+        ).join('\n')
+      : 'No file analysis available';
+
+    return `## PR Quality Review Request
+
+**PR #${pr.number}:** ${pr.title}
+**URL:** ${pr.url}
+**Files Changed:** ${pr.filesChanged}
+**Additions:** +${pr.additions}
+**Deletions:** -${pr.deletions}
+
+### PR Description
+${pr.body || 'No description provided'}
+
+### Triage Analysis
+**Overall Complexity:** ${triageResult.overallComplexity}/10
+**Suggested Strategy:** ${triageResult.suggestedStrategy || 'Not specified'}
+
+### File Analysis
+${fileAnalysisText}
+
+### Recommendations from Triage
+${triageResult.recommendations?.join('\n- ') || 'None'}
+
+### Changed Files
+${changedFiles?.join('\n- ') || 'Not available'}
+
+### Focus Areas
+${focusAreas?.join('\n- ') || 'Not specified'}
+
+Please review this PR and provide your assessment as a JSON object.`;
+  }
+
+  /**
+   * Parse PR review response from LLM
+   */
+  private parsePRReviewResponse(
+    response: string,
+    input: PRReviewInput
+  ): ReviewResult {
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      return {
+        approved: parsed.approved ?? true,
+        syntaxValid: true, // Not applicable for PR review
+        codeLossDetected: false, // Not applicable for PR review
+        securityIssues: parsed.concerns?.filter((c: string) =>
+          c.toLowerCase().includes('security')
+        ) || [],
+        suggestions: [
+          ...(parsed.suggestions || []),
+          ...(parsed.focusAreas || []).map((a: string) => `Focus area: ${a}`),
+        ],
+        confidence: parsed.confidence || 70,
+      };
+    } catch {
+      // Fallback based on triage complexity
+      const isHighRisk = input.triageResult.overallComplexity > 7;
+      return {
+        approved: !isHighRisk,
+        syntaxValid: true,
+        codeLossDetected: false,
+        securityIssues: [],
+        suggestions: ['LLM review failed - manual review recommended'],
+        confidence: 50,
+      };
+    }
   }
 
   /**
