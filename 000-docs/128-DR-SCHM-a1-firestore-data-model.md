@@ -699,12 +699,69 @@ See `firestore.indexes.json` for the complete index configuration.
 
 ## Migration Strategy
 
-For existing deployments:
+All documents include a `schemaVersion` field for forward-compatible migrations.
+
+### Schema Version Field
+
+```typescript
+interface VersionedDocument {
+  schemaVersion: number;  // Current version, see SCHEMA_VERSIONS
+}
+```
+
+Current versions are defined in `packages/core/src/storage/migration.ts`:
+- tenant: 1
+- run: 1
+- user: 1
+- membership: 1
+- signal: 1
+- workItem: 1
+- prCandidate: 1
+- (and others)
+
+### Migration Approach
 
 1. **Additive changes only** - New fields default to undefined
-2. **Backward compatibility** - Old documents work without migration
-3. **Lazy migration** - Update documents on next write
-4. **Version field** - Consider adding `schemaVersion` for complex migrations
+2. **Backward compatibility** - Old documents (schemaVersion: undefined) treated as v0
+3. **Lazy migration** - Documents migrated in-memory on read, persisted on next write
+4. **Version field** - `schemaVersion` tracks current document structure
+
+### Backfill Procedures
+
+For bulk migrations, use the backfill utilities:
+
+```typescript
+import {
+  DEFAULT_BACKFILL_OPTIONS,
+  needsMigration,
+  migrateDocument,
+  migrations
+} from '@gwi/core/storage';
+
+// Check if document needs migration
+if (needsMigration(doc, 'tenant')) {
+  const migrated = migrateDocument(doc, 'tenant', migrations.tenant);
+  await store.updateTenant(migrated);
+}
+```
+
+### Backfill Script Template
+
+```bash
+# Run backfill for a collection (example)
+npx tsx scripts/backfill.ts --collection=tenants --batch-size=100 --dry-run
+
+# Production backfill (no dry-run)
+npx tsx scripts/backfill.ts --collection=tenants --batch-size=100
+```
+
+### Migration Checklist
+
+1. **Increment version** in `SCHEMA_VERSIONS`
+2. **Add migration function** to `migrations` registry
+3. **Test with dry-run** backfill first
+4. **Run backfill** in production during maintenance window
+5. **Verify** with `bd stats` or monitoring
 
 ---
 

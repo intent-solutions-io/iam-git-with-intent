@@ -37,6 +37,25 @@ export {
   isRunInProgress,
   isRunFinished,
 } from './run-status-machine.js';
+
+// Schema migration utilities (A1.s4: Migration strategy)
+export {
+  SCHEMA_VERSIONS,
+  needsMigration,
+  getCurrentVersion,
+  withSchemaVersion,
+  migrateDocument,
+  createMigrationId,
+  DEFAULT_BACKFILL_OPTIONS,
+  migrations,
+  type CollectionType,
+  type VersionedDocument,
+  type MigrationFn,
+  type MigrationRegistry,
+  type BackfillOptions,
+  type BackfillResult,
+  type MigrationRecord,
+} from './migration.js';
 export {
   InMemoryRunStore,
   InMemoryTenantStore,

@@ -98,6 +98,8 @@ export interface RunStep {
  */
 export interface Run {
   id: string;
+  /** Schema version for migration support */
+  schemaVersion?: number;
   prId: string;
   prUrl: string;
   type: RunType;
@@ -157,6 +159,8 @@ export type TenantStatus = 'active' | 'suspended' | 'deactivated' | 'paused';
  */
 export interface Tenant {
   id: string;                    // e.g., "gh-org-12345678"
+  /** Schema version for migration support */
+  schemaVersion?: number;
   githubOrgId: number;
   githubOrgLogin: string;
   displayName: string;
@@ -300,6 +304,8 @@ export interface RepoSettings {
  */
 export interface User {
   id: string;                    // Firebase Auth UID
+  /** Schema version for migration support */
+  schemaVersion?: number;
   githubUserId: number;
   githubLogin: string;
   githubAvatarUrl?: string;
@@ -329,6 +335,8 @@ export interface UserPreferences {
  */
 export interface Membership {
   id: string;                    // e.g., "user123_gh-org-456"
+  /** Schema version for migration support */
+  schemaVersion?: number;
   userId: string;
   tenantId: string;
   role: TenantRole;
@@ -698,6 +706,8 @@ export interface ConnectorBinding {
 export interface WorkflowInstance {
   /** Unique instance ID */
   id: string;
+  /** Schema version for migration support */
+  schemaVersion?: number;
   /** Tenant ID */
   tenantId: string;
   /** Reference to template (id@version) */
@@ -730,6 +740,8 @@ export interface WorkflowInstance {
 export interface WorkflowSchedule {
   /** Unique schedule ID */
   id: string;
+  /** Schema version for migration support */
+  schemaVersion?: number;
   /** Instance ID */
   instanceId: string;
   /** Tenant ID (denormalized for queries) */
@@ -810,6 +822,8 @@ export type SignalStatus = 'pending' | 'processed' | 'ignored' | 'failed';
 export interface Signal {
   /** Unique signal ID */
   id: string;
+  /** Schema version for migration support */
+  schemaVersion?: number;
   /** Tenant ID */
   tenantId: string;
   /** Signal source type */
@@ -883,6 +897,8 @@ export type WorkItemType = 'issue_to_code' | 'pr_review' | 'pr_resolve' | 'docs_
 export interface WorkItem {
   /** Unique work item ID */
   id: string;
+  /** Schema version for migration support */
+  schemaVersion?: number;
   /** Tenant ID */
   tenantId: string;
   /** Work item type */
@@ -981,6 +997,8 @@ export type PRCandidateStatus = 'draft' | 'ready' | 'approved' | 'rejected' | 'a
 export interface PRCandidate {
   /** Unique candidate ID */
   id: string;
+  /** Schema version for migration support */
+  schemaVersion?: number;
   /** Work item ID */
   workItemId: string;
   /** Tenant ID */
