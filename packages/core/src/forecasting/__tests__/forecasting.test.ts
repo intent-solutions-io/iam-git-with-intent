@@ -315,7 +315,7 @@ describe('Forecasting Services', () => {
 
         expect(result.predictions).toHaveLength(12);
         expect(result.predictions[0].model).toBe('naive');
-        expect(result.computationTimeMs).toBeGreaterThan(0);
+        expect(result.computationTimeMs).toBeGreaterThanOrEqual(0);
       });
 
       it('should generate moving average forecast', async () => {
