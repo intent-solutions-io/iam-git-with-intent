@@ -49,6 +49,7 @@
     "hooks:wrap": "bash scripts/hooks/run-with-hooks.sh"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@libsql/client": "^0.15.15",
     "@tursodatabase/sync": "^0.3.2",
     "@types/better-sqlite3": "^7.6.13",

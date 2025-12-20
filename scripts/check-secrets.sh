@@ -55,9 +55,16 @@ SECRET_PATTERNS=(
 
 FOUND_SECRETS=0
 
+# Files to skip for high-entropy base64 patterns (false positives from integrity hashes)
+SKIP_BASE64_FILES="package-lock.json|pnpm-lock.yaml|yarn.lock"
+
 for pattern in "${SECRET_PATTERNS[@]}"; do
   # Check each staged file for the pattern
   while IFS= read -r file; do
+    # Skip lock files for the generic base64 pattern (integrity hashes are not secrets)
+    if [[ "$pattern" == "[A-Za-z0-9+/]{40,}={0,2}" ]] && echo "$file" | grep -qE "$SKIP_BASE64_FILES"; then
+      continue
+    fi
     if [ -f "$file" ] && git show ":$file" 2>/dev/null | grep -qE -- "$pattern"; then
       echo -e "${RED}❌ Potential secret found in: $file${NC}"
       echo "   Pattern: $pattern"
