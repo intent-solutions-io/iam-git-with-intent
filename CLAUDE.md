@@ -1,3 +1,14 @@
+## Task Tracking (Beads / bd)
+- Use `bd` for ALL tasks/issues (no markdown TODO lists).
+- Start of session: `bd ready`
+- Create work: `bd create "Title" -p 1 --description "Context + acceptance criteria"`
+- Update status: `bd update <id> --status in_progress`
+- Finish: `bd close <id> --reason "Done"`
+- End of session: `bd sync` (flush/import/export + git sync)
+- Manual testing safety:
+  - Prefer `BEADS_DIR` to isolate a workspace if needed. (`BEADS_DB` exists but is deprecated.)
+
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -241,18 +252,20 @@ npm run smoke:production
 
 **Required** (at least one AI provider):
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_AI_API_KEY=...
-GITHUB_TOKEN=ghp_...
+ANTHROPIC_API_KEY="REDACTED"
+GOOGLE_AI_API_KEY="REDACTED"
+GITHUB_TOKEN="REDACTED"
 ```
 
 **Production**:
 ```bash
 GWI_STORE_BACKEND=firestore
 GCP_PROJECT_ID=your-project
-STRIPE_SECRET_KEY=sk_...
-STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_SECRET_KEY="REDACTED"
+STRIPE_WEBHOOK_SECRET="REDACTED"
 ```
+
+**Note**: Values must be set outside the repo (Secret Manager / CI env / local shell). Never commit real secrets.
 
 ---
 
