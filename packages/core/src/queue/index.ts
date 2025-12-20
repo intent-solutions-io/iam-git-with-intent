@@ -521,3 +521,37 @@ export {
   type JobClaimOptions,
   type JobCompletionOptions,
 } from './firestore-job-store.js';
+
+// Epic A5: Export job envelope schemas and helpers
+export {
+  // Schemas
+  JobEnvelope,
+  JobPriority,
+  JobType,
+  PreviousAttempt,
+  TypedJobEnvelope,
+  RunStartJob,
+  RunResumeJob,
+  StepExecuteJob,
+  StepRetryJob,
+  CleanupRunJob,
+  NotificationSendJob,
+  RunStartPayload,
+  RunResumePayload,
+  StepExecutePayload,
+  StepRetryPayload,
+  CleanupRunPayload,
+  NotificationSendPayload,
+  // Helper functions
+  createJobEnvelope,
+  parseJobEnvelope,
+  validateJobEnvelope,
+  parseTypedJobEnvelope,
+  validateTypedJobEnvelope,
+  createPreviousAttempt,
+  addRetryAttempt,
+  isRetryExceeded,
+  isDeadlineExpired,
+  shouldDelay,
+  getRemainingDelay,
+} from './job-envelope.js';
