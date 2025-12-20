@@ -143,6 +143,8 @@ gcloud logging read 'resource.type="firestore_database" AND protoPayload.methodN
 
 **Symptoms**: Unauthorized access, suspicious activity, leaked credentials
 
+> **Note**: For detailed per-secret rotation procedures, see [147-DR-RNBK-secret-rotation-runbook.md](./147-DR-RNBK-secret-rotation-runbook.md)
+
 ### 5.1 Immediate Actions (First 15 minutes)
 
 1. **Rotate compromised secrets**

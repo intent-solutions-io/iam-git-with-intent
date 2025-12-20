@@ -244,3 +244,30 @@ export {
   calculateSLOStatus,
   getLatencyThresholds,
 } from './slo/index.js';
+
+// Idempotency exports (A4: Idempotency Layer - Event Source Key Schemes)
+// Explicit exports to resolve naming conflicts with reliability and telemetry
+export {
+  // Types
+  type EventSource as IdempotencyEventSource,
+  type GitHubIdempotencyKey,
+  type ApiIdempotencyKey,
+  type SlackIdempotencyKey,
+  type SchedulerIdempotencyKey,
+  type IdempotencyKeyInput,
+  // Schemas
+  EventSourceSchema as IdempotencyEventSourceSchema,
+  GitHubIdempotencyKeySchema,
+  ApiIdempotencyKeySchema,
+  SlackIdempotencyKeySchema,
+  SchedulerIdempotencyKeySchema,
+  IdempotencyKeyInputSchema,
+  // Key Generation (prefixed to avoid conflict with reliability module)
+  generateIdempotencyKey as generateEventIdempotencyKey,
+  parseIdempotencyKey as parseEventIdempotencyKey,
+  validateIdempotencyKey as validateEventIdempotencyKey,
+  hashRequestPayload,
+  // Request ID generation (prefixed to avoid conflict with telemetry module)
+  generateRequestId as generateIdempotencyRequestId,
+  extractTenantId,
+} from './idempotency/index.js';

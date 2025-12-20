@@ -28,6 +28,7 @@
     "dev": "tsc --watch",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --passWithNoTests",
+    "test:secrets:smoke": "vitest run src/secrets/__tests__/smoke.test.ts",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "typecheck": "tsc --noEmit",

@@ -253,9 +253,9 @@ resource "google_storage_bucket" "run_artifacts" {
   lifecycle_rule {
     # Delete general run artifacts after 90 days
     condition {
-      age                   = var.artifact_retention_days
-      matches_suffix        = [".json", ".diff", ".md"]
-      send_age_if_zero      = true
+      age              = var.artifact_retention_days
+      matches_suffix   = [".json", ".diff", ".md"]
+      send_age_if_zero = true
     }
     action {
       type = "Delete"

@@ -137,6 +137,34 @@ export interface CompensationLogEntry {
 }
 
 /**
+ * Step checkpoint for resume (A2.s5)
+ */
+export interface StepCheckpoint {
+  /** Step ID */
+  stepId: string;
+  /** Agent that executed this step */
+  agent: string;
+  /** Step completion status */
+  status: StepStatus;
+  /** Step input (for replay/validation) */
+  input?: unknown;
+  /** Step output (for resume context) */
+  output?: unknown;
+  /** Error if failed */
+  error?: string;
+  /** When the checkpoint was created */
+  timestamp: Date;
+  /** Whether this step can be safely skipped on resume */
+  resumable: boolean;
+  /** Whether this step is idempotent (can be safely replayed) */
+  idempotent: boolean;
+  /** Tokens used by this step */
+  tokensUsed?: { input: number; output: number };
+  /** Step duration in milliseconds */
+  durationMs?: number;
+}
+
+/**
  * A multi-agent run (pipeline execution)
  */
 export interface Run {
@@ -159,6 +187,12 @@ export interface Run {
   cancellation?: RunCancellation;
   /** A2.s4: Log of compensation actions executed on cancellation */
   compensationLog?: CompensationLogEntry[];
+  /** A2.s5: Checkpoints for resume support */
+  checkpoints?: StepCheckpoint[];
+  /** A2.s5: Step ID that this run was resumed from (if resumed) */
+  resumedFrom?: string;
+  /** A2.s5: Number of times this run has been resumed */
+  resumeCount?: number;
 }
 
 /**

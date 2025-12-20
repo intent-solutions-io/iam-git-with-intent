@@ -57,12 +57,6 @@ resource "google_project_iam_member" "agent_engine_trace" {
   member  = "serviceAccount:${google_service_account.agent_engine.email}"
 }
 
-resource "google_project_iam_member" "agent_engine_secrets" {
-  project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.agent_engine.email}"
-}
-
 # A2A Gateway IAM
 resource "google_project_iam_member" "a2a_gateway_aiplatform" {
   project = var.project_id
@@ -83,9 +77,9 @@ resource "google_project_iam_member" "github_webhook_aiplatform" {
   member  = "serviceAccount:${google_service_account.github_webhook.email}"
 }
 
-resource "google_project_iam_member" "github_webhook_secrets" {
+resource "google_project_iam_member" "github_webhook_logging" {
   project = var.project_id
-  role    = "roles/secretmanager.secretAccessor"
+  role    = "roles/logging.logWriter"
   member  = "serviceAccount:${google_service_account.github_webhook.email}"
 }
 
@@ -156,13 +150,29 @@ resource "google_service_account_iam_member" "github_actions_wif" {
 # Each service only gets access to the secrets it needs.
 # This replaces broad project-level secretmanager.secretAccessor role.
 #
-# Secret Inventory:
-# - gwi-github-app-private-key: gateway, worker, github-webhook
-# - gwi-github-webhook-secret: github-webhook
-# - gwi-anthropic-api-key: worker
-# - gwi-google-ai-api-key: worker
-# - gwi-stripe-secret-key: api
-# - gwi-stripe-webhook-secret: api
+# Secret Inventory and Access Matrix:
+# - gwi-github-app-private-key:
+#     * a2a_gateway (GitHub API operations)
+#     * github_webhook (webhook signature validation)
+#     * gwi_worker (autopilot workspace isolation)
+#     * agent_engine (agent GitHub operations)
+#
+# - gwi-github-webhook-secret:
+#     * github_webhook (webhook signature validation)
+#
+# - gwi-anthropic-api-key:
+#     * gwi_worker (Claude API calls)
+#     * agent_engine (Claude models: Coder, Reviewer agents)
+#
+# - gwi-google-ai-api-key:
+#     * gwi_worker (Gemini API calls)
+#     * agent_engine (Gemini models: Orchestrator, Triage agents)
+#
+# - gwi-stripe-secret-key:
+#     * gwi_api (billing operations)
+#
+# - gwi-stripe-webhook-secret:
+#     * gwi_api (Stripe webhook validation)
 # =============================================================================
 
 # Note: Using data sources would fail if secrets don't exist yet.
@@ -171,17 +181,20 @@ resource "google_service_account_iam_member" "github_actions_wif" {
 
 locals {
   # Secret access map: secret_id -> list of service accounts
+  # This defines granular least-privilege access to secrets
   secret_access_map = {
+    # GitHub App Private Key - needed by webhook handler and gateway for GitHub API
     "gwi-github-app-private-key" = [
       google_service_account.a2a_gateway.email,
       google_service_account.github_webhook.email,
     ]
+    # GitHub Webhook Secret - needed by webhook handler for signature validation
     "gwi-github-webhook-secret" = [
       google_service_account.github_webhook.email,
     ]
   }
 
-  # Flatten for for_each
+  # Flatten for for_each iteration
   secret_bindings = flatten([
     for secret_id, emails in local.secret_access_map : [
       for email in emails : {
@@ -193,7 +206,8 @@ locals {
   ])
 }
 
-# Per-secret IAM bindings for gateway/webhook (only if gwi_api_image is set)
+# Per-secret IAM bindings for gateway/webhook
+# These are always-on services that need access to GitHub credentials
 resource "google_secret_manager_secret_iam_member" "service_secret_access" {
   for_each = { for b in local.secret_bindings : b.key => b }
 
@@ -201,9 +215,6 @@ resource "google_secret_manager_secret_iam_member" "service_secret_access" {
   secret_id = each.value.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${each.value.email}"
-
-  # Only create if the secret might exist (we can't check, so always try)
-  # This will fail gracefully if secret doesn't exist yet
 
   lifecycle {
     # Ignore changes to prevent recreation if secret is recreated
@@ -272,6 +283,48 @@ resource "google_secret_manager_secret_iam_member" "worker_google_ai_key" {
   secret_id = "gwi-google-ai-api-key"
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.gwi_worker[0].email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+# =============================================================================
+# Agent Engine Secret Access (AI API Keys)
+# =============================================================================
+# Agent Engine service account needs access to AI provider API keys
+# for Claude (Anthropic) and Gemini (Google AI) models
+
+# Anthropic API Key - for Claude models (Coder, Reviewer agents)
+resource "google_secret_manager_secret_iam_member" "agent_engine_anthropic_key" {
+  project   = var.project_id
+  secret_id = "gwi-anthropic-api-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.agent_engine.email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+# Google AI API Key - for Gemini models (Orchestrator, Triage agents)
+resource "google_secret_manager_secret_iam_member" "agent_engine_google_ai_key" {
+  project   = var.project_id
+  secret_id = "gwi-google-ai-api-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.agent_engine.email}"
+
+  lifecycle {
+    ignore_changes = [secret_id]
+  }
+}
+
+# GitHub App Private Key - for GitHub API access from agents
+resource "google_secret_manager_secret_iam_member" "agent_engine_github_key" {
+  project   = var.project_id
+  secret_id = "gwi-github-app-private-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.agent_engine.email}"
 
   lifecycle {
     ignore_changes = [secret_id]

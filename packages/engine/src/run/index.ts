@@ -11,3 +11,5 @@ export { createEngine, getDefaultEngine } from './engine.js';
 export * from './issue-to-code.js';
 export * from './autopilot-executor.js';
 export * from './cancellation.js';
+export * from './checkpoint.js';
+export * from './resume.js';

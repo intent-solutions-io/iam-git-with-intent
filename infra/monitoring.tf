@@ -1070,7 +1070,7 @@ resource "google_logging_metric" "idempotency_cleanup" {
 
 # Dashboard for Idempotency Monitoring
 resource "google_monitoring_dashboard" "idempotency" {
-  count          = var.enable_alerts ? 1 : 0
+  count = var.enable_alerts ? 1 : 0
   dashboard_json = jsonencode({
     displayName = "GWI Idempotency Dashboard (${var.environment})"
     mosaicLayout = {
@@ -1387,7 +1387,7 @@ resource "google_monitoring_alert_policy" "queue_depth_warning" {
 
       comparison      = "COMPARISON_GT"
       threshold_value = var.queue_depth_threshold
-      duration        = "300s"  # 5 minutes sustained
+      duration        = "300s" # 5 minutes sustained
 
       aggregations {
         alignment_period   = "60s"
@@ -1460,7 +1460,7 @@ resource "google_monitoring_alert_policy" "queue_depth_critical" {
 
       comparison      = "COMPARISON_GT"
       threshold_value = var.queue_depth_critical_threshold
-      duration        = "300s"  # 5 minutes sustained
+      duration        = "300s" # 5 minutes sustained
 
       aggregations {
         alignment_period   = "60s"
@@ -1538,7 +1538,7 @@ resource "google_monitoring_alert_policy" "queue_age_warning" {
       EOT
 
       comparison      = "COMPARISON_GT"
-      threshold_value = 600  # 10 minutes in seconds
+      threshold_value = 600 # 10 minutes in seconds
       duration        = "60s"
 
       aggregations {
