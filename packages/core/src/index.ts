@@ -45,6 +45,9 @@ export * from './workspace.js';
 // Run Bundle exports (Phase 17: Agent Execution Backbone)
 export * from './run-bundle/index.js';
 
+// Artifact Access exports (A8.s2: Signed URL generation for UI access)
+export * from './artifacts/index.js';
+
 // Scoring exports (Phase 17: Deterministic complexity scoring)
 export * from './scoring/index.js';
 

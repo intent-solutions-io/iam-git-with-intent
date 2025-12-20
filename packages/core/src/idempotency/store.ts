@@ -2,13 +2,15 @@
  * Idempotency Store
  *
  * A4.s2: Atomic check-and-set for idempotency keys using Firestore transactions
+ * A4.s3: TTL/retention policy for idempotency records
  *
  * Provides:
  * - Atomic create-if-not-exists for idempotency keys
  * - Firestore transaction-based implementation
  * - In-memory implementation for testing
  * - Payload hash validation to detect duplicate-but-different requests
- * - TTL expiration logic
+ * - TTL expiration logic with configurable retention policies
+ * - Background cleanup for expired records
  *
  * @module @gwi/core/idempotency
  */
@@ -30,6 +32,49 @@ import {
  * Idempotency record status
  */
 export type IdempotencyStatus = 'pending' | 'completed' | 'failed';
+
+/**
+ * TTL configuration for idempotency store
+ */
+export interface IdempotencyTTLConfig {
+  /**
+   * Default TTL in seconds for new records
+   * @default 86400 (24 hours)
+   */
+  defaultTTLSeconds: number;
+
+  /**
+   * Minimum allowed TTL in seconds
+   * @default 60 (1 minute)
+   */
+  minTTLSeconds: number;
+
+  /**
+   * Maximum allowed TTL in seconds
+   * @default 604800 (7 days)
+   */
+  maxTTLSeconds: number;
+}
+
+/**
+ * Cleanup result statistics
+ */
+export interface CleanupResult {
+  /** Number of expired records deleted */
+  deletedCount: number;
+
+  /** Number of records scanned */
+  scannedCount: number;
+
+  /** Timestamp when cleanup started */
+  startedAt: Date;
+
+  /** Timestamp when cleanup completed */
+  completedAt: Date;
+
+  /** Duration in milliseconds */
+  durationMs: number;
+}
 
 /**
  * Idempotency record stored in the database
@@ -86,7 +131,7 @@ export interface IdempotencyStore {
    *
    * @param key - Idempotency key
    * @param tenantId - Tenant ID for isolation
-   * @param ttlSeconds - TTL in seconds (default: 86400 = 24 hours)
+   * @param ttlSeconds - TTL in seconds (default: from config or 86400 = 24 hours)
    * @param payloadHash - Optional payload hash for validation
    * @returns Check-and-set result with isNew flag and record
    */
@@ -129,6 +174,48 @@ export interface IdempotencyStore {
    * @returns Record if exists, null otherwise
    */
   get(key: string): Promise<IdempotencyRecord | null>;
+
+  /**
+   * Clean up expired idempotency records
+   *
+   * Scans for records where expiresAt < now and deletes them.
+   * For Firestore: Use this sparingly, prefer TTL policy.
+   * For in-memory: Call periodically to prevent memory leaks.
+   *
+   * @param batchSize - Maximum number of records to delete in one operation (default: 500)
+   * @returns Cleanup result statistics
+   */
+  cleanup(batchSize?: number): Promise<CleanupResult>;
+
+  /**
+   * Get current TTL configuration
+   */
+  getTTLConfig(): IdempotencyTTLConfig;
+}
+
+// =============================================================================
+// Constants & Defaults
+// =============================================================================
+
+/**
+ * Default TTL configuration
+ */
+export const DEFAULT_TTL_CONFIG: IdempotencyTTLConfig = {
+  defaultTTLSeconds: 86400, // 24 hours
+  minTTLSeconds: 60, // 1 minute
+  maxTTLSeconds: 604800, // 7 days
+};
+
+/**
+ * Validate and normalize TTL seconds
+ *
+ * @param ttlSeconds - Requested TTL in seconds
+ * @param config - TTL configuration
+ * @returns Normalized TTL within min/max bounds
+ */
+function normalizeTTL(ttlSeconds: number | undefined, config: IdempotencyTTLConfig): number {
+  const requested = ttlSeconds ?? config.defaultTTLSeconds;
+  return Math.max(config.minTTLSeconds, Math.min(config.maxTTLSeconds, requested));
 }
 
 // =============================================================================
@@ -159,12 +246,35 @@ export function hashIdempotencyKey(key: string): string {
  *
  * Uses Firestore transactions for atomic check-and-set operations.
  * Collection: gwi_idempotency (top-level, not per-tenant)
+ *
+ * TTL Policy Setup (Production):
+ * --------------------------------
+ * Firestore supports automatic TTL deletion via the 'expiresAt' field.
+ * To enable automatic cleanup in production:
+ *
+ * 1. Create a TTL policy on the collection:
+ *    gcloud firestore fields ttls update expiresAt \
+ *      --collection-group=gwi_idempotency \
+ *      --enable-ttl
+ *
+ * 2. Verify TTL is enabled:
+ *    gcloud firestore fields ttls list --collection-group=gwi_idempotency
+ *
+ * 3. Monitor cleanup in Firestore console or logs
+ *
+ * Note: Firestore TTL cleanup typically runs within 72 hours of expiration.
+ * For immediate cleanup needs, use the cleanup() method.
  */
 export class FirestoreIdempotencyStore implements IdempotencyStore {
   private db: Firestore;
+  private ttlConfig: IdempotencyTTLConfig;
 
-  constructor(db?: Firestore) {
+  constructor(db?: Firestore, ttlConfig?: Partial<IdempotencyTTLConfig>) {
     this.db = db ?? getFirestoreClient();
+    this.ttlConfig = {
+      ...DEFAULT_TTL_CONFIG,
+      ...ttlConfig,
+    };
   }
 
   /**
@@ -201,11 +311,12 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
   async checkAndSet(
     key: string,
     tenantId: string,
-    ttlSeconds = 86400,
+    ttlSeconds?: number,
     payloadHash?: string
   ): Promise<CheckAndSetResult> {
     const keyHash = hashIdempotencyKey(key);
     const docRef = this.docRef(keyHash);
+    const normalizedTTL = normalizeTTL(ttlSeconds, this.ttlConfig);
 
     const result = await this.db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(docRef);
@@ -230,7 +341,7 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
 
       // Create new record
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+      const expiresAt = new Date(now.getTime() + normalizedTTL * 1000);
 
       const newRecord: IdempotencyRecord = {
         keyHash,
@@ -315,6 +426,56 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
 
     return this.docToRecord(snapshot.data()!);
   }
+
+  async cleanup(batchSize = 500): Promise<CleanupResult> {
+    const startedAt = new Date();
+    let deletedCount = 0;
+    let scannedCount = 0;
+
+    const now = new Date();
+
+    // Query for expired records
+    // Note: This requires a composite index on (expiresAt, __name__)
+    const expiredQuery = this.idempotencyRef()
+      .where('expiresAt', '<', dateToTimestamp(now)!)
+      .limit(batchSize);
+
+    const snapshot = await expiredQuery.get();
+    scannedCount = snapshot.size;
+
+    if (snapshot.empty) {
+      const completedAt = new Date();
+      return {
+        deletedCount: 0,
+        scannedCount: 0,
+        startedAt,
+        completedAt,
+        durationMs: completedAt.getTime() - startedAt.getTime(),
+      };
+    }
+
+    // Delete expired records in a batch
+    const batch = this.db.batch();
+    snapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      deletedCount++;
+    });
+
+    await batch.commit();
+
+    const completedAt = new Date();
+    return {
+      deletedCount,
+      scannedCount,
+      startedAt,
+      completedAt,
+      durationMs: completedAt.getTime() - startedAt.getTime(),
+    };
+  }
+
+  getTTLConfig(): IdempotencyTTLConfig {
+    return { ...this.ttlConfig };
+  }
 }
 
 // =============================================================================
@@ -326,17 +487,31 @@ export class FirestoreIdempotencyStore implements IdempotencyStore {
  *
  * Provides same interface as Firestore implementation but uses Map storage.
  * Data is lost on restart.
+ *
+ * Memory Management:
+ * ------------------
+ * Call cleanup() periodically to prevent memory leaks from expired records.
+ * Recommended: Run cleanup every 5-15 minutes in long-running processes.
  */
 export class InMemoryIdempotencyStore implements IdempotencyStore {
   private records = new Map<string, IdempotencyRecord>();
+  private ttlConfig: IdempotencyTTLConfig;
+
+  constructor(ttlConfig?: Partial<IdempotencyTTLConfig>) {
+    this.ttlConfig = {
+      ...DEFAULT_TTL_CONFIG,
+      ...ttlConfig,
+    };
+  }
 
   async checkAndSet(
     key: string,
     tenantId: string,
-    ttlSeconds = 86400,
+    ttlSeconds?: number,
     payloadHash?: string
   ): Promise<CheckAndSetResult> {
     const keyHash = hashIdempotencyKey(key);
+    const normalizedTTL = normalizeTTL(ttlSeconds, this.ttlConfig);
 
     // Check if record exists
     const existing = this.records.get(keyHash);
@@ -358,7 +533,7 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
 
     // Create new record
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+    const expiresAt = new Date(now.getTime() + normalizedTTL * 1000);
 
     const newRecord: IdempotencyRecord = {
       keyHash,
@@ -410,6 +585,50 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
     const keyHash = hashIdempotencyKey(key);
     return this.records.get(keyHash) ?? null;
   }
+
+  async cleanup(batchSize = 500): Promise<CleanupResult> {
+    const startedAt = new Date();
+    let deletedCount = 0;
+    let scannedCount = 0;
+
+    const now = new Date();
+    const expiredKeys: string[] = [];
+
+    // Scan for expired records
+    // Use Array.from to avoid downlevelIteration requirement
+    const entries = Array.from(this.records.entries());
+    for (const [keyHash, record] of entries) {
+      scannedCount++;
+
+      if (record.expiresAt < now) {
+        expiredKeys.push(keyHash);
+      }
+
+      // Limit scan to batchSize to prevent long-running operations
+      if (scannedCount >= batchSize) {
+        break;
+      }
+    }
+
+    // Delete expired records
+    for (const keyHash of expiredKeys) {
+      this.records.delete(keyHash);
+      deletedCount++;
+    }
+
+    const completedAt = new Date();
+    return {
+      deletedCount,
+      scannedCount,
+      startedAt,
+      completedAt,
+      durationMs: completedAt.getTime() - startedAt.getTime(),
+    };
+  }
+
+  getTTLConfig(): IdempotencyTTLConfig {
+    return { ...this.ttlConfig };
+  }
 }
 
 // =============================================================================
@@ -417,18 +636,40 @@ export class InMemoryIdempotencyStore implements IdempotencyStore {
 // =============================================================================
 
 /**
+ * Options for creating an idempotency store
+ */
+export interface IdempotencyStoreOptions {
+  /** Storage backend */
+  backend: 'firestore' | 'memory';
+
+  /** Optional Firestore instance (for testing) */
+  db?: Firestore;
+
+  /** Optional TTL configuration */
+  ttlConfig?: Partial<IdempotencyTTLConfig>;
+}
+
+/**
  * Create idempotency store instance
  *
- * @param backend - Storage backend ('firestore' or 'memory')
- * @param db - Optional Firestore instance (for testing)
+ * @param options - Store creation options
  * @returns IdempotencyStore instance
  */
 export function createIdempotencyStore(
-  backend: 'firestore' | 'memory',
+  options: IdempotencyStoreOptions | 'firestore' | 'memory',
   db?: Firestore
 ): IdempotencyStore {
-  if (backend === 'firestore') {
-    return new FirestoreIdempotencyStore(db);
+  // Support legacy signature: createIdempotencyStore('memory') or createIdempotencyStore('firestore', db)
+  if (typeof options === 'string') {
+    if (options === 'firestore') {
+      return new FirestoreIdempotencyStore(db);
+    }
+    return new InMemoryIdempotencyStore();
   }
-  return new InMemoryIdempotencyStore();
+
+  // New signature with options object
+  if (options.backend === 'firestore') {
+    return new FirestoreIdempotencyStore(options.db, options.ttlConfig);
+  }
+  return new InMemoryIdempotencyStore(options.ttlConfig);
 }

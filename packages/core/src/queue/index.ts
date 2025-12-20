@@ -555,3 +555,23 @@ export {
   shouldDelay,
   getRemainingDelay,
 } from './job-envelope.js';
+
+// Epic A5.s2: Export Pub/Sub publisher/subscriber
+export {
+  // Interfaces
+  type QueueClient,
+  type QueuePublisher as PubSubQueuePublisher,
+  type QueueSubscriber,
+  type MessageHandler,
+  type ReceivedMessage,
+  type QueuePublishResult as PubSubPublishResult,
+  type PubSubConfig,
+  // Implementations
+  PubSubPublisher,
+  PubSubSubscriber,
+  InMemoryPublisher,
+  InMemorySubscriber,
+  // Factory functions
+  createPublisher,
+  createSubscriber,
+} from './pubsub-client.js';

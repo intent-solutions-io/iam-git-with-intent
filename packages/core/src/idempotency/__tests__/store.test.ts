@@ -2,12 +2,14 @@
  * Idempotency Store Tests
  *
  * A4.s2: Test atomic check-and-set for idempotency keys
+ * A4.s3: Test TTL/retention policy and cleanup
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   createIdempotencyStore,
   hashIdempotencyKey,
+  DEFAULT_TTL_CONFIG,
   type IdempotencyStore,
 } from '../store.js';
 import { generateIdempotencyKey, hashRequestPayload } from '../key-scheme.js';
@@ -397,6 +399,216 @@ function testIdempotencyStore(name: string, factory: () => IdempotencyStore) {
         expect(result1.record.keyHash).not.toBe(result2.record.keyHash);
       });
     });
+
+    // -------------------------------------------------------------------------
+    // TTL Configuration & Validation
+    // -------------------------------------------------------------------------
+
+    describe('TTL configuration', () => {
+      it('should return TTL config', () => {
+        const config = store.getTTLConfig();
+
+        expect(config).toHaveProperty('defaultTTLSeconds');
+        expect(config).toHaveProperty('minTTLSeconds');
+        expect(config).toHaveProperty('maxTTLSeconds');
+        expect(config.defaultTTLSeconds).toBeGreaterThan(0);
+        expect(config.minTTLSeconds).toBeGreaterThan(0);
+        expect(config.maxTTLSeconds).toBeGreaterThan(config.minTTLSeconds);
+      });
+
+      it('should normalize TTL to min/max bounds', async () => {
+        const config = store.getTTLConfig();
+        const key = generateIdempotencyKey({
+          source: 'api',
+          tenant: 'tenant-1',
+          requestId: 'req-ttl-bounds',
+        });
+
+        // Try to set TTL below minimum
+        const tooShort = config.minTTLSeconds - 10;
+        const result1 = await store.checkAndSet(key + '-1', 'tenant-1', tooShort);
+
+        // Should be clamped to minimum
+        const expectedMinExpiry = new Date(
+          result1.record.createdAt.getTime() + config.minTTLSeconds * 1000
+        );
+        expect(result1.record.expiresAt.getTime()).toBeGreaterThanOrEqual(expectedMinExpiry.getTime() - 1000);
+
+        // Try to set TTL above maximum
+        const tooLong = config.maxTTLSeconds + 1000;
+        const result2 = await store.checkAndSet(key + '-2', 'tenant-1', tooLong);
+
+        // Should be clamped to maximum
+        const expectedMaxExpiry = new Date(
+          result2.record.createdAt.getTime() + config.maxTTLSeconds * 1000
+        );
+        expect(result2.record.expiresAt.getTime()).toBeLessThanOrEqual(expectedMaxExpiry.getTime() + 1000);
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Cleanup Operations
+    // -------------------------------------------------------------------------
+
+    describe('cleanup', () => {
+      it('should delete expired records', async () => {
+        // Create a store with very short minimum TTL for testing
+        const testStore = createIdempotencyStore({
+          backend: 'memory',
+          ttlConfig: {
+            minTTLSeconds: 1,
+            maxTTLSeconds: 86400,
+            defaultTTLSeconds: 3600,
+          },
+        });
+
+        const key1 = generateIdempotencyKey({
+          source: 'api',
+          tenant: 'tenant-1',
+          requestId: 'req-cleanup-1',
+        });
+
+        const key2 = generateIdempotencyKey({
+          source: 'api',
+          tenant: 'tenant-1',
+          requestId: 'req-cleanup-2',
+        });
+
+        // Create record with very short TTL (1 second)
+        await testStore.checkAndSet(key1, 'tenant-1', 1);
+
+        // Create record with normal TTL
+        await testStore.checkAndSet(key2, 'tenant-1', 3600);
+
+        // Wait for first record to expire
+        await new Promise(resolve => setTimeout(resolve, 1100));
+
+        // Run cleanup
+        const result = await testStore.cleanup();
+
+        expect(result.deletedCount).toBeGreaterThanOrEqual(1);
+        expect(result.scannedCount).toBeGreaterThanOrEqual(1);
+        expect(result.startedAt).toBeInstanceOf(Date);
+        expect(result.completedAt).toBeInstanceOf(Date);
+        expect(result.durationMs).toBeGreaterThanOrEqual(0);
+
+        // Expired record should be gone
+        const exists1 = await testStore.exists(key1);
+        expect(exists1).toBe(false);
+
+        // Non-expired record should still exist
+        const exists2 = await testStore.exists(key2);
+        expect(exists2).toBe(true);
+      });
+
+      it('should return zero counts when no expired records exist', async () => {
+        const key = generateIdempotencyKey({
+          source: 'api',
+          tenant: 'tenant-1',
+          requestId: 'req-cleanup-none',
+        });
+
+        // Create record with long TTL
+        await store.checkAndSet(key, 'tenant-1', 3600);
+
+        // Run cleanup
+        const result = await store.cleanup();
+
+        // No records should be deleted
+        expect(result.deletedCount).toBe(0);
+        expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      });
+
+      it('should respect batch size limit', async () => {
+        // Create a store with very short minimum TTL for testing
+        const testStore = createIdempotencyStore({
+          backend: 'memory',
+          ttlConfig: {
+            minTTLSeconds: 1,
+            maxTTLSeconds: 86400,
+            defaultTTLSeconds: 3600,
+          },
+        });
+
+        // Create multiple expired records
+        for (let i = 0; i < 10; i++) {
+          const key = generateIdempotencyKey({
+            source: 'api',
+            tenant: 'tenant-1',
+            requestId: `req-batch-${i}`,
+          });
+          await testStore.checkAndSet(key, 'tenant-1', 1);
+        }
+
+        // Wait for expiration
+        await new Promise(resolve => setTimeout(resolve, 1100));
+
+        // Run cleanup with small batch size
+        const result = await testStore.cleanup(5);
+
+        // Should scan at most batchSize records
+        expect(result.scannedCount).toBeLessThanOrEqual(5);
+      });
+
+      it('should provide accurate timing information', async () => {
+        const beforeCleanup = Date.now();
+        const result = await store.cleanup();
+        const afterCleanup = Date.now();
+
+        // Timestamps should be in reasonable range
+        expect(result.startedAt.getTime()).toBeGreaterThanOrEqual(beforeCleanup);
+        expect(result.startedAt.getTime()).toBeLessThanOrEqual(afterCleanup);
+        expect(result.completedAt.getTime()).toBeGreaterThanOrEqual(beforeCleanup);
+        expect(result.completedAt.getTime()).toBeLessThanOrEqual(afterCleanup);
+
+        // Duration should match timestamps
+        const calculatedDuration = result.completedAt.getTime() - result.startedAt.getTime();
+        expect(result.durationMs).toBe(calculatedDuration);
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // TTL Expiration Behavior
+    // -------------------------------------------------------------------------
+
+    describe('TTL expiration behavior', () => {
+      it('should allow record retrieval before expiration', async () => {
+        const key = generateIdempotencyKey({
+          source: 'api',
+          tenant: 'tenant-1',
+          requestId: 'req-before-expiry',
+        });
+
+        // Create record with 2 second TTL
+        await store.checkAndSet(key, 'tenant-1', 2);
+
+        // Immediately after creation, record should exist
+        const record = await store.get(key);
+        expect(record).not.toBeNull();
+        expect(record!.status).toBe('pending');
+      });
+
+      it('should store correct expiresAt timestamp', async () => {
+        const key = generateIdempotencyKey({
+          source: 'api',
+          tenant: 'tenant-1',
+          requestId: 'req-expiry-timestamp',
+        });
+
+        const ttlSeconds = 300; // 5 minutes
+        const beforeCreate = new Date();
+        const result = await store.checkAndSet(key, 'tenant-1', ttlSeconds);
+        const afterCreate = new Date();
+
+        // expiresAt should be createdAt + TTL
+        const expectedExpiry = new Date(result.record.createdAt.getTime() + ttlSeconds * 1000);
+        expect(result.record.expiresAt.getTime()).toBe(expectedExpiry.getTime());
+
+        // expiresAt should be in the future
+        expect(result.record.expiresAt.getTime()).toBeGreaterThan(beforeCreate.getTime());
+        expect(result.record.expiresAt.getTime()).toBeGreaterThan(afterCreate.getTime());
+      });
+    });
   });
 }
 
@@ -406,6 +618,78 @@ function testIdempotencyStore(name: string, factory: () => IdempotencyStore) {
 
 // Test in-memory implementation
 testIdempotencyStore('InMemoryIdempotencyStore', () => createIdempotencyStore('memory'));
+
+// =============================================================================
+// TTL Configuration Tests (Store-Specific)
+// =============================================================================
+
+describe('Custom TTL Configuration', () => {
+  it('should support custom TTL config at creation', () => {
+    const customConfig = {
+      defaultTTLSeconds: 7200, // 2 hours
+      minTTLSeconds: 120, // 2 minutes
+      maxTTLSeconds: 172800, // 2 days
+    };
+
+    const store = createIdempotencyStore({
+      backend: 'memory',
+      ttlConfig: customConfig,
+    });
+
+    const config = store.getTTLConfig();
+    expect(config.defaultTTLSeconds).toBe(7200);
+    expect(config.minTTLSeconds).toBe(120);
+    expect(config.maxTTLSeconds).toBe(172800);
+  });
+
+  it('should merge partial TTL config with defaults', () => {
+    const partialConfig = {
+      defaultTTLSeconds: 3600, // 1 hour
+    };
+
+    const store = createIdempotencyStore({
+      backend: 'memory',
+      ttlConfig: partialConfig,
+    });
+
+    const config = store.getTTLConfig();
+    expect(config.defaultTTLSeconds).toBe(3600);
+    expect(config.minTTLSeconds).toBe(DEFAULT_TTL_CONFIG.minTTLSeconds);
+    expect(config.maxTTLSeconds).toBe(DEFAULT_TTL_CONFIG.maxTTLSeconds);
+  });
+
+  it('should use defaults when no TTL config provided', () => {
+    const store = createIdempotencyStore('memory');
+
+    const config = store.getTTLConfig();
+    expect(config.defaultTTLSeconds).toBe(DEFAULT_TTL_CONFIG.defaultTTLSeconds);
+    expect(config.minTTLSeconds).toBe(DEFAULT_TTL_CONFIG.minTTLSeconds);
+    expect(config.maxTTLSeconds).toBe(DEFAULT_TTL_CONFIG.maxTTLSeconds);
+  });
+
+  it('should apply custom TTL config to checkAndSet', async () => {
+    const customConfig = {
+      defaultTTLSeconds: 300, // 5 minutes
+    };
+
+    const store = createIdempotencyStore({
+      backend: 'memory',
+      ttlConfig: customConfig,
+    });
+
+    const key = generateIdempotencyKey({
+      source: 'api',
+      tenant: 'tenant-1',
+      requestId: 'req-custom-ttl',
+    });
+
+    // Don't specify TTL - should use custom default
+    const result = await store.checkAndSet(key, 'tenant-1');
+
+    const expectedExpiry = new Date(result.record.createdAt.getTime() + 300 * 1000);
+    expect(result.record.expiresAt.getTime()).toBe(expectedExpiry.getTime());
+  });
+});
 
 // Test Firestore implementation (requires emulator or real Firestore)
 // Skip if not configured
