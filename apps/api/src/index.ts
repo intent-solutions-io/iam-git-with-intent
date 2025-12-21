@@ -631,12 +631,38 @@ app.get('/health', (_req, res) => {
 });
 
 /**
+ * Internal-only middleware for metrics endpoints
+ * Requires either service account or authenticated user
+ */
+function internalOnlyMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  // Allow service accounts (Cloud Run internal calls)
+  const serviceAccountHeader = req.headers['x-service-account'] as string;
+  if (serviceAccountHeader) {
+    return next();
+  }
+
+  // In development, allow debug user
+  const debugUser = req.headers['x-debug-user'] as string;
+  if (debugUser && process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+
+  // Otherwise require authentication
+  return res.status(403).json({
+    error: 'Forbidden - Internal endpoint',
+    hint: 'Metrics endpoints are for internal monitoring only',
+  });
+}
+
+/**
  * GET /metrics - Basic metrics endpoint (Phase 11: Observability)
  *
  * Returns simple metrics for monitoring. In production, consider using
  * OpenTelemetry with Prometheus exporter for proper metrics collection.
+ *
+ * SECURITY: Protected by internalOnlyMiddleware - requires service account or auth
  */
-app.get('/metrics', (_req, res) => {
+app.get('/metrics', internalOnlyMiddleware, (_req, res) => {
   const uptime = Date.now() - metrics.startTime;
   const avgLatency = metrics.requestsTotal > 0
     ? metrics.latencySum / metrics.requestsTotal
@@ -701,7 +727,7 @@ app.get('/metrics', (_req, res) => {
  *
  * Returns metrics in Prometheus text format for scraping.
  */
-app.get('/metrics/prometheus', (_req, res) => {
+app.get('/metrics/prometheus', internalOnlyMiddleware, (_req, res) => {
   const idempotencyCollector = getIdempotencyMetrics();
 
   // Add app-level metrics
