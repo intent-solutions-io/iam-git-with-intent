@@ -4,7 +4,7 @@
 
 **Status:** Active development. Core PR automation works. Analytics and prediction layer in progress.
 
-**Security:** [Security policy](SECURITY.md) | Comprehensive audit completed Dec 2024 | Responsible disclosure program
+**Security:** [Security policy](SECURITY.md) | Comprehensive audit completed Dec 2025 | Responsible disclosure program
 
 ---
 
@@ -612,7 +612,7 @@ This repo is currently private and under active development. If you're intereste
 See [SECURITY.md](SECURITY.md) for our security policy, responsible disclosure program, and security posture.
 
 **TL;DR:**
-- ✅ Comprehensive security audit completed (Dec 2024)
+- ✅ Comprehensive security audit completed (Dec 2025)
 - ✅ All findings documented and tracked
 - ⚠️ Pre-alpha software - not production-ready
 - 📧 Security issues: security@intentsolutions.io

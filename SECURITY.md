@@ -15,7 +15,7 @@
 
 ### What We've Done
 
-✅ **Comprehensive Security Audit** (December 2024)
+✅ **Comprehensive Security Audit** (December 2025)
 - Professional security review conducted
 - All findings documented and tracked
 - Critical issues addressed before public release
@@ -202,9 +202,9 @@ When the hosted service launches:
 
 | Date | Type | Conducted By | Findings | Status |
 |------|------|--------------|----------|--------|
-| 2024-12-20 | Comprehensive | Internal (Claude Code security-auditor) | 3 critical, 8 high, 4 medium | Documented |
+| 2025-12-20 | Comprehensive | Internal (Claude Code security-auditor) | 3 critical, 8 high, 4 medium | Documented |
 
-Audit report: [Internal security audit report](docs/security-audit-2024-12.md)
+Audit report: [Internal security audit report](docs/security-audit-2025-12.md)
 
 ---
 
@@ -224,5 +224,5 @@ We thank the following security researchers:
 
 ---
 
-**Last Updated:** December 20, 2024
-**Next Review:** March 20, 2025
+**Last Updated:** December 20, 2025
+**Next Review:** March 20, 2026
