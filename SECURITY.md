@@ -45,7 +45,7 @@ This project is in active development. Known security limitations:
 🔶 **Rate Limiting**
 - In-memory implementation (resets on container restart)
 - **Mitigation:** Redis-based rate limiting available, not enabled by default
-- **Status:** Tracked in [Epic A6](docs)
+- **Status:** Tracked in Epic A6 (beads backlog)
 
 🔶 **Marketplace (Unreleased Feature)**
 - Authentication not yet implemented for connector publishing
@@ -204,7 +204,7 @@ When the hosted service launches:
 |------|------|--------------|----------|--------|
 | 2025-12-20 | Comprehensive | Internal (Claude Code security-auditor) | 3 critical, 8 high, 4 medium | Documented |
 
-Audit report: [Internal security audit report](docs/security-audit-2025-12.md)
+Full audit findings available in this security policy document.
 
 ---
 
