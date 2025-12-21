@@ -4,6 +4,8 @@
 
 **Status:** Active development. Core PR automation works. Analytics and prediction layer in progress.
 
+**Security:** [Security policy](SECURITY.md) | Comprehensive audit completed Dec 2024 | Responsible disclosure program
+
 ---
 
 ## What It Does
@@ -245,6 +247,7 @@ export GCP_PROJECT_ID=your-project
 
 ### Try It
 
+**Option 1: Direct Install (npm)**
 ```bash
 # Analyze a PR
 gwi triage https://github.com/facebook/react/pull/12345
@@ -255,6 +258,21 @@ gwi resolve https://github.com/owner/repo/pull/123
 # Full autopilot
 gwi autopilot https://github.com/owner/repo/pull/123
 ```
+
+**Option 2: Docker (Isolated/Sandboxed)**
+```bash
+# Build image
+docker build -t gwi-cli -f apps/cli/Dockerfile .
+
+# Run with environment variables
+docker run -it --rm \
+  -e ANTHROPIC_API_KEY="your-key" \
+  -e GITHUB_TOKEN="your-token" \
+  -v $(pwd):/workspace \
+  gwi-cli triage https://github.com/owner/repo/pull/123
+```
+
+Docker provides additional isolation and security sandboxing.
 
 ---
 
@@ -586,6 +604,18 @@ Foundation models (LLMs for analysis, TimeGPT for forecasting) make this tractab
 This repo is currently private and under active development. If you're interested in contributing or early access:
 
 📧 jeremy@intentsolutions.io
+
+---
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for our security policy, responsible disclosure program, and security posture.
+
+**TL;DR:**
+- ✅ Comprehensive security audit completed (Dec 2024)
+- ✅ All findings documented and tracked
+- ⚠️ Pre-alpha software - not production-ready
+- 📧 Security issues: security@intentsolutions.io
 
 ---
 

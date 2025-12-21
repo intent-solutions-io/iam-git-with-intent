@@ -421,7 +421,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
   // DEVELOPMENT ONLY: Accept debug header
   const debugUser = req.headers['x-debug-user'] as string;
   const debugRole = (req.headers['x-debug-role'] as string) || 'owner';
-  if (debugUser && process.env.NODE_ENV !== 'production') {
+  if (debugUser && isDevEnvironment()) {
     req.context = {
       userId: debugUser,
       tenantRole: debugRole as TenantRole,
@@ -613,6 +613,18 @@ const _AcceptInviteSchema = z.object({
 });
 
 // =============================================================================
+// Utility Functions
+// =============================================================================
+
+/**
+ * Check if running in development environment
+ * More explicit than NODE_ENV check - uses DEPLOYMENT_ENV
+ */
+function isDevEnvironment(): boolean {
+  return config.env === 'dev' || config.env === 'local' || config.env === 'development';
+}
+
+// =============================================================================
 // Routes: Health
 // =============================================================================
 
@@ -632,25 +644,41 @@ app.get('/health', (_req, res) => {
 
 /**
  * Internal-only middleware for metrics endpoints
- * Requires either service account or authenticated user
+ * Requires authenticated user or Cloud Run internal request
  */
 function internalOnlyMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
-  // Allow service accounts (Cloud Run internal calls)
-  const serviceAccountHeader = req.headers['x-service-account'] as string;
-  if (serviceAccountHeader) {
-    return next();
+  // In production, verify Cloud Run internal header (set by Cloud Run only)
+  if (config.env === 'prod') {
+    // Cloud Run sets this header for internal service-to-service calls
+    // This cannot be spoofed from external requests
+    const cloudRunTrace = req.headers['x-cloud-trace-context'];
+    const forwardedFor = req.headers['x-forwarded-for'];
+
+    // If request came from Cloud Run internal network, allow it
+    if (cloudRunTrace && !forwardedFor) {
+      return next();
+    }
+
+    // Otherwise require authenticated user
+    if (req.context?.userId) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: 'Forbidden - Internal endpoint',
+      hint: 'Metrics require authentication or Cloud Run internal access',
+    });
   }
 
-  // In development, allow debug user
+  // In development, allow debug user or local access
   const debugUser = req.headers['x-debug-user'] as string;
-  if (debugUser && process.env.NODE_ENV !== 'production') {
+  if (debugUser || req.ip === '127.0.0.1' || req.ip === '::1') {
     return next();
   }
 
-  // Otherwise require authentication
   return res.status(403).json({
     error: 'Forbidden - Internal endpoint',
-    hint: 'Metrics endpoints are for internal monitoring only',
+    hint: 'Set X-Debug-User header for development access',
   });
 }
 

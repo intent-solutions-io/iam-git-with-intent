@@ -1,33 +1,50 @@
-# Internal Dev Tooling - NEVER include in production images
-workspace/
+# Git With Intent - Docker ignore
 
-# Git and IDE
-.git/
-.gitignore
-.vscode/
-.idea/
-
-# Documentation (not needed in runtime)
-docs/
-000-docs/
-*.md
-!README.md
-
-# Development files
-*.log
-coverage/
-__snapshots__/
-*.snap
-
-# Build artifacts from other workspaces (built fresh in Docker)
+# Dependencies
 node_modules/
+.pnpm-store/
+
+# Build outputs
 dist/
 *.tsbuildinfo
 
-# Terraform/OpenTofu
-infra/.terraform/
-infra/*.tfstate*
-infra/*.tfplan
+# Environment
+.env
+.env.*
 
-# Environment files
-.env*
+# Runtime state
+.gwi/
+.engine/
+.beads/
+workspace/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Documentation (not needed in image)
+*.md
+docs/
+000-docs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Test artifacts
+coverage/
+__snapshots/
+
+# OpenTofu/Terraform
+infra/
