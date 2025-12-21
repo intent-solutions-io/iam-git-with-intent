@@ -1,214 +1,598 @@
 # Git With Intent
 
-AI-powered CLI for GitHub PR workflows. Handles merge conflicts, generates code from issues, and automates the tedious parts of PR management.
+**TL;DR:** CLI tool that automates PR workflows and predicts repository outcomes. Ships now: resolves merge conflicts, creates PRs from issues, reviews code, full autopilot mode with approval gating. Building next: Airbyte-style data ingestion + TimeGPT forecasting to predict merge times, sprint completion probability, and technical debt trajectories.
 
-**Status:** Active development. Core functionality works, rough edges remain.
-
----
-
-## What This Actually Does
-
-Most AI coding tools focus on writing new code. GWI focuses on the messy middle: merge conflicts, PR triage, and turning issues into working PRs.
-
-| Command | Purpose |
-|---------|---------|
-| `gwi triage <pr-url>` | Score PR complexity (1-10), identify conflicts |
-| `gwi plan <pr-url>` | Generate resolution strategy |
-| `gwi resolve <pr-url>` | AI-powered conflict resolution |
-| `gwi review <pr-url>` | Generate review summary |
-| `gwi issue-to-code <issue-url>` | Turn GitHub issue into code |
-| `gwi autopilot <pr-url>` | Full pipeline: triage → plan → resolve → review |
-| `gwi run list` | List recent runs |
-| `gwi run status <id>` | Check run details |
-| `gwi run approve <id>` | Approve changes for commit |
+**Status:** Active development. Core PR automation works. Analytics and prediction layer in progress.
 
 ---
 
-## How It Differs From Other Tools
+## What It Does
 
-### vs GitHub Copilot
-Copilot writes code inline. GWI operates at the PR level - it reads the full context of a PR, understands what changed across multiple files, and resolves conflicts that span branches. Different problem space.
+Two modes: automation and prediction.
 
-### vs Dependabot / Renovate
-Those handle dependency updates. GWI handles arbitrary PRs with conflicts, including feature branches where humans made conflicting changes. Dependabot can't reason about semantic conflicts in business logic.
+**Automation (shipping now):**
+- Resolves merge conflicts (semantic understanding, not just textual)
+- Creates PRs from GitHub issues
+- Reviews and scores PR complexity
+- Generates code changes with approval gating
+- Full autopilot mode (triage → resolve → review → commit)
 
-### vs Generic AI Chat
-You could paste diffs into ChatGPT. GWI automates the workflow: fetches PR data, parses conflicts, generates patches in the right format, and can commit results. It's the difference between a tool and a workflow.
+**Prediction (in progress):**
+- When will this PR actually merge (not just average merge time)
+- Which repos are accumulating technical debt faster than they're paying it down
+- Is this merge conflict pattern a symptom of architectural issues
+- What's the probability this sprint commitment is realistic
 
-### The Actual Innovation
-1. **Deterministic scoring** - Complexity scores (1-10) are reproducible, not vibes
-2. **Approval gating** - Changes require explicit approval before commit, with SHA256 hash binding
-3. **Audit trail** - Every run produces artifacts you can review and reproduce
-4. **Multi-agent routing** - Simple PRs get fast models, complex ones get stronger models
+Three components:
+1. **Data Ingestion** - Airbyte-style connectors pull commits, PRs, issues, CI runs, reviews, deployment logs
+2. **AI Analysis** - Multi-agent system analyzes repository health, conflict patterns, team dynamics
+3. **Time Series Forecasting** - TimeGPT integration predicts delivery dates, velocity trends, technical debt accumulation
 
 ---
 
-## Quick Start
+## How It's Different
+
+**GitHub Insights / GitLab Analytics**
+They show "average PR merge time is 3 days." This tool shows "PR #847 will merge in 5.2 days with 73% confidence based on conflict patterns and reviewer availability."
+
+**Linear / JIRA Forecasting**
+They forecast based on story points and velocity. This uses actual repository activity. Story points are estimates. Git history is data.
+
+**Airbyte + Custom Analytics**
+Airbyte gets you the data. You build the intelligence. This combines both - ingestion plus AI agents that understand what the data means.
+
+**Code Quality Tools (SonarQube, CodeClimate)**
+They analyze code quality at a point in time. This analyzes trajectory - is technical debt growing or shrinking, and at what rate.
+
+**What's different:**
+- Semantic merge conflict analysis (not just textual)
+- Review bottlenecks and team dynamics from git history
+- CI/CD failure pattern recognition
+- Code churn vs actual progress
+- Time series forecasting with TimeGPT (Nixtla's foundation model for temporal data)
+
+---
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Data Ingestion (Airbyte-style connectors)                  │
+│  • GitHub API (commits, PRs, issues, reviews, CI runs)       │
+│  • GitLab, Bitbucket connectors (roadmap)                    │
+│  • JIRA, Linear for project data (roadmap)                   │
+│  • Slack, Discord for team communication (roadmap)           │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Storage Layer                                               │
+│  • Firestore for real-time operational data                  │
+│  • BigQuery for historical analytics (266 tables)            │
+│  • Time series optimized for forecasting                     │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Multi-Agent AI Analysis                                     │
+│  • Triage Agent: PR complexity scoring (Gemini Flash)        │
+│  • Coder Agent: Conflict resolution (Claude Sonnet)          │
+│  • Resolver Agent: Semantic merge resolution (Claude Opus)   │
+│  • Reviewer Agent: Code review analysis (Claude Sonnet)      │
+│  • Orchestrator: Multi-repo pattern detection (Gemini)       │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Forecasting Layer (TimeGPT)                                 │
+│  • Delivery date prediction                                  │
+│  • Velocity trend forecasting                                │
+│  • Technical debt accumulation projections                   │
+│  • Team capacity modeling                                    │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Outputs                                                     │
+│  • CLI commands (gwi triage, gwi predict, gwi analyze)       │
+│  • REST API for integrations                                 │
+│  • Webhooks for automated responses                          │
+│  • Dashboard for visualization                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Current Capabilities
+
+### 1. PR Workflow Automation (SHIPPING NOW)
+
+The tool actually does work, not just analysis:
 
 ```bash
-npm install
-npm run build
-
-export GITHUB_TOKEN=ghp_...
-export ANTHROPIC_API_KEY=sk-ant-...  # or GOOGLE_AI_API_KEY
-
-# Try it
+# Score PR complexity, identify conflicts
 gwi triage https://github.com/owner/repo/pull/123
+
+# Resolve merge conflicts with semantic understanding
+gwi resolve https://github.com/owner/repo/pull/123
+
+# Turn GitHub issue into code + PR
+gwi issue-to-code https://github.com/owner/repo/issues/456
+
+# Full autopilot: triage → resolve → review → commit (with approval)
+gwi autopilot https://github.com/owner/repo/pull/123
 ```
 
----
+**Key features:**
+- Actually resolves merge conflicts (not just detects them)
+- Actually creates PRs from issues (not just generates templates)
+- Deterministic complexity scoring (1-10 scale, reproducible)
+- Approval gating with SHA256 hash binding (no surprise commits)
+- Multi-agent routing (simple PRs → fast models, complex → powerful models)
+- Complete audit trail for every run
 
-## Safety Model
-
-GWI won't push code without approval. Operations are classified by risk:
-
-| Operation | Risk Level |
-|-----------|------------|
-| Read PR data, post comments | Safe (auto) |
-| Generate patch locally | Safe (auto) |
-| Commit changes | Gated (requires approval) |
-| Push to remote | Gated (requires approval) |
-| Merge PR | Gated (requires approval) |
-
-Approvals are hash-bound. If the patch changes after you approve, the approval is invalidated.
+### 2. Repository Analysis (IN PROGRESS)
 
 ```bash
-gwi run status <run-id>   # See what would be committed
-gwi run approve <run-id>  # Approve with hash binding
+# Single repo deep analysis
+gwi analyze repo https://github.com/owner/repo
+
+# Multi-repo pattern detection
+gwi analyze org owner --repos=all
+
+# Technical debt trajectory
+gwi analyze debt https://github.com/owner/repo --forecast-days=90
 ```
 
----
+**Analyzes:**
+- Merge conflict patterns (where and why)
+- Review bottlenecks (who's blocking PRs)
+- Code churn vs value delivery
+- CI/CD reliability trends
+- Commit message quality and convention adherence
 
-## Run Artifacts
+### 3. Predictive Forecasting (PLANNED - TimeGPT Integration)
 
-Every run creates a bundle at `.gwi/runs/<runId>/`:
+```bash
+# Predict when PR will actually merge
+gwi predict merge https://github.com/owner/repo/pull/123
 
+# Forecast sprint delivery probability
+gwi predict sprint owner/repo --sprint=current
+
+# Project technical debt trajectory
+gwi predict debt owner/repo --horizon=6-months
 ```
-.gwi/runs/550e8400.../
-├── run.json          # Run metadata
-├── triage.json       # Complexity score
-├── plan.json         # Resolution plan
-├── patch.diff        # Proposed changes
-├── review.json       # Review findings
-├── approval.json     # Approval record
-└── audit.log         # JSONL audit trail
-```
 
-You can replay, audit, or debug any run from these artifacts.
+**Uses TimeGPT to forecast:**
+- Merge time prediction (accounting for reviewer patterns, conflict complexity, CI reliability)
+- Sprint completion probability (based on actual velocity, not story points)
+- Technical debt accumulation (trend analysis of code quality metrics)
+- Team capacity and bottlenecks
 
 ---
 
 ## Architecture
 
-```
-CLI (gwi commands)
-       │
-Workflow Layer (Orchestrator → Triage → Coder → Resolver → Reviewer)
-       │
-Engine Core (Run State, Artifacts, Scoring, Approvals)
-       │
-Connectors (GitHub API, Filesystem)
-```
-
-**Agent routing:**
-- Simple PRs → Gemini Flash (fast, cheap)
-- Complex PRs → Claude Sonnet/Opus (better reasoning)
-- Code generation → Claude Sonnet
-- Conflict resolution → Claude Sonnet or Opus depending on complexity
-
----
-
-## Project Structure
+### Turbo Monorepo Structure
 
 ```
 git-with-intent/
 ├── apps/
-│   ├── cli/           # CLI tool (gwi command)
-│   ├── api/           # REST API
-│   ├── gateway/       # A2A gateway
-│   └── web/           # Dashboard (WIP)
+│   ├── cli/              # CLI (gwi commands)
+│   ├── api/              # REST API (Cloud Run)
+│   ├── gateway/          # A2A Gateway for agent coordination
+│   ├── github-webhook/   # GitHub webhook handler
+│   ├── worker/           # Background job processor
+│   ├── web/              # Analytics dashboard (React)
+│   └── registry/         # Plugin registry
 ├── packages/
-│   ├── core/          # 68 modules: storage, scoring, billing, security, etc.
-│   ├── agents/        # Agent implementations
-│   ├── engine/        # Workflow orchestration
-│   └── integrations/  # GitHub client
-└── infra/             # Infrastructure as Code (OpenTofu)
+│   ├── core/             # 68 modules (storage, billing, security, forecasting)
+│   ├── agents/           # AI agent implementations
+│   ├── engine/           # Workflow orchestration
+│   ├── integrations/     # GitHub/GitLab connectors
+│   └── sdk/              # TypeScript SDK for external consumers
+└── infra/                # OpenTofu (Terraform alternative) for GCP
 ```
 
-The `packages/core/` directory has grown significantly. Major subsystems:
-- **Storage** - Firestore/memory backends
-- **Billing** - Usage metering, quotas
-- **Security** - RBAC, audit logging, secrets management
-- **Reliability** - Rate limiting, circuit breakers, retry logic
-- **Forecasting** - Time series analysis (for usage prediction)
-- **Marketplace** - Plugin system (in development)
+### Data Flow
+
+**For single-repo analysis:**
+1. Connector pulls repo data (commits, PRs, issues, CI runs)
+2. Storage layer indexes in Firestore + BigQuery
+3. Agents analyze patterns (conflicts, bottlenecks, quality)
+4. TimeGPT generates forecasts
+5. Results cached and served via API/CLI
+
+**For multi-repo analysis:**
+1. Worker processes all repos in background
+2. Aggregates patterns across organization
+3. Identifies cross-repo dependencies and bottlenecks
+4. Generates org-wide insights and predictions
+
+### AI Agent Stack
+
+- **Orchestrator** (Gemini Flash) - Fast workflow coordination
+- **Triage** (Gemini Flash) - PR complexity scoring
+- **Coder** (Claude Sonnet) - Code generation from issues
+- **Resolver** (Claude Sonnet/Opus) - Semantic conflict resolution
+- **Reviewer** (Claude Sonnet) - Code review analysis
+- **Forecaster** (TimeGPT) - Time series prediction
+
+Agent routing is complexity-based: simple tasks → fast/cheap models, complex → powerful models.
+
+---
+
+## Quick Start
+
+### Install and Build
+
+```bash
+npm install
+npm run build
+```
+
+### Set Environment Variables
+
+```bash
+# Required: At least one AI provider
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export GOOGLE_AI_API_KEY="your-google-key"
+
+# Required: GitHub access
+export GITHUB_TOKEN="your-github-token"
+
+# Optional: Storage backend (defaults to in-memory)
+export GWI_STORE_BACKEND=firestore  # or 'memory'
+export GCP_PROJECT_ID=your-project
+```
+
+### Try It
+
+```bash
+# Analyze a PR
+gwi triage https://github.com/facebook/react/pull/12345
+
+# Resolve merge conflicts
+gwi resolve https://github.com/owner/repo/pull/123
+
+# Full autopilot
+gwi autopilot https://github.com/owner/repo/pull/123
+```
 
 ---
 
 ## Development
 
+### Build and Test
+
 ```bash
-npm install
-npm run build
-npm run test       # ~1700 tests
-npm run typecheck
+npm run build        # Build all packages (Turbo respects dependency graph)
+npm run typecheck    # Type check all packages
+npm run test         # ~1700 tests
+npm run arv          # Agent Readiness Verification (pre-commit checks)
+```
+
+### Run Single Package Tests
+
+```bash
+npx turbo run test --filter=@gwi/core
+npx turbo run test --filter=@gwi/agents
 ```
 
 ### ARV (Agent Readiness Verification)
 
-Pre-commit checks that enforce code standards:
+Pre-commit enforcement of code standards:
 
 ```bash
 npm run arv           # All checks
 npm run arv:lint      # No deprecated patterns
-npm run arv:contracts # Schema validation
-npm run arv:smoke     # Boot check
+npm run arv:contracts # Zod schema validation
+npm run arv:goldens   # Deterministic output checks
+npm run arv:smoke     # Boot smoke test
 ```
 
 ---
 
-## Environment Variables
+## Task Backlog (422 Open Tasks)
 
-| Variable | Purpose |
-|----------|---------|
-| `GITHUB_TOKEN` | GitHub API access |
-| `ANTHROPIC_API_KEY` | Claude API |
-| `GOOGLE_AI_API_KEY` | Gemini API |
-| `GWI_STORE_BACKEND` | `memory` or `firestore` |
+**We use [beads](https://github.com/Dicklesworthstone/beads_viewer) for task tracking.**
+
+Check current status: `bd list --status open`
+
+### By Epic (Team Assignment)
+
+| Epic | Open Tasks | Focus Area |
+|------|------------|------------|
+| **@orchestrator** | 85 | Multi-agent workflow coordination, run execution |
+| **@connectors** | 80 | GitHub/GitLab/JIRA integrations, data ingestion |
+| **@backend** | 73 | Core platform features, API endpoints |
+| **@security** | 72 | Auth, RBAC, audit logging, policy engine |
+| **@frontend** | 45 | Web dashboard, visualization, UI components |
+| **@infra** | 37 | OpenTofu, Cloud Run, deployment automation |
+| **@ai** | 30 | ML features, forecasting, embeddings, quality metrics |
+
+---
+
+### Epic Breakdown (All 9 Epics)
+
+Each epic has 6-12 stories, each story has 5-6 steps. Total: 422 open tasks.
+
+#### Epic A: Core Infrastructure (@backend, @security)
+Foundation layer for multi-tenant, production-grade operations.
+
+- **A1** - Firestore data model (tenants/repos/runs/steps/policies/audit/idempotency)
+- **A2** - Run state machine + transitions
+- **A3** - Step execution contract (inputs/outputs, typed envelopes)
+- **A4** - Idempotency layer for all event sources
+- **A5** - Queue abstraction: Pub/Sub baseline + Cloud Tasks option
+- **A6** - Concurrency caps + backpressure (per tenant/repo/workflow)
+- **A7** - Correlation IDs + structured logging schema
+- **A8** - Artifact model (GCS) for evidence bundles
+- **A9** - Secrets model (Secret Manager)
+- **A10** - Multi-tenant authorization middleware (API)
+- **A11** - Cost metering primitives (tokens/time/ops)
+- **A12** - SLO definitions + baseline perf tests
+
+#### Epic B: Connectors (@connectors)
+Airbyte-style data ingestion from GitHub, GitLab, JIRA, Linear, etc.
+
+- **B1** - Connector framework contract (event envelope + handlers)
+- **B2** - GitHub App installation lifecycle (tenant mapping)
+- **B3** - Webhook verification + replay defense
+- **B4** - GitHub API connector hardening
+- **B5** - Normalized repo snapshot service (for context)
+- **B6** - External system connector slots (Linear/Jira/Sentry/PostHog)
+- **B7** - Airbyte integration design (no runtime dependency yet)
+- **B8** - Connector health subsystem (UI/API)
+- **B9** - Event schema registry + compatibility tests
+- **B10** - Abuse prevention (webhooks + APIs)
+
+#### Epic C: Workflows (@orchestrator)
+Multi-step PR automation with human-in-the-loop approvals.
+
+- **C1** - Workflow definitions as data (versioned)
+- **C2** - Step runner + orchestration engine
+- **C3** - Approval gates (human-in-the-loop)
+- **C4** - PR creation pipeline (Issue → PR)
+- **C5** - Evidence packet generator (standard format)
+- **C6** - Test execution & verification hooks
+- **C7** - Merge conflict detection & resolution tiers
+- **C8** - Reviewer automation (structured review)
+- **C9** - Cancellation, rollback, and undo strategy
+- **C10** - Deterministic E2E Hello World workflow
+
+#### Epic D: Policy & Audit (@security)
+Governance, compliance, and audit trail for enterprise deployments.
+
+- **D1** - Policy model (rules/conditions/actions)
+- **D2** - Policy evaluation engine
+- **D3** - Policy simulation (what would happen if)
+- **D4** - Audit trail (immutable events)
+- **D5** - Evidence retention + export bundles
+- **D6** - Risk scoring (foundation)
+- **D7** - Compliance-ready access logs
+- **D8** - Supply-chain hooks (foundation)
+
+#### Epic E: Security & Governance (@security)
+RBAC, tenant management, quotas, and enterprise readiness.
+
+- **E1** - RBAC model + enforcement
+- **E2** - Tenant management
+- **E3** - Quotas & metering
+- **E4** - Secret references and rotation workflows
+- **E5** - Org/repo governance
+- **E6** - Compliance export console
+- **E7** - Enterprise readiness checklist
+
+#### Epic F: Web Dashboard (@frontend)
+React SPA for repository health, runs, approvals, and analytics.
+
+- **F1** - Authenticated web app shell (Firebase Hosting + Firebase Auth)
+- **F2** - Repos page (connected repos + health)
+- **F3** - Runs page (filters + drilldown)
+- **F4** - Approvals queue UX
+- **F5** - Evidence viewer UX
+- **F6** - Policy editor + simulation UI
+- **F7** - Audit viewer UI
+- **F8** - Ops dashboards (SLO/cost/queue depth)
+- **F9** - Onboarding wizard UX
+
+#### Epic G: Slack Integration (@frontend)
+Slack app for notifications, interactive approvals, and slash commands.
+
+- **G1** - Slack app basics + OAuth install per tenant
+- **G2** - Notification pipeline
+- **G3** - Interactive approvals
+- **G4** - Slash commands
+- **G5** - Deep links to Command Center
+- **G6** - Slack audit linkage
+
+#### Epic H: Infrastructure & Operations (@infra)
+Cloud Run deployment, observability, disaster recovery, and cost controls.
+
+- **H1** - Service decomposition & Cloud Run deployment model
+- **H2** - CI/CD hardening with WIF
+- **H3** - Observability baseline
+- **H4** - DR & resilience plan
+- **H5** - Security review & threat model
+- **H6** - Cost controls
+- **H7** - Domain + Firebase Hosting production posture
+
+#### Epic I: Forecasting & ML (@ai) 🚀
+**TimeGPT integration for predictive analytics.**
+
+- **I1** - Canonical time-series schema
+- **I2** - Airbyte ingestion mapping to canonical series
+- **I3** - Predictor service contract (Cloud Run Python)
+- **I4** - TimeGPT integration + deterministic fallback
+- **I5** - Prediction dashboards & alerts
+- **I6** - Optional auto-actions (propose runs only, policy-gated)
+
+---
+
+**After completing work, ALWAYS close the corresponding beads:** `bd close <id> -r "reason"`
+
+---
+
+## Roadmap
+
+### Phase 1: PR Automation (SHIPPING)
+- ✅ PR triage and complexity scoring
+- ✅ AI-powered merge conflict resolution
+- ✅ Issue-to-code generation
+- ✅ Approval gating with hash binding
+- ✅ Audit trail for all runs
+
+### Phase 2: Data Ingestion (IN PROGRESS)
+- 🚧 GitHub connector (commits, PRs, issues, CI runs)
+- 🚧 BigQuery data warehouse (266 tables ready)
+- 🚧 Firestore real-time operational DB
+- ⏳ GitLab, Bitbucket connectors
+- ⏳ JIRA, Linear project data connectors
+
+### Phase 3: Repository Analysis (IN PROGRESS)
+- 🚧 Single-repo deep analysis
+- 🚧 Multi-repo pattern detection
+- 🚧 Technical debt trajectory analysis
+- 🚧 Review bottleneck identification
+- ⏳ Team dynamics and communication patterns
+
+### Phase 4: Predictive Forecasting (PLANNED)
+- ⏳ TimeGPT integration for time series forecasting
+- ⏳ Merge time prediction
+- ⏳ Sprint delivery probability
+- ⏳ Technical debt accumulation forecasting
+- ⏳ Team capacity modeling
+
+### Phase 5: Platform (PLANNED)
+- ⏳ GitHub App for automated workflows
+- ⏳ Slack/Discord bot for team notifications
+- ⏳ Web dashboard for analytics
+- ⏳ Webhook-triggered automation
+- ⏳ Multi-tenant SaaS deployment
+
+**Legend:** ✅ Shipped | 🚧 In Progress | ⏳ Planned
+
+---
+
+## Technical Details
+
+### Storage Strategy
+
+**Dual-backend architecture:**
+- **Firestore** - Real-time operational data (runs, approvals, live repo state)
+- **BigQuery** - Historical analytics and ML training data (266 production tables)
+
+**Why both?**
+- Firestore for low-latency reads during PR automation
+- BigQuery for time series analysis and forecasting at scale
+
+### Forecasting Approach
+
+**TimeGPT Integration (Planned)**
+
+[TimeGPT](https://github.com/Nixtla/nixtla) is a foundation model for time series forecasting (like GPT but for temporal data). We use it to predict:
+
+1. **Merge Time**: Historical merge patterns + current conflict complexity + reviewer availability
+2. **Sprint Delivery**: Actual commit velocity + PR complexity trends + team capacity
+3. **Technical Debt**: Code quality metric trajectories + churn rates + test coverage trends
+
+**Why TimeGPT vs traditional time series models?**
+- Pre-trained on massive time series datasets (transfer learning)
+- Handles irregular intervals and missing data
+- Better at capturing complex patterns than ARIMA/Prophet
+- No per-dataset hyperparameter tuning needed
+
+### Security Model
+
+**Approval gating for destructive operations:**
+
+| Operation | Risk Level | Approval Required |
+|-----------|------------|-------------------|
+| Read repo data | Safe | No |
+| Analyze patterns | Safe | No |
+| Generate patch | Safe | No |
+| Post PR comment | Low | No |
+| Commit changes | High | Yes (hash-bound) |
+| Push to remote | High | Yes (hash-bound) |
+| Merge PR | Critical | Yes (hash-bound) |
+
+**Hash binding:** After you approve an operation, if the patch changes, approval is invalidated. No surprise commits.
+
+---
+
+## Production Deployment
+
+**Infrastructure:** Google Cloud Platform via OpenTofu (Terraform fork)
+
+```
+Cloud Run Services:
+├── gwi-api          # REST API
+├── gwi-gateway      # A2A agent coordination
+├── gwi-webhook      # GitHub webhook handler
+└── gwi-worker       # Background analytics jobs
+
+Firebase:
+├── Firestore        # Operational database
+└── Hosting          # Web dashboard
+
+BigQuery:
+└── Analytics        # Historical data + ML training (266 tables)
+
+Vertex AI:
+└── Agent Engine     # AI agent runtime (not managed by OpenTofu)
+```
+
+**Deployment flow:** GitHub Actions → OpenTofu → Cloud Run
+
+**NO direct `gcloud` deploys.** All infrastructure changes go through PR review and OpenTofu apply.
 
 ---
 
 ## Current State
 
 **What works:**
-- CLI commands (triage, resolve, autopilot, issue-to-code)
-- Approval gating with hash binding
-- Run artifacts and audit trail
-- Firestore storage backend
-- 1700+ tests passing
+- ✅ Merge conflict resolution (semantic, not just textual)
+- ✅ Issue-to-PR code generation
+- ✅ PR complexity scoring (deterministic 1-10 scale)
+- ✅ Autopilot mode (triage → resolve → review → commit)
+- ✅ Approval gating with hash binding (no surprise commits)
+- ✅ Multi-agent AI routing (fast models for simple tasks, powerful for complex)
+- ✅ 1700+ passing tests, ARV pre-commit checks, CI/CD
 
-**What's rough:**
-- Error messages could be clearer
-- Some edge cases in conflict detection
-- Web dashboard is minimal
-- Documentation gaps
+**What's in progress:**
+- 🚧 BigQuery data warehouse integration
+- 🚧 Repository analysis engine
+- 🚧 Multi-repo pattern detection
+- 🚧 Web dashboard
 
 **What's planned:**
-- GitHub Actions integration
-- Webhook-triggered automation
-- Better multi-repo support
+- ⏳ TimeGPT forecasting integration
+- ⏳ GitHub App for webhooks
+- ⏳ Slack/Discord bot
+- ⏳ Multi-tenant SaaS
+
+---
+
+## Why We Built This
+
+Engineering teams have dashboards showing commits, PR velocity, test coverage. When someone asks "when will we ship?" the answer is usually a shrug and a 50% buffer.
+
+Git repositories contain a time series of team behavior. Extract the signal from the noise, you can predict outcomes instead of guessing.
+
+Foundation models (LLMs for analysis, TimeGPT for forecasting) make this tractable now.
+
+---
+
+## Contributing
+
+This repo is currently private and under active development. If you're interested in contributing or early access:
+
+📧 jeremy@intentsolutions.io
 
 ---
 
 ## License
 
-**Proprietary** - Copyright (c) 2025 Intent Solutions LLC. All Rights Reserved.
+**MIT License** - Copyright (c) 2025 Intent Solutions LLC / Jeremy Longshore
 
-This software is proprietary and confidential. No license is granted for use,
-modification, or distribution. See [LICENSE](./LICENSE) for details.
+Open source CLI tool. Use it, fork it, learn from it. See [LICENSE](./LICENSE) for details.
 
-For licensing inquiries: jeremy@intentsolutions.io
-
----
-
-*Work in progress. Not production-ready for all use cases.*
+**Hosted service** (when available) will be commercial. The code is free, the infrastructure/support is not.

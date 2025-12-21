@@ -1,60 +1,21 @@
-INTENT SOLUTIONS PROPRIETARY LICENSE
-Version 1.0, December 2025
+MIT License
 
-Copyright (c) 2025 Intent Solutions LLC. All Rights Reserved.
+Copyright (c) 2025 Intent Solutions LLC / Jeremy Longshore
 
-NOTICE: This software and associated documentation files (the "Software") are
-the proprietary and confidential property of Intent Solutions LLC.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-1. GRANT OF LICENSE
-   NO LICENSE IS GRANTED. This Software is made available for viewing purposes
-   only. You may NOT use, copy, modify, merge, publish, distribute, sublicense,
-   sell, or create derivative works of this Software without prior written
-   permission from Intent Solutions LLC.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-2. RESTRICTIONS
-   You are expressly prohibited from:
-   a) Using the Software for any commercial or non-commercial purpose
-   b) Copying, reproducing, or duplicating the Software
-   c) Modifying, adapting, or creating derivative works
-   d) Distributing, selling, licensing, or sublicensing the Software
-   e) Reverse engineering, decompiling, or disassembling the Software
-   f) Removing or altering any proprietary notices or labels
-   g) Using the Software to compete with Intent Solutions LLC
-   h) Training AI/ML models on the Software code
-
-3. OWNERSHIP
-   Intent Solutions LLC retains all right, title, and interest in and to the
-   Software, including all intellectual property rights. This license does not
-   transfer any ownership rights.
-
-4. CONFIDENTIALITY
-   The Software contains trade secrets and proprietary information of Intent
-   Solutions LLC. You agree to maintain the confidentiality of the Software
-   and not disclose it to any third party.
-
-5. NO WARRANTY
-   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-   IMPLIED. INTENT SOLUTIONS LLC DISCLAIMS ALL WARRANTIES, INCLUDING WARRANTIES
-   OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
-
-6. LIMITATION OF LIABILITY
-   IN NO EVENT SHALL INTENT SOLUTIONS LLC BE LIABLE FOR ANY DAMAGES ARISING
-   FROM THE USE OR INABILITY TO USE THE SOFTWARE.
-
-7. TERMINATION
-   Any unauthorized use automatically terminates any implied permission and may
-   result in legal action. Intent Solutions LLC reserves all rights to pursue
-   legal remedies for any violations.
-
-8. GOVERNING LAW
-   This license shall be governed by the laws of the State of Texas, USA.
-
-9. CONTACT
-   For licensing inquiries, contact: jeremy@intentsolutions.io
-
-By accessing this repository, you acknowledge that you have read this license
-and agree to be bound by its terms.
-
-Intent Solutions LLC
-https://intentsolutions.io
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
