@@ -1,0 +1,231 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "name": "strict",
+    "description": "Strict grading rubric for high-quality codebases requiring 95%+ test coverage",
+    "repository": "intent-solutions-io/git-with-intent",
+    "createdAt": "2025-12-22T00:00:00Z"
+  },
+  "criteria": [
+    {
+      "id": "code_quality",
+      "name": "Code Quality",
+      "description": "Strict code quality standards with zero tolerance for complexity increase",
+      "weight": 0.35,
+      "subcriteria": [
+        {
+          "id": "lint_passed",
+          "name": "Linting Passed",
+          "points": 12,
+          "evaluationMethod": "rule_based",
+          "threshold": "zero linting errors"
+        },
+        {
+          "id": "typecheck_passed",
+          "name": "Type Checking Passed",
+          "points": 12,
+          "evaluationMethod": "rule_based",
+          "threshold": "zero type errors"
+        },
+        {
+          "id": "complexity_delta",
+          "name": "Complexity Delta",
+          "description": "STRICT: No complexity increase allowed",
+          "points": 11,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<=",
+            "value": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "test_coverage",
+      "name": "Test Coverage",
+      "description": "Requires 95%+ coverage for all new code",
+      "weight": 0.35,
+      "subcriteria": [
+        {
+          "id": "tests_run",
+          "name": "Tests Executed",
+          "points": 10,
+          "evaluationMethod": "rule_based",
+          "threshold": "tests run"
+        },
+        {
+          "id": "tests_passed",
+          "name": "Tests Passed",
+          "points": 15,
+          "evaluationMethod": "rule_based",
+          "threshold": {
+            "operator": "==",
+            "value": 100
+          }
+        },
+        {
+          "id": "coverage_added",
+          "name": "Coverage Added",
+          "description": "STRICT: Requires 95%+ coverage for new code",
+          "points": 10,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": ">=",
+            "value": 95
+          }
+        }
+      ]
+    },
+    {
+      "id": "pr_outcome",
+      "name": "PR Outcome",
+      "weight": 0.20,
+      "subcriteria": [
+        {
+          "id": "pr_merged",
+          "name": "PR Merged",
+          "points": 15,
+          "evaluationMethod": "rule_based",
+          "threshold": "pr_merged == true"
+        },
+        {
+          "id": "time_to_merge",
+          "name": "Time to Merge",
+          "points": 3,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 3600
+          }
+        },
+        {
+          "id": "human_edits_required",
+          "name": "No Human Edits",
+          "points": 2,
+          "evaluationMethod": "rule_based",
+          "threshold": "human_commits == 0"
+        }
+      ]
+    },
+    {
+      "id": "cost_efficiency",
+      "name": "Cost Efficiency",
+      "description": "Lower priority in strict mode",
+      "weight": 0.05,
+      "subcriteria": [
+        {
+          "id": "total_cost",
+          "name": "Total Cost",
+          "points": 3,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 1.00
+          }
+        },
+        {
+          "id": "tokens_used",
+          "name": "Token Usage",
+          "points": 1,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 50000
+          }
+        },
+        {
+          "id": "duration",
+          "name": "Duration",
+          "points": 1,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 600
+          }
+        }
+      ]
+    },
+    {
+      "id": "documentation",
+      "name": "Documentation",
+      "description": "Documentation is mandatory",
+      "weight": 0.05,
+      "subcriteria": [
+        {
+          "id": "comments_added",
+          "name": "Comments Added",
+          "points": 3,
+          "evaluationMethod": "llm_assisted",
+          "threshold": "meaningful comments present"
+        },
+        {
+          "id": "readme_updated",
+          "name": "README Updated",
+          "points": 1,
+          "evaluationMethod": "rule_based",
+          "threshold": "readme changes detected"
+        },
+        {
+          "id": "changelog_entry",
+          "name": "Changelog Entry",
+          "points": 1,
+          "evaluationMethod": "rule_based",
+          "threshold": "changelog changes detected"
+        }
+      ]
+    }
+  ],
+  "gradeScale": {
+    "A": [95, 100],
+    "B": [85, 94],
+    "C": [75, 84],
+    "D": [65, 74],
+    "F": [0, 64]
+  },
+  "keywords": {
+    "positive": [
+      {
+        "keywords": ["security fix", "vulnerability patched"],
+        "weight": 20,
+        "category": "security"
+      },
+      {
+        "keywords": ["100% test coverage", "full coverage"],
+        "weight": 15,
+        "category": "quality"
+      },
+      {
+        "keywords": ["comprehensive tests", "integration tests"],
+        "weight": 10,
+        "category": "quality"
+      }
+    ],
+    "negative": [
+      {
+        "keywords": ["skipped tests", "no tests"],
+        "weight": -20,
+        "category": "critical"
+      },
+      {
+        "keywords": ["uncovered code", "missing tests"],
+        "weight": -15,
+        "category": "critical"
+      },
+      {
+        "keywords": ["TODO", "FIXME"],
+        "weight": -5,
+        "category": "warning"
+      }
+    ]
+  },
+  "patterns": {
+    "complexity": {
+      "threshold": 0,
+      "penaltyPerPoint": 1.0
+    },
+    "churn": {
+      "highRiskThreshold": 5,
+      "penaltyMultiplier": 0.85
+    }
+  }
+}

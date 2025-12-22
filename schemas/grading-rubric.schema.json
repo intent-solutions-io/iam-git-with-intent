@@ -1,0 +1,289 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://git-with-intent.io/schemas/grading-rubric.schema.json",
+  "title": "Auto-Fix Grading Rubric",
+  "description": "Defines criteria, weights, and thresholds for grading auto-fix quality",
+  "type": "object",
+  "required": ["version", "criteria", "gradeScale"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version (semver)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["1.0.0"]
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional metadata about this rubric",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Rubric name",
+          "examples": ["default", "strict", "permissive"]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this rubric is for"
+        },
+        "repository": {
+          "type": "string",
+          "description": "Repository this rubric applies to (optional)",
+          "pattern": "^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$",
+          "examples": ["intent-solutions-io/git-with-intent"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "criteria": {
+      "type": "array",
+      "description": "Grading criteria with weights and subcriteria",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/criterion"
+      }
+    },
+    "gradeScale": {
+      "type": "object",
+      "description": "Letter grade thresholds (A-F)",
+      "required": ["A", "B", "C", "D", "F"],
+      "properties": {
+        "A": {
+          "$ref": "#/definitions/gradeRange"
+        },
+        "B": {
+          "$ref": "#/definitions/gradeRange"
+        },
+        "C": {
+          "$ref": "#/definitions/gradeRange"
+        },
+        "D": {
+          "$ref": "#/definitions/gradeRange"
+        },
+        "F": {
+          "$ref": "#/definitions/gradeRange"
+        }
+      }
+    },
+    "keywords": {
+      "type": "object",
+      "description": "Keyword weights for commit message analysis",
+      "properties": {
+        "positive": {
+          "type": "array",
+          "description": "Keywords that add points",
+          "items": {
+            "$ref": "#/definitions/keywordWeight"
+          }
+        },
+        "negative": {
+          "type": "array",
+          "description": "Keywords that subtract points",
+          "items": {
+            "$ref": "#/definitions/keywordWeight"
+          }
+        }
+      }
+    },
+    "patterns": {
+      "type": "object",
+      "description": "Code pattern analysis rules",
+      "properties": {
+        "complexity": {
+          "type": "object",
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "description": "Maximum allowed complexity delta",
+              "minimum": 0,
+              "default": 10
+            },
+            "penaltyPerPoint": {
+              "type": "number",
+              "description": "Points deducted per complexity point over threshold",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.5
+            }
+          }
+        },
+        "churn": {
+          "type": "object",
+          "properties": {
+            "highRiskThreshold": {
+              "type": "number",
+              "description": "Changes per month to consider high-risk",
+              "minimum": 0,
+              "default": 10
+            },
+            "penaltyMultiplier": {
+              "type": "number",
+              "description": "Multiply score by this for high-risk files",
+              "minimum": 0,
+              "maximum": 1,
+              "default": 0.9
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "criterion": {
+      "type": "object",
+      "description": "A single grading criterion with weight and subcriteria",
+      "required": ["id", "name", "weight", "subcriteria"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique criterion identifier",
+          "pattern": "^[a-z_]+$",
+          "examples": ["code_quality", "test_coverage"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable criterion name",
+          "examples": ["Code Quality", "Test Coverage"]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this criterion measures"
+        },
+        "weight": {
+          "type": "number",
+          "description": "Weight in overall score (0-1, sum must = 1)",
+          "minimum": 0,
+          "maximum": 1,
+          "examples": [0.3, 0.25]
+        },
+        "subcriteria": {
+          "type": "array",
+          "description": "Atomic evaluation points",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/subcriterion"
+          }
+        }
+      }
+    },
+    "subcriterion": {
+      "type": "object",
+      "description": "Atomic evaluation point with threshold and points",
+      "required": ["id", "name", "points", "evaluationMethod"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique subcriterion identifier",
+          "pattern": "^[a-z_]+$",
+          "examples": ["lint_passed", "tests_run"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name",
+          "examples": ["Linting Passed", "Tests Run"]
+        },
+        "description": {
+          "type": "string",
+          "description": "What this checks"
+        },
+        "points": {
+          "type": "number",
+          "description": "Maximum points for this subcriterion",
+          "minimum": 0,
+          "examples": [10, 5, 3]
+        },
+        "evaluationMethod": {
+          "type": "string",
+          "description": "How to evaluate this subcriterion",
+          "enum": ["rule_based", "llm_assisted", "metric_threshold", "keyword_match"],
+          "examples": ["rule_based"]
+        },
+        "threshold": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Textual threshold description",
+              "examples": ["all tests pass", "zero linting errors"]
+            },
+            {
+              "type": "number",
+              "description": "Numeric threshold",
+              "examples": [100, 80, 0]
+            },
+            {
+              "type": "object",
+              "description": "Complex threshold with operator",
+              "required": ["operator", "value"],
+              "properties": {
+                "operator": {
+                  "type": "string",
+                  "enum": ["==", "!=", "<", "<=", ">", ">="],
+                  "examples": [">="]
+                },
+                "value": {
+                  "type": "number",
+                  "examples": [80, 100]
+                }
+              }
+            }
+          ]
+        },
+        "scoringFunction": {
+          "type": "string",
+          "description": "Custom scoring logic (JS function name or inline)",
+          "examples": ["linearScale", "stepFunction", "exponentialDecay"]
+        }
+      }
+    },
+    "gradeRange": {
+      "type": "array",
+      "description": "Score range for a letter grade [min, max]",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "examples": [[90, 100], [80, 89]]
+    },
+    "keywordWeight": {
+      "type": "object",
+      "description": "Keyword with semantic weight",
+      "required": ["keywords", "weight"],
+      "properties": {
+        "keywords": {
+          "type": "array",
+          "description": "List of keywords (case-insensitive, fuzzy matched)",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "examples": ["fixed", "resolved", "security patch"]
+          }
+        },
+        "weight": {
+          "type": "number",
+          "description": "Points added/subtracted when found",
+          "examples": [5, -3, 15]
+        },
+        "category": {
+          "type": "string",
+          "description": "Keyword category for grouping",
+          "enum": ["security", "quality", "warning", "critical", "documentation"],
+          "examples": ["security"]
+        },
+        "requiresContext": {
+          "type": "boolean",
+          "description": "If true, check surrounding words for negation",
+          "default": false
+        }
+      }
+    }
+  }
+}

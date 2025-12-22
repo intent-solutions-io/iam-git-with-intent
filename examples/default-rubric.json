@@ -1,0 +1,273 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "name": "default",
+    "description": "Default grading rubric for git-with-intent auto-fix system",
+    "repository": null,
+    "createdAt": "2025-12-22T00:00:00Z"
+  },
+  "criteria": [
+    {
+      "id": "code_quality",
+      "name": "Code Quality",
+      "description": "Measures lint compliance, type safety, and code complexity",
+      "weight": 0.30,
+      "subcriteria": [
+        {
+          "id": "lint_passed",
+          "name": "Linting Passed",
+          "description": "Code passes all linting checks with zero errors",
+          "points": 10,
+          "evaluationMethod": "rule_based",
+          "threshold": "zero linting errors"
+        },
+        {
+          "id": "typecheck_passed",
+          "name": "Type Checking Passed",
+          "description": "TypeScript compilation succeeds with no type errors",
+          "points": 10,
+          "evaluationMethod": "rule_based",
+          "threshold": "zero type errors"
+        },
+        {
+          "id": "complexity_delta",
+          "name": "Complexity Delta",
+          "description": "Change in cyclomatic complexity is within acceptable range",
+          "points": 10,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<=",
+            "value": 5
+          },
+          "scoringFunction": "linearScale"
+        }
+      ]
+    },
+    {
+      "id": "test_coverage",
+      "name": "Test Coverage",
+      "description": "Measures testing quality and coverage improvements",
+      "weight": 0.25,
+      "subcriteria": [
+        {
+          "id": "tests_run",
+          "name": "Tests Executed",
+          "description": "Test suite was executed (not skipped)",
+          "points": 8,
+          "evaluationMethod": "rule_based",
+          "threshold": "tests run"
+        },
+        {
+          "id": "tests_passed",
+          "name": "Tests Passed",
+          "description": "All tests in suite passed successfully",
+          "points": 12,
+          "evaluationMethod": "rule_based",
+          "threshold": {
+            "operator": "==",
+            "value": 100
+          }
+        },
+        {
+          "id": "coverage_added",
+          "name": "Coverage Added",
+          "description": "New code is covered by tests",
+          "points": 5,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": ">=",
+            "value": 80
+          },
+          "scoringFunction": "linearScale"
+        }
+      ]
+    },
+    {
+      "id": "pr_outcome",
+      "name": "PR Outcome",
+      "description": "Measures PR success, merge time, and human intervention required",
+      "weight": 0.25,
+      "subcriteria": [
+        {
+          "id": "pr_merged",
+          "name": "PR Merged",
+          "description": "Pull request was successfully merged",
+          "points": 20,
+          "evaluationMethod": "rule_based",
+          "threshold": "pr_merged == true"
+        },
+        {
+          "id": "time_to_merge",
+          "name": "Time to Merge",
+          "description": "PR merged quickly (< 1 hour excellent, < 24 hours good)",
+          "points": 3,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 3600
+          },
+          "scoringFunction": "stepFunction"
+        },
+        {
+          "id": "human_edits_required",
+          "name": "No Human Edits",
+          "description": "PR merged without human edits to auto-fix code",
+          "points": 2,
+          "evaluationMethod": "rule_based",
+          "threshold": "human_commits == 0"
+        }
+      ]
+    },
+    {
+      "id": "cost_efficiency",
+      "name": "Cost Efficiency",
+      "description": "Measures AI API costs and resource usage",
+      "weight": 0.10,
+      "subcriteria": [
+        {
+          "id": "total_cost",
+          "name": "Total Cost",
+          "description": "Total AI API cost in USD",
+          "points": 5,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 0.50
+          },
+          "scoringFunction": "exponentialDecay"
+        },
+        {
+          "id": "tokens_used",
+          "name": "Token Usage",
+          "description": "Total tokens (input + output) used",
+          "points": 3,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 20000
+          },
+          "scoringFunction": "linearScale"
+        },
+        {
+          "id": "duration",
+          "name": "Duration",
+          "description": "Time taken to complete auto-fix",
+          "points": 2,
+          "evaluationMethod": "metric_threshold",
+          "threshold": {
+            "operator": "<",
+            "value": 300
+          },
+          "scoringFunction": "linearScale"
+        }
+      ]
+    },
+    {
+      "id": "documentation",
+      "name": "Documentation",
+      "description": "Measures documentation quality and updates",
+      "weight": 0.10,
+      "subcriteria": [
+        {
+          "id": "comments_added",
+          "name": "Comments Added",
+          "description": "Code includes meaningful comments",
+          "points": 5,
+          "evaluationMethod": "llm_assisted",
+          "threshold": "meaningful comments present"
+        },
+        {
+          "id": "readme_updated",
+          "name": "README Updated",
+          "description": "README or docs updated if feature added",
+          "points": 3,
+          "evaluationMethod": "rule_based",
+          "threshold": "readme changes detected"
+        },
+        {
+          "id": "changelog_entry",
+          "name": "Changelog Entry",
+          "description": "CHANGELOG.md updated with entry",
+          "points": 2,
+          "evaluationMethod": "rule_based",
+          "threshold": "changelog changes detected"
+        }
+      ]
+    }
+  ],
+  "gradeScale": {
+    "A": [90, 100],
+    "B": [80, 89],
+    "C": [70, 79],
+    "D": [60, 69],
+    "F": [0, 59]
+  },
+  "keywords": {
+    "positive": [
+      {
+        "keywords": ["vulnerability fixed", "security patch", "CVE-"],
+        "weight": 15,
+        "category": "security"
+      },
+      {
+        "keywords": ["added tests", "increased coverage", "test suite"],
+        "weight": 8,
+        "category": "quality"
+      },
+      {
+        "keywords": ["refactored", "optimized", "improved performance"],
+        "weight": 5,
+        "category": "quality"
+      },
+      {
+        "keywords": ["documented", "added docs", "updated README"],
+        "weight": 3,
+        "category": "documentation"
+      },
+      {
+        "keywords": ["fixed", "resolved", "solved"],
+        "weight": 5,
+        "category": "quality",
+        "requiresContext": true
+      }
+    ],
+    "negative": [
+      {
+        "keywords": ["hack", "hacky", "quick fix"],
+        "weight": -3,
+        "category": "warning"
+      },
+      {
+        "keywords": ["temporary", "TODO", "FIXME", "HACK"],
+        "weight": -3,
+        "category": "warning"
+      },
+      {
+        "keywords": ["disabled tests", "skip tests", "tests skipped"],
+        "weight": -10,
+        "category": "critical"
+      },
+      {
+        "keywords": ["broke build", "failed tests", "CI failing"],
+        "weight": -15,
+        "category": "critical"
+      },
+      {
+        "keywords": ["breaking change"],
+        "weight": -8,
+        "category": "warning",
+        "requiresContext": true
+      }
+    ]
+  },
+  "patterns": {
+    "complexity": {
+      "threshold": 10,
+      "penaltyPerPoint": 0.5
+    },
+    "churn": {
+      "highRiskThreshold": 10,
+      "penaltyMultiplier": 0.9
+    }
+  }
+}
