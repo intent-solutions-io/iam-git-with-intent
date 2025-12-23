@@ -69,7 +69,7 @@ They analyze code quality at a point in time. This analyzes trajectory - is tech
 ┌─────────────────────────────────────────────────────────────┐
 │  Storage Layer                                               │
 │  • Firestore for real-time operational data                  │
-│  • BigQuery for historical analytics (266 tables)            │
+│  • SQLite for local development and testing                  │
 │  • Time series optimized for forecasting                     │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -460,7 +460,7 @@ Cloud Run deployment, observability, disaster recovery, and cost controls.
 
 ### Phase 2: Data Ingestion (IN PROGRESS)
 - 🚧 GitHub connector (commits, PRs, issues, CI runs)
-- 🚧 BigQuery data warehouse (266 tables ready)
+- 🚧 SQLite storage layer with backup/restore
 - 🚧 Firestore real-time operational DB
 - ⏳ GitLab, Bitbucket connectors
 - ⏳ JIRA, Linear project data connectors
@@ -496,11 +496,11 @@ Cloud Run deployment, observability, disaster recovery, and cost controls.
 
 **Dual-backend architecture:**
 - **Firestore** - Real-time operational data (runs, approvals, live repo state)
-- **BigQuery** - Historical analytics and ML training data (266 production tables)
+- **SQLite** - Local development and testing with full analytics support
 
 **Why both?**
 - Firestore for low-latency reads during PR automation
-- BigQuery for time series analysis and forecasting at scale
+- SQLite for local development with full feature parity
 
 ### Forecasting Approach
 
@@ -551,8 +551,8 @@ Firebase:
 ├── Firestore        # Operational database
 └── Hosting          # Web dashboard
 
-BigQuery:
-└── Analytics        # Historical data + ML training (266 tables)
+Storage:
+└── SQLite           # Local dev with analytics and backup utilities
 
 Vertex AI:
 └── Agent Engine     # AI agent runtime (not managed by OpenTofu)

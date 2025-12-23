@@ -46,7 +46,7 @@ Check backlog: `bd list --status open`
 
 - **Language**: TypeScript (strict mode), Node.js 20+
 - **Build**: Turbo monorepo with npm workspaces
-- **Database**: Firestore (real-time ops), BigQuery (analytics, 266 tables)
+- **Database**: Firestore (production), SQLite (local dev with analytics)
 - **AI Models**:
   - Claude Sonnet/Opus (Anthropic) - Code generation, conflict resolution, reviews
   - Gemini Flash (Google) - Fast triage, orchestration
@@ -197,13 +197,14 @@ gwi run approve <id>     # Approve changes for commit
 
 | Backend | Usage | Config |
 |---------|-------|--------|
-| Firestore | Real-time operational data (runs, approvals) | `GWI_STORE_BACKEND=firestore` + `GCP_PROJECT_ID` |
-| BigQuery | Historical analytics, ML training (266 tables) | Used for data ingestion and forecasting (roadmap) |
-| In-Memory | Development/testing | `GWI_STORE_BACKEND=memory` or unset |
+| Firestore | Production - Real-time operational data (runs, approvals) | `GWI_STORE_BACKEND=firestore` + `GCP_PROJECT_ID` |
+| SQLite | Local dev - Full analytics with backup/restore | In-memory for testing, file-based for persistence |
+| In-Memory | Quick testing only | `GWI_STORE_BACKEND=memory` or unset |
 
-**Why both?**
-- Firestore: Low-latency reads during PR automation
-- BigQuery: Time series analysis, forecasting at scale
+**Why multiple backends?**
+- Firestore: Production runtime for low-latency PR automation
+- SQLite: Local development with full analytics, backup, and testing
+- In-Memory: Fast unit tests without persistence overhead
 
 **Key interfaces** (in `packages/core/src/storage/interfaces.ts`):
 - `TenantStore` - Multi-tenant CRUD for orgs, repos, runs
