@@ -22,13 +22,17 @@ Check backlog: `bd list --status open`
 
 ## PROJECT OVERVIEW
 
-**Git With Intent** is an AI-powered multi-agent PR assistant for GitHub workflows:
+**Git With Intent** is an AI-powered multi-agent platform with two core capabilities:
 
-- Read and understand GitHub issues and PRs
-- Detect and resolve merge conflicts
-- Generate code changes from issue descriptions
-- Run validation (tests, linting)
-- Produce human-readable review summaries
+1. **PR Automation (shipping now)**: Resolve merge conflicts, create PRs from issues, review code, full autopilot mode
+2. **Predictive Analytics (in progress)**: TimeGPT-powered forecasting for merge times, sprint delivery, technical debt trajectories
+
+**Core capabilities:**
+- Semantic merge conflict resolution (not just textual)
+- Generate code from GitHub issues
+- PR complexity scoring and review analysis
+- Repository health analysis and pattern detection
+- Time series forecasting (roadmap: TimeGPT integration)
 
 | Attribute | Value |
 |-----------|-------|
@@ -36,14 +40,17 @@ Check backlog: `bd list --status open`
 | Target Users | Developers wanting AI assistance with PR workflows |
 | Business Model | CLI open-source; hosted service paid |
 | Current Version | v0.2.0 |
-| Status | Active development |
+| Status | Active development (422 open tasks across 9 epics) |
 
 ### Technology Stack
 
 - **Language**: TypeScript (strict mode), Node.js 20+
 - **Build**: Turbo monorepo with npm workspaces
-- **Database**: Firestore (production), in-memory (dev)
-- **AI**: Anthropic SDK (Claude), Google AI SDK (Gemini)
+- **Database**: Firestore (real-time ops), BigQuery (analytics, 266 tables)
+- **AI Models**:
+  - Claude Sonnet/Opus (Anthropic) - Code generation, conflict resolution, reviews
+  - Gemini Flash (Google) - Fast triage, orchestration
+  - TimeGPT (Nixtla) - Time series forecasting (roadmap)
 - **Payments**: Stripe
 - **Infrastructure**: OpenTofu → Cloud Run, GitHub Actions with WIF
 
@@ -186,10 +193,17 @@ gwi run approve <id>     # Approve changes for commit
 
 ## STORAGE ARCHITECTURE
 
+**Dual-backend design:**
+
 | Backend | Usage | Config |
 |---------|-------|--------|
-| Firestore | Production | `GWI_STORE_BACKEND=firestore` + `GCP_PROJECT_ID` |
-| In-Memory | Development | `GWI_STORE_BACKEND=memory` or unset |
+| Firestore | Real-time operational data (runs, approvals) | `GWI_STORE_BACKEND=firestore` + `GCP_PROJECT_ID` |
+| BigQuery | Historical analytics, ML training (266 tables) | Used for data ingestion and forecasting (roadmap) |
+| In-Memory | Development/testing | `GWI_STORE_BACKEND=memory` or unset |
+
+**Why both?**
+- Firestore: Low-latency reads during PR automation
+- BigQuery: Time series analysis, forecasting at scale
 
 **Key interfaces** (in `packages/core/src/storage/interfaces.ts`):
 - `TenantStore` - Multi-tenant CRUD for orgs, repos, runs
@@ -298,6 +312,29 @@ You can replay, audit, or debug any run from these artifacts.
 
 ---
 
+## EPIC STRUCTURE (422 Open Tasks)
+
+Work is organized into 9 epics with team assignments:
+
+| Epic | Owner | Open Tasks | Focus Area |
+|------|-------|------------|------------|
+| **A** | @backend, @security | ~40 | Core Infrastructure (Firestore, queues, artifacts, SLOs) |
+| **B** | @connectors | 80 | Data Ingestion (GitHub/GitLab/JIRA, Airbyte-style connectors) |
+| **C** | @orchestrator | 85 | Workflow Engine (multi-step pipelines, approval gates) |
+| **D** | @security | ~40 | Policy & Audit (governance, compliance, immutable logs) |
+| **E** | @security | 32 | RBAC & Governance (tenant management, quotas, secrets) |
+| **F** | @frontend | 45 | Web Dashboard (React SPA, runs viewer, approvals UI) |
+| **G** | @frontend | ~30 | Slack Integration (notifications, interactive approvals) |
+| **H** | @infra | 37 | Infrastructure & Ops (Cloud Run, observability, DR, cost) |
+| **I** | @ai | 30 | Forecasting & ML (TimeGPT integration, predictions, embeddings) |
+
+Check task backlog: `bd list --status open`
+View epic tasks: `bd list --epic @orchestrator`
+
+Each epic contains 6-12 stories, each story has 5-6 implementation steps.
+
+---
+
 ## REFERENCE DOCUMENTATION
 
 - **Infrastructure README**: `infra/README.md`
@@ -332,6 +369,20 @@ Documentation uses flat numbering scheme: `NNN-CC-ABCD-description.md` where:
 npx vitest run path/to/test.test.ts
 ```
 
+### Run CLI locally (after build)
+```bash
+# Direct execution
+node apps/cli/dist/index.js triage <pr-url>
+
+# Docker (isolated/sandboxed)
+docker build -t gwi-cli -f apps/cli/Dockerfile .
+docker run -it --rm \
+  -e ANTHROPIC_API_KEY="your-key" \
+  -e GITHUB_TOKEN="your-token" \
+  -v $(pwd):/workspace \
+  gwi-cli triage <pr-url>
+```
+
 ### Deploy to staging
 ```bash
 npm run deploy:staging  # Triggers GitHub Actions
@@ -355,4 +406,13 @@ cat .gwi/runs/<run-id>/audit.log
 npx turbo run build --filter=@gwi/core
 npx turbo run build --filter=@gwi/agents
 npx turbo run test --filter=@gwi/agents
+```
+
+### Work with beads (task tracking)
+```bash
+bd list --status open              # View open tasks
+bd list --epic @orchestrator       # Tasks by epic
+bd create "Task title" -p 1 --description "Details"
+bd update <id> --status in_progress
+bd close <id> --reason "Completed with evidence"
 ```

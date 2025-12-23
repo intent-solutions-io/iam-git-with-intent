@@ -39,3 +39,21 @@ export {
   type LLMAdjustmentResult,
   type FinalScoreResult,
 } from './llm-adjustment.js';
+
+// Keyword matching for grading
+export {
+  KeywordMatcher,
+  type KeywordWeight,
+  type KeywordWeights,
+  type MatchResult,
+} from './keyword-matcher.js';
+
+// Grading engine
+export {
+  GradingEngine,
+  type AutoFixRun,
+  type CriterionScore,
+  type SubcriterionScore,
+  type GradeResult,
+  type GradingRubric,
+} from './grading-engine.js';

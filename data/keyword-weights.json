@@ -1,0 +1,239 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "name": "default-keyword-weights",
+    "description": "Semantic keyword weights for auto-fix grading",
+    "createdAt": "2025-12-22T00:00:00Z",
+    "updatedAt": "2025-12-22T00:00:00Z"
+  },
+  "positive": [
+    {
+      "keywords": ["fixed", "fix", "fixes", "fixing"],
+      "weight": 5,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["resolved", "resolve", "resolves", "resolving"],
+      "weight": 5,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["security patch", "security fix", "vulnerability fix", "cve"],
+      "weight": 20,
+      "category": "security",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["optimized", "optimize", "optimization", "performance improvement"],
+      "weight": 10,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["refactored", "refactor", "refactoring", "cleanup", "clean up"],
+      "weight": 8,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["test", "tests", "tested", "testing", "test coverage"],
+      "weight": 10,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["documented", "documentation", "docs", "readme", "comments"],
+      "weight": 5,
+      "category": "documentation",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["backward compatible", "backwards compatible", "non-breaking"],
+      "weight": 8,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["validated", "verification", "verified", "checked"],
+      "weight": 5,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["improved", "improvement", "enhance", "enhanced", "enhancement"],
+      "weight": 5,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["added tests", "new tests", "test suite", "unit tests", "integration tests"],
+      "weight": 12,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["zero warnings", "no warnings", "lint clean", "linting passed"],
+      "weight": 5,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["type safe", "type safety", "strongly typed", "typescript"],
+      "weight": 5,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["reduced complexity", "simplified", "simplification"],
+      "weight": 8,
+      "category": "quality",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["error handling", "exception handling", "graceful degradation"],
+      "weight": 8,
+      "category": "quality",
+      "requiresContext": false
+    }
+  ],
+  "negative": [
+    {
+      "keywords": ["hack", "hacky", "quick hack"],
+      "weight": -10,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["temporary", "temp", "placeholder"],
+      "weight": -5,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["todo", "fixme", "xxx", "hack"],
+      "weight": -8,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["breaking change", "breaking", "incompatible"],
+      "weight": -15,
+      "category": "critical",
+      "requiresContext": true
+    },
+    {
+      "keywords": ["untested", "no tests", "skip tests", "tests disabled"],
+      "weight": -15,
+      "category": "critical",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["workaround", "work around", "band-aid", "bandaid"],
+      "weight": -8,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["disabled", "commented out", "ignore", "suppress"],
+      "weight": -10,
+      "category": "warning",
+      "requiresContext": true
+    },
+    {
+      "keywords": ["technical debt", "debt", "needs refactor"],
+      "weight": -5,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["not tested", "untested", "testing skipped"],
+      "weight": -12,
+      "category": "critical",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["quick fix", "quick and dirty", "dirty fix"],
+      "weight": -8,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["hardcoded", "hard coded", "hard-coded"],
+      "weight": -5,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["brittle", "fragile", "unstable"],
+      "weight": -8,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["deprecated", "legacy", "obsolete"],
+      "weight": -5,
+      "category": "warning",
+      "requiresContext": true
+    },
+    {
+      "keywords": ["will fix later", "fix later", "future work"],
+      "weight": -3,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["not sure", "uncertain", "might work", "probably works"],
+      "weight": -10,
+      "category": "warning",
+      "requiresContext": false
+    }
+  ],
+  "complexity": [
+    {
+      "keywords": ["cyclomatic complexity", "high complexity", "complex logic"],
+      "weight": -5,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["nested loops", "deep nesting", "callback hell"],
+      "weight": -8,
+      "category": "warning",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["long function", "too long", "large file"],
+      "weight": -5,
+      "category": "warning",
+      "requiresContext": false
+    }
+  ],
+  "risk": [
+    {
+      "keywords": ["security", "vulnerability", "exploit", "injection"],
+      "weight": 15,
+      "category": "security",
+      "requiresContext": true
+    },
+    {
+      "keywords": ["authentication", "authorization", "access control"],
+      "weight": 10,
+      "category": "security",
+      "requiresContext": false
+    },
+    {
+      "keywords": ["api change", "api breaking", "public api"],
+      "weight": -10,
+      "category": "critical",
+      "requiresContext": true
+    },
+    {
+      "keywords": ["database migration", "schema change", "migration"],
+      "weight": -5,
+      "category": "critical",
+      "requiresContext": true
+    }
+  ]
+}
