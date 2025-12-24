@@ -193,17 +193,21 @@ function checkGitHubActionsWIF(): CheckResult {
 }
 
 /**
- * Check 5: Terraform infrastructure defined
+ * Check 5: Terraform/OpenTofu infrastructure defined
  */
 function checkTerraformInfra(): CheckResult {
+  // Check for OpenTofu (preferred) or legacy Terraform
+  const infraPath = join(ROOT, 'infra');
   const terraformPath = join(ROOT, 'infra/terraform');
 
-  if (!existsSync(terraformPath)) {
+  const pathToCheck = existsSync(infraPath) ? infraPath : terraformPath;
+
+  if (!existsSync(pathToCheck)) {
     return {
       name: 'Terraform Infrastructure',
       passed: false,
-      message: 'Terraform directory not found',
-      details: [`Expected: ${terraformPath}`],
+      message: 'Infrastructure directory not found',
+      details: [`Expected: ${infraPath} (OpenTofu) or ${terraformPath} (Terraform)`],
     };
   }
 
@@ -212,21 +216,21 @@ function checkTerraformInfra(): CheckResult {
     'variables.tf',
   ];
 
-  const tfFiles = readdirSync(terraformPath).filter(f => f.endsWith('.tf'));
+  const tfFiles = readdirSync(pathToCheck).filter(f => f.endsWith('.tf'));
   const missing = requiredFiles.filter(f => !tfFiles.includes(f));
 
   if (missing.length > 0) {
     return {
       name: 'Terraform Infrastructure',
       passed: false,
-      message: `Missing Terraform files: ${missing.join(', ')}`,
+      message: `Missing infrastructure files: ${missing.join(', ')}`,
     };
   }
 
   // Check for Cloud Run definitions
   let hasCloudRun = false;
   for (const file of tfFiles) {
-    const content = readFileSync(join(terraformPath, file), 'utf-8');
+    const content = readFileSync(join(pathToCheck, file), 'utf-8');
     if (content.includes('google_cloud_run')) {
       hasCloudRun = true;
       break;
@@ -237,14 +241,15 @@ function checkTerraformInfra(): CheckResult {
     return {
       name: 'Terraform Infrastructure',
       passed: false,
-      message: 'No Cloud Run resources defined in Terraform',
+      message: 'No Cloud Run resources defined in infrastructure',
     };
   }
 
+  const infraType = pathToCheck.includes('terraform') ? 'Terraform' : 'OpenTofu';
   return {
     name: 'Terraform Infrastructure',
     passed: true,
-    message: `Terraform infrastructure with ${tfFiles.length} files`,
+    message: `${infraType} infrastructure with ${tfFiles.length} files`,
   };
 }
 
