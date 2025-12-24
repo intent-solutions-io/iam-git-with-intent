@@ -6,6 +6,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# Exception: Allow connector dist files (pre-built connectors)
+!connectors/*/dist/
+
 # Internal package build artifacts (hooks are built at runtime)
 internal/*/*.js
 internal/*/*.js.map
