@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@gwi/core": "*",
+    "@gwi/engine": "*",
     "@octokit/auth-app": "^6.0.0",
     "@octokit/rest": "^20.0.0",
     "cors": "^2.8.5",

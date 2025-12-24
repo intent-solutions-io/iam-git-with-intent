@@ -88,6 +88,29 @@ export type {
   WorkflowStatusResponse,
   ApproveWorkflowRequest,
   ApproveWorkflowResponse,
+
+  // Gateway API Types (auto-generated from OpenAPI)
+  paths,
+  components,
+  operations,
+
+  // Gateway API Type Helpers
+  RequestBody,
+  SuccessResponse,
+  ErrorResponse,
+  PathParams,
+  QueryParams,
+
+  // Convenience Aliases
+  SearchConnectorsParams,
+  SearchConnectorsResponse,
+  GetConnectorParams,
+  GetConnectorResponse,
+  PublishConnectorRequest,
+  PublishConnectorResponse,
+  ScimUser,
+  ScimGroup,
+  SsoAuthResponse,
 } from './types.js';
 
 // Export error class

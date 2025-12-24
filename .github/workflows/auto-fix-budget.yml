@@ -1,0 +1,178 @@
+name: Auto-Fix Budget Monitoring
+
+on:
+  schedule:
+    # Run every hour to track budget in near real-time
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      budget_threshold:
+        description: 'Monthly budget threshold (USD)'
+        required: false
+        default: '100'
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  DB_PATH: '.gwi/analytics.db'
+  # Budget configuration
+  BUDGET_THRESHOLD_USD: ${{ inputs.budget_threshold || vars.BUDGET_THRESHOLD_USD || '100' }}
+  WARNING_THRESHOLD_PERCENT: ${{ vars.WARNING_THRESHOLD_PERCENT || '80' }}
+  CRITICAL_THRESHOLD_PERCENT: ${{ vars.CRITICAL_THRESHOLD_PERCENT || '95' }}
+
+jobs:
+  monitor-budget:
+    name: Monitor Budget Usage
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build required packages
+        run: |
+          # Build only the packages needed for budget monitoring
+          npx turbo run build --filter=@gwi/core
+
+      # ========================================================================
+      # Download Analytics Database
+      # ========================================================================
+
+      - name: Check for Analytics Database
+        id: check_db
+        run: |
+          # For now, check if database exists locally
+          # In production, this would download from GCS or Cloud Storage
+          if [ -f "${{ env.DB_PATH }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Database found at ${{ env.DB_PATH }}"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Database not found - will skip monitoring"
+          fi
+
+      # TODO: In production, download database from Cloud Storage
+      # - name: Download Analytics Database
+      #   if: steps.check_db.outputs.exists == 'false'
+      #   run: |
+      #     gsutil cp gs://${{ vars.GCP_PROJECT_ID }}-analytics/analytics.db ${{ env.DB_PATH }}
+
+      # ========================================================================
+      # Run Budget Analysis
+      # ========================================================================
+
+      - name: Run Budget Analysis
+        id: budget_analysis
+        if: steps.check_db.outputs.exists == 'true'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          npx tsx scripts/budget-monitor.ts > budget_report.txt 2>&1
+          EXIT_CODE=$?
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+          # Capture key metrics for step summary
+          if [ -f budget_report.txt ]; then
+            cat budget_report.txt
+          fi
+
+          # Exit codes:
+          # 0 = OK or warning (non-blocking)
+          # 1 = Critical warning
+          # 2 = Budget exceeded
+          exit $EXIT_CODE
+
+      # ========================================================================
+      # Post Results
+      # ========================================================================
+
+      - name: Upload Budget Report
+        if: always() && steps.check_db.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: budget-report
+          path: budget_report.txt
+          retention-days: 30
+
+      - name: Post to Job Summary
+        if: always() && steps.check_db.outputs.exists == 'true'
+        run: |
+          echo "## Budget Monitoring Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f budget_report.txt ]; then
+            # Extract the markdown report from the output
+            cat budget_report.txt | sed -n '/^## /,$p' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Budget report not generated." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # ========================================================================
+      # Handle Budget Exceeded
+      # ========================================================================
+
+      - name: Budget Exceeded - Fail Workflow
+        if: steps.budget_analysis.outputs.exit_code == '2'
+        run: |
+          echo "::error::Budget exceeded! Immediate action required."
+          echo "Review the budget report and take corrective action."
+          exit 1
+
+      - name: Critical Warning - Mark as Warning
+        if: steps.budget_analysis.outputs.exit_code == '1'
+        run: |
+          echo "::warning::Budget usage is critical (>95%). Review and optimize spending."
+
+      - name: No Database - Skip Monitoring
+        if: steps.check_db.outputs.exists == 'false'
+        run: |
+          echo "Analytics database not found. Budget monitoring skipped."
+          echo "This is normal for new installations or if auto-fix hasn't run yet."
+          echo ""
+          echo "To enable budget monitoring:"
+          echo "1. Ensure auto-fix runs are being recorded in the analytics database"
+          echo "2. Upload the database to the configured storage location"
+          echo "3. Re-run this workflow"
+
+  # ==========================================================================
+  # Summary and Notifications
+  # ==========================================================================
+
+  notify-on-critical:
+    name: Send Critical Notifications
+    needs: monitor-budget
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Slack Notification
+        # Only send Slack notification if webhook is configured
+        if: vars.SLACK_WEBHOOK_URL != ''
+        run: |
+          # TODO: Implement Slack notification
+          # curl -X POST ${{ vars.SLACK_WEBHOOK_URL }} \
+          #   -H 'Content-Type: application/json' \
+          #   -d '{"text": "Budget Alert: Auto-fix budget exceeded!"}'
+          echo "Slack notification would be sent here"
+
+      - name: Send Email Notification
+        # Only send email if configured
+        if: vars.ALERT_EMAIL != ''
+        run: |
+          # TODO: Implement email notification via SendGrid or similar
+          echo "Email notification would be sent to ${{ vars.ALERT_EMAIL }}"

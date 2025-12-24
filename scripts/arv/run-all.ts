@@ -76,6 +76,11 @@ async function main(): Promise<void> {
       args: ['tsx', join(__dirname, 'forbidden-patterns.ts')],
     },
     {
+      name: 'SDK Type Validation',
+      command: 'npx',
+      args: ['tsx', join(__dirname, '../validate-sdk-types.ts')],
+    },
+    {
       name: 'Contract Tests',
       command: 'npx',
       args: ['vitest', 'run', 'test/contracts/', '--reporter=verbose'],
