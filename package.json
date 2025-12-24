@@ -43,6 +43,8 @@
     "arv:contracts": "npx vitest run test/contracts/ --reporter=verbose",
     "arv:goldens": "npx vitest run test/goldens/ --reporter=verbose",
     "arv:smoke": "npx tsx scripts/arv/smoke-test.ts",
+    "generate:sdk-types": "npx tsx scripts/generate-sdk-types.ts",
+    "validate:sdk-types": "npx tsx scripts/validate-sdk-types.ts",
     "tools:verify": "bash scripts/verify-tools.sh",
     "hooks:preflight": "bash scripts/hooks/preflight.sh",
     "hooks:postflight": "bash scripts/hooks/postflight.sh",
@@ -50,6 +52,7 @@
     "budget:monitor": "npx tsx scripts/budget-monitor.ts"
   },
   "devDependencies": {
+    "@apidevtools/openapi-schemas": "^2.1.0",
     "@firebase/rules-unit-testing": "^5.0.0",
     "@libsql/client": "^0.15.15",
     "@tursodatabase/sync": "^0.3.2",
@@ -61,6 +64,7 @@
     "better-sqlite3": "^12.5.0",
     "husky": "^9.0.0",
     "js-yaml": "^4.1.0",
+    "openapi-typescript": "^7.10.1",
     "prettier": "^3.2.0",
     "tsx": "^4.7.0",
     "turbo": "^2.3.0",

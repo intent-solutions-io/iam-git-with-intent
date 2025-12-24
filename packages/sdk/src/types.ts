@@ -3,9 +3,32 @@
  *
  * These types define request/response shapes for API operations.
  * Core domain types are imported from @gwi/core.
+ * Gateway API types are auto-generated from OpenAPI specification.
  *
  * @module @gwi/sdk/types
  */
+
+// =============================================================================
+// Generated Gateway API Types
+// =============================================================================
+
+/**
+ * Re-export generated types from OpenAPI specification
+ * These types are automatically generated from apps/gateway/openapi.yaml
+ *
+ * To regenerate: npm run generate:sdk-types (in packages/sdk)
+ */
+export type { paths, components, operations } from './generated/gateway-types.js';
+
+// Import with aliases for internal use in type helpers below
+import type {
+  components as GatewayComponents,
+  operations as GatewayOperations,
+} from './generated/gateway-types.js';
+
+// =============================================================================
+// Core Domain Types
+// =============================================================================
 
 // Re-export core types that users will need
 export type {
@@ -512,3 +535,126 @@ export interface ApproveWorkflowResponse {
   status: string;
   message: string;
 }
+
+// =============================================================================
+// Gateway API Type Helpers
+// =============================================================================
+
+/**
+ * Helper types for working with generated Gateway API types
+ * These provide convenient access to request/response types from operations
+ */
+
+/**
+ * Extract request body type from an operation
+ *
+ * @example
+ * ```typescript
+ * type PublishRequest = RequestBody<'publishFull'>;
+ * ```
+ */
+export type RequestBody<T extends keyof GatewayOperations> =
+  GatewayOperations[T] extends { requestBody?: { content: { 'application/json': infer R } } }
+    ? R
+    : never;
+
+/**
+ * Extract successful response type from an operation (200/201 responses)
+ *
+ * @example
+ * ```typescript
+ * type SearchResponse = SuccessResponse<'searchConnectors'>;
+ * ```
+ */
+export type SuccessResponse<T extends keyof GatewayOperations> =
+  GatewayOperations[T] extends {
+    responses: { 200: { content: { 'application/json': infer R } } };
+  }
+    ? R
+    : GatewayOperations[T] extends {
+        responses: { 201: { content: { 'application/json': infer R } } };
+      }
+    ? R
+    : never;
+
+/**
+ * Extract error response type from an operation (4xx/5xx responses)
+ *
+ * @example
+ * ```typescript
+ * type SearchError = ErrorResponse<'searchConnectors'>;
+ * ```
+ */
+export type ErrorResponse<T extends keyof GatewayOperations> =
+  GatewayOperations[T] extends {
+    responses: { 400: { content: { 'application/json': infer R } } };
+  }
+    ? R
+    : GatewayOperations[T] extends {
+        responses: { 500: { content: { 'application/json': infer R } } };
+      }
+    ? R
+    : never;
+
+/**
+ * Extract path parameters from an operation
+ *
+ * @example
+ * ```typescript
+ * type ConnectorParams = PathParams<'getConnector'>; // { id: string }
+ * ```
+ */
+export type PathParams<T extends keyof GatewayOperations> = GatewayOperations[T] extends {
+  parameters: { path?: infer P };
+}
+  ? P
+  : never;
+
+/**
+ * Extract query parameters from an operation
+ *
+ * @example
+ * ```typescript
+ * type SearchParams = QueryParams<'searchConnectors'>; // { q?: string, page?: number, ... }
+ * ```
+ */
+export type QueryParams<T extends keyof GatewayOperations> = GatewayOperations[T] extends {
+  parameters: { query?: infer Q };
+}
+  ? Q
+  : never;
+
+// =============================================================================
+// Convenience Type Aliases for Common Operations
+// =============================================================================
+
+/**
+ * Common Gateway API operation types for easy access
+ */
+
+/** Search connectors request parameters */
+export type SearchConnectorsParams = QueryParams<'searchConnectors'>;
+
+/** Search connectors response */
+export type SearchConnectorsResponse = SuccessResponse<'searchConnectors'>;
+
+/** Get connector path parameters */
+export type GetConnectorParams = PathParams<'getConnector'>;
+
+/** Get connector response */
+export type GetConnectorResponse = SuccessResponse<'getConnector'>;
+
+/** Publish connector request */
+export type PublishConnectorRequest = RequestBody<'publishFull'>;
+
+/** Publish connector response */
+export type PublishConnectorResponse = SuccessResponse<'publishFull'>;
+
+/** SCIM user resource */
+export type ScimUser = GatewayComponents['schemas']['ScimUser'];
+
+/** SCIM group resource */
+export type ScimGroup = GatewayComponents['schemas']['ScimGroup'];
+
+/** SSO authentication response */
+export type SsoAuthResponse = GatewayComponents['schemas']['SsoAuthResponse'];

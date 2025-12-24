@@ -12,6 +12,9 @@
     }
   },
   "scripts": {
+    "generate:types": "npx tsx ../../scripts/generate-sdk-types.ts",
+    "validate:types": "npx tsx ../../scripts/validate-sdk-types.ts",
+    "prebuild": "npm run generate:types",
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run --passWithNoTests",
