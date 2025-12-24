@@ -1,0 +1,2 @@
+# False positives - documentation strings that match base64 pattern
+README.md:338

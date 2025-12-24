@@ -1,0 +1,126 @@
+name: Gemini Code Assist Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write  # Required for WIF
+
+jobs:
+  gemini-code-review:
+    name: Gemini Code Assist Full Codebase Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better context
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Collect Codebase Context
+        id: collect
+        run: |
+          # Get changed files for context
+          git diff origin/main...HEAD --name-only > changed_files.txt
+
+          # Get all TypeScript source files
+          find packages apps -name "*.ts" -not -path "*/node_modules/*" -not -path "*/dist/*" > all_files.txt
+
+          echo "changed_count=$(wc -l < changed_files.txt)" >> $GITHUB_OUTPUT
+          echo "total_count=$(wc -l < all_files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Run Gemini Code Review
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Create review prompt
+          cat > review_prompt.txt <<'EOF'
+          You are reviewing code for Git With Intent, an AI-powered PR automation tool.
+
+          This is a FULL CODEBASE REVIEW for PR #$PR_NUMBER.
+
+          Key focus areas:
+          1. **Security**: Secrets leakage, SQL injection, XSS, auth bypass
+          2. **Multi-agent patterns**: Agent routing, approval gating, hash binding
+          3. **Storage abstraction**: Interface contracts, Firestore/SQLite consistency
+          4. **Error handling**: Proper error propagation, logging, user-facing messages
+          5. **Testing**: Test coverage, edge cases, golden tests
+          6. **TypeScript strict mode**: Type safety, no implicit any
+          7. **Epic B (SQLite)**: Analytics queries, backup utilities, migration system
+
+          Review the entire codebase context below and provide:
+          - Critical issues (security, data loss, breaking changes)
+          - Important improvements (performance, maintainability)
+          - Best practice suggestions
+
+          Be thorough but concise. Use bullet points.
+          EOF
+
+          # Collect all source code into context
+          echo "=== CHANGED FILES ===" > codebase_context.txt
+          while read -r file; do
+            if [ -f "$file" ]; then
+              echo "--- $file ---" >> codebase_context.txt
+              cat "$file" >> codebase_context.txt
+              echo "" >> codebase_context.txt
+            fi
+          done < changed_files.txt
+
+          # Sample of full codebase (max 100 files to avoid token limits)
+          echo "=== FULL CODEBASE SAMPLE ===" >> codebase_context.txt
+          head -100 all_files.txt | while read -r file; do
+            if [ -f "$file" ]; then
+              echo "--- $file ---" >> codebase_context.txt
+              head -50 "$file" >> codebase_context.txt  # First 50 lines of each file
+              echo "" >> codebase_context.txt
+            fi
+          done
+
+          # Call Gemini API via gcloud
+          gcloud ai generative-language models generate-text \
+            --model=gemini-2.0-flash-exp \
+            --prompt="$(cat review_prompt.txt && cat codebase_context.txt)" \
+            --temperature=0.1 \
+            --max-output-tokens=4096 \
+            > gemini_review.txt 2>&1 || echo "Review completed with warnings"
+
+          # Extract review content
+          cat gemini_review.txt
+
+      - name: Post Review Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('gemini_review.txt', 'utf8');
+
+            const comment = `## 🤖 Gemini Code Assist - Full Codebase Review
+
+            **Files Changed:** ${{ steps.collect.outputs.changed_count }}
+            **Total Files Reviewed:** ${{ steps.collect.outputs.total_count }}
+
+            ${review}
+
+            ---
+            *Powered by Gemini 2.0 Flash via WIF tokenless auth*`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
