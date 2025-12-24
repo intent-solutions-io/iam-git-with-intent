@@ -292,7 +292,49 @@ npm run arv          # Agent Readiness Verification (pre-commit checks)
 ```bash
 npx turbo run test --filter=@gwi/core
 npx turbo run test --filter=@gwi/agents
+npx turbo run test --filter=@gwi/engine
 ```
+
+### E2E Testing Framework
+
+Production-ready end-to-end testing infrastructure in `test/e2e/`:
+
+```bash
+# Run all E2E tests
+npx vitest test/e2e
+
+# Run specific test file
+npx vitest test/e2e/example.e2e.test.ts
+```
+
+**Features:**
+- Type-safe API client with authentication helpers
+- GitHub API mock server with fixtures
+- Test data factories matching current schemas
+- Global setup/teardown with test isolation
+- 18 example tests demonstrating best practices
+
+See `test/e2e/README.md` for complete documentation.
+
+### SDK Type Generation
+
+Auto-generate TypeScript types from OpenAPI specification:
+
+```bash
+# Generate types (runs automatically on build)
+npm run generate:sdk-types
+
+# Validate types are in sync
+npm run validate:sdk-types
+```
+
+**Features:**
+- Zero type drift between API and SDK
+- Full autocomplete and compile-time errors
+- Type helper utilities (RequestBody, SuccessResponse, etc.)
+- ARV validation ensures types stay in sync
+
+See `packages/sdk/README-CODEGEN.md` for complete documentation.
 
 ### ARV (Agent Readiness Verification)
 
