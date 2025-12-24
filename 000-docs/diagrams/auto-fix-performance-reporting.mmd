@@ -1,0 +1,65 @@
+%% Auto-Fix Performance Reporting System Architecture
+%% Mermaid diagram showing the complete flow from data collection to reporting
+
+graph TB
+    subgraph "Auto-Fix System"
+        AF[Auto-Fix Runs]
+        DB[(SQLite Database)]
+        AF -->|Write Metrics| DB
+    end
+
+    subgraph "Data Storage"
+        DB -->|Backup| GCS[GCS Bucket<br/>autofix.db]
+        GCS -->|Daily Backup| COLD[Cold Storage<br/>Monthly Snapshots]
+    end
+
+    subgraph "GitHub Actions Workflow"
+        SCHED[Schedule Trigger<br/>Monday 9am UTC]
+        MANUAL[Manual Trigger<br/>workflow_dispatch]
+
+        SCHED --> WF[Auto-Fix Report Workflow]
+        MANUAL --> WF
+
+        WF -->|Download DB| GCS
+        WF --> AUTH[WIF Authentication]
+        WF --> BUILD[Build Report Generator]
+    end
+
+    subgraph "Report Generation"
+        BUILD --> QUERY[Query Analytics]
+        QUERY -->|Success Rates| M1[Success Metrics]
+        QUERY -->|Costs| M2[Cost Metrics]
+        QUERY -->|Grades| M3[Grade Distribution]
+        QUERY -->|Performance| M4[Latency P50/P95/P99]
+        QUERY -->|Quality| M5[Quality Trends]
+        QUERY -->|Errors| M6[Top Errors]
+        QUERY -->|Leaderboard| M7[Repository Rankings]
+
+        M1 & M2 & M3 & M4 & M5 & M6 & M7 --> CALC[Calculate WoW Trends]
+        CALC --> MD[Generate Markdown]
+        MD --> CHARTS[Add Mermaid Charts]
+        CHARTS --> RECS[Generate Recommendations]
+    end
+
+    subgraph "Publishing"
+        RECS --> DISC[GitHub Discussions API]
+        DISC -->|Get/Create Category| CAT[Auto-Fix Reports Category]
+        CAT -->|Post Discussion| POST[Weekly Performance Report]
+        POST --> NOTIFY[Team Notification]
+    end
+
+    subgraph "Team Review"
+        NOTIFY --> REVIEW[Weekly Review Meeting]
+        REVIEW -->|Identify Issues| TASKS[Create Action Items]
+        REVIEW -->|Celebrate Wins| KUDOS[Team Recognition]
+        TASKS --> IMP[Implement Improvements]
+        IMP --> AF
+    end
+
+    style AF fill:#e1f5ff
+    style DB fill:#fff4e1
+    style GCS fill:#e8f5e9
+    style WF fill:#f3e5f5
+    style MD fill:#fff3e0
+    style POST fill:#e8eaf6
+    style REVIEW fill:#fce4ec

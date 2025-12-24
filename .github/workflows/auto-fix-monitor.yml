@@ -1,0 +1,523 @@
+name: Auto-Fix Health Monitor
+
+# Monitor auto-fix workflow health and performance
+# Runs every 6 hours and on manual dispatch
+# Alerts via GitHub issues when problems are detected
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allow manual trigger
+    inputs:
+      check_hours:
+        description: 'Hours of history to check'
+        required: false
+        default: '24'
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  # Health thresholds
+  FAILURE_RATE_THRESHOLD: 20  # Alert if >20% failure rate
+  SLOW_PERFORMANCE_THRESHOLD: 2.0  # Alert if >2x baseline duration
+  DB_SIZE_THRESHOLD_MB: 100  # Alert if DB >100MB
+  STUCK_RUN_HOURS: 2  # Alert if run stuck >2 hours
+
+jobs:
+  monitor-health:
+    name: Monitor Auto-Fix Workflow Health
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci --include=dev
+          # Install only needed deps for monitoring script
+          npm install @octokit/rest@latest
+
+      - name: Build monitoring script
+        run: |
+          npx tsc scripts/github-alerts.ts --outDir scripts/dist --esModuleInterop --resolveJsonModule --skipLibCheck || true
+          # Build inline if needed
+          if [ ! -f scripts/dist/github-alerts.js ]; then
+            npx tsx scripts/monitor-autofix-health.ts --dry-run || echo "Script check OK"
+          fi
+
+      - name: Query Recent Workflow Runs
+        id: workflow_runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hours = parseInt('${{ inputs.check_hours || '24' }}');
+            const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+            // Query auto-fix workflow runs (assuming workflow file exists or will exist)
+            const workflows = await github.rest.actions.listRepoWorkflows({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            // Find auto-fix workflow (may not exist yet)
+            const autoFixWorkflow = workflows.data.workflows.find(w =>
+              w.name === 'Auto-Fix' || w.path.includes('auto-fix.yml')
+            );
+
+            if (!autoFixWorkflow) {
+              console.log('Auto-fix workflow not found (may not be created yet)');
+              core.setOutput('workflow_id', '');
+              core.setOutput('runs_data', JSON.stringify({
+                total_runs: 0,
+                successful: 0,
+                failed: 0,
+                in_progress: 0,
+                runs: []
+              }));
+              return;
+            }
+
+            // Get recent runs
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: autoFixWorkflow.id,
+              per_page: 100,
+              created: `>=${since}`
+            });
+
+            const runsData = {
+              total_runs: runs.data.total_count,
+              successful: runs.data.workflow_runs.filter(r => r.conclusion === 'success').length,
+              failed: runs.data.workflow_runs.filter(r => r.conclusion === 'failure').length,
+              in_progress: runs.data.workflow_runs.filter(r => r.status === 'in_progress').length,
+              runs: runs.data.workflow_runs.map(r => ({
+                id: r.id,
+                status: r.status,
+                conclusion: r.conclusion,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+                run_started_at: r.run_started_at,
+                duration: r.run_started_at && r.updated_at
+                  ? (new Date(r.updated_at) - new Date(r.run_started_at)) / 1000
+                  : null,
+                html_url: r.html_url
+              }))
+            };
+
+            core.setOutput('workflow_id', autoFixWorkflow.id);
+            core.setOutput('runs_data', JSON.stringify(runsData));
+
+      - name: Check Database Health
+        id: db_health
+        run: |
+          DB_PATH="./autofix-monitor.db"
+
+          if [ ! -f "$DB_PATH" ]; then
+            echo "Database does not exist yet (expected for new setup)"
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "size_mb=0" >> $GITHUB_OUTPUT
+            echo "table_count=0" >> $GITHUB_OUTPUT
+            echo "total_runs=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "exists=true" >> $GITHUB_OUTPUT
+
+          # Check database size
+          SIZE_BYTES=$(stat -f%z "$DB_PATH" 2>/dev/null || stat -c%s "$DB_PATH")
+          SIZE_MB=$(echo "scale=2; $SIZE_BYTES / 1048576" | bc)
+          echo "size_mb=$SIZE_MB" >> $GITHUB_OUTPUT
+
+          # Check if size exceeds threshold
+          if (( $(echo "$SIZE_MB > ${{ env.DB_SIZE_THRESHOLD_MB }}" | bc -l) )); then
+            echo "size_warning=true" >> $GITHUB_OUTPUT
+          else
+            echo "size_warning=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Query database health using sqlite3
+          if command -v sqlite3 &> /dev/null; then
+            # Get table count
+            TABLE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")
+            echo "table_count=$TABLE_COUNT" >> $GITHUB_OUTPUT
+
+            # Get total runs
+            TOTAL_RUNS=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM autofix_runs;" 2>/dev/null || echo "0")
+            echo "total_runs=$TOTAL_RUNS" >> $GITHUB_OUTPUT
+
+            # Get recent errors
+            RECENT_ERRORS=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM autofix_runs WHERE status='failure' AND created_at > datetime('now', '-24 hours');" 2>/dev/null || echo "0")
+            echo "recent_errors=$RECENT_ERRORS" >> $GITHUB_OUTPUT
+
+            # Check for stuck runs (in progress for >2 hours)
+            STUCK_RUNS=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM autofix_runs WHERE status='running' AND started_at < datetime('now', '-${{ env.STUCK_RUN_HOURS }} hours');" 2>/dev/null || echo "0")
+            echo "stuck_runs=$STUCK_RUNS" >> $GITHUB_OUTPUT
+
+            # Verify database integrity
+            INTEGRITY=$(sqlite3 "$DB_PATH" "PRAGMA integrity_check;" 2>/dev/null || echo "error")
+            if [ "$INTEGRITY" = "ok" ]; then
+              echo "integrity=ok" >> $GITHUB_OUTPUT
+            else
+              echo "integrity=error" >> $GITHUB_OUTPUT
+              echo "integrity_detail=$INTEGRITY" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "sqlite3 not available"
+            echo "table_count=unknown" >> $GITHUB_OUTPUT
+            echo "total_runs=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate Performance Metrics
+        id: performance
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runsData = JSON.parse('${{ steps.workflow_runs.outputs.runs_data }}');
+
+            if (runsData.total_runs === 0) {
+              console.log('No runs to analyze');
+              core.setOutput('metrics', JSON.stringify({
+                avg_duration: 0,
+                p95_duration: 0,
+                failure_rate: 0,
+                success_rate: 0
+              }));
+              return;
+            }
+
+            // Calculate metrics
+            const completedRuns = runsData.runs.filter(r => r.duration !== null);
+            const durations = completedRuns.map(r => r.duration).sort((a, b) => a - b);
+
+            const avgDuration = durations.length > 0
+              ? durations.reduce((a, b) => a + b, 0) / durations.length
+              : 0;
+
+            const p95Index = Math.floor(durations.length * 0.95);
+            const p95Duration = durations.length > 0 ? durations[p95Index] : 0;
+
+            const failureRate = runsData.total_runs > 0
+              ? (runsData.failed / runsData.total_runs) * 100
+              : 0;
+
+            const successRate = runsData.total_runs > 0
+              ? (runsData.successful / runsData.total_runs) * 100
+              : 0;
+
+            const metrics = {
+              avg_duration: avgDuration.toFixed(2),
+              p95_duration: p95Duration.toFixed(2),
+              failure_rate: failureRate.toFixed(2),
+              success_rate: successRate.toFixed(2),
+              total_runs: runsData.total_runs,
+              in_progress: runsData.in_progress
+            };
+
+            core.setOutput('metrics', JSON.stringify(metrics));
+
+            // Set individual outputs for conditions
+            core.setOutput('failure_rate', failureRate.toFixed(2));
+            core.setOutput('avg_duration', avgDuration.toFixed(2));
+
+      - name: Run Health Monitoring Script
+        id: health_check
+        run: |
+          # Run comprehensive health check
+          npx tsx scripts/monitor-autofix-health.ts \
+            --workflow-runs='${{ steps.workflow_runs.outputs.runs_data }}' \
+            --db-health='${{ toJson(steps.db_health.outputs) }}' \
+            --performance='${{ steps.performance.outputs.metrics }}' \
+            --output-json > health-report.json || true
+
+          if [ -f health-report.json ]; then
+            cat health-report.json
+            echo "report_generated=true" >> $GITHUB_OUTPUT
+          else
+            echo "report_generated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Alert Conditions - High Failure Rate
+        id: alert_failure_rate
+        if: steps.performance.outputs.failure_rate != '' && steps.performance.outputs.failure_rate > env.FAILURE_RATE_THRESHOLD
+        run: |
+          echo "high_failure_rate=true" >> $GITHUB_OUTPUT
+          echo "Alert: Failure rate is ${{ steps.performance.outputs.failure_rate }}% (threshold: ${{ env.FAILURE_RATE_THRESHOLD }}%)"
+
+      - name: Check Alert Conditions - Stuck Runs
+        id: alert_stuck_runs
+        if: steps.db_health.outputs.stuck_runs != '' && steps.db_health.outputs.stuck_runs > 0
+        run: |
+          echo "stuck_runs=true" >> $GITHUB_OUTPUT
+          echo "Alert: Found ${{ steps.db_health.outputs.stuck_runs }} stuck runs"
+
+      - name: Check Alert Conditions - Database Issues
+        id: alert_db_issues
+        if: |
+          (steps.db_health.outputs.integrity == 'error') ||
+          (steps.db_health.outputs.size_warning == 'true')
+        run: |
+          echo "db_issues=true" >> $GITHUB_OUTPUT
+          echo "Alert: Database health issues detected"
+
+      - name: Post Health Status Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const metrics = JSON.parse('${{ steps.performance.outputs.metrics }}' || '{}');
+            const dbHealth = {
+              exists: '${{ steps.db_health.outputs.exists }}',
+              size_mb: '${{ steps.db_health.outputs.size_mb }}',
+              total_runs: '${{ steps.db_health.outputs.total_runs }}',
+              integrity: '${{ steps.db_health.outputs.integrity }}'
+            };
+
+            const summary = `## Auto-Fix Workflow Health Report
+
+            **Generated:** ${new Date().toISOString()}
+            **Time Window:** Last ${{ inputs.check_hours || '24' }} hours
+
+            ### Workflow Performance
+            - **Total Runs:** ${metrics.total_runs || 0}
+            - **Success Rate:** ${metrics.success_rate || 0}%
+            - **Failure Rate:** ${metrics.failure_rate || 0}%
+            - **In Progress:** ${metrics.in_progress || 0}
+            - **Avg Duration:** ${metrics.avg_duration || 0}s
+            - **P95 Duration:** ${metrics.p95_duration || 0}s
+
+            ### Database Health
+            - **Status:** ${dbHealth.exists === 'true' ? '✅ Online' : '⚠️ Not initialized'}
+            - **Size:** ${dbHealth.size_mb || 0} MB
+            - **Total Runs Tracked:** ${dbHealth.total_runs || 0}
+            - **Integrity:** ${dbHealth.integrity === 'ok' ? '✅ OK' : (dbHealth.integrity || 'Unknown')}
+
+            ### Alert Status
+            ${metrics.failure_rate > ${{ env.FAILURE_RATE_THRESHOLD }} ? '⚠️ **High Failure Rate Detected**' : '✅ Failure rate normal'}
+            ${dbHealth.size_mb > ${{ env.DB_SIZE_THRESHOLD_MB }} ? '⚠️ **Database size approaching limit**' : '✅ Database size normal'}
+            ${'${{ steps.db_health.outputs.stuck_runs }}' > 0 ? '⚠️ **Stuck runs detected**' : '✅ No stuck runs'}
+
+            ---
+            *Automated health monitoring - runs every 6 hours*`;
+
+            // Post as workflow summary
+            await core.summary
+              .addRaw(summary)
+              .write();
+
+      - name: Create Issue - High Failure Rate
+        if: steps.alert_failure_rate.outputs.high_failure_rate == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const metrics = JSON.parse('${{ steps.performance.outputs.metrics }}');
+            const runsData = JSON.parse('${{ steps.workflow_runs.outputs.runs_data }}');
+
+            // Check if issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'auto-fix,alert,high-failure-rate'
+            });
+
+            const failedRuns = runsData.runs
+              .filter(r => r.conclusion === 'failure')
+              .slice(0, 5)
+              .map(r => `- [Run #${r.id}](${r.html_url}) - ${new Date(r.created_at).toLocaleString()}`)
+              .join('\n');
+
+            const body = `## ⚠️ Auto-Fix High Failure Rate Alert
+
+            The auto-fix workflow is experiencing a high failure rate.
+
+            ### Metrics
+            - **Failure Rate:** ${metrics.failure_rate}% (threshold: ${{ env.FAILURE_RATE_THRESHOLD }}%)
+            - **Total Runs:** ${metrics.total_runs}
+            - **Failed Runs:** ${runsData.failed}
+            - **Time Period:** Last ${{ inputs.check_hours || '24' }} hours
+
+            ### Recent Failures
+            ${failedRuns || 'No recent failures'}
+
+            ### Recommended Actions
+            1. Review failed workflow runs to identify common patterns
+            2. Check for API quota exhaustion or rate limiting
+            3. Verify database connectivity and health
+            4. Review recent code changes that may affect auto-fix reliability
+            5. Check AI provider status (Anthropic, Google, etc.)
+
+            ### Automated Remediation Suggestions
+            - **If quota exhausted:** Wait for quota reset or switch to fallback provider
+            - **If database errors:** Run integrity check and consider backup restore
+            - **If test failures:** Review and fix failing tests before auto-fix attempts
+            - **If API timeouts:** Increase timeout thresholds or optimize prompts
+
+            ---
+            *This issue was created automatically by the auto-fix health monitor*
+            *Last check: ${new Date().toISOString()}*`;
+
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `[Alert] Auto-Fix High Failure Rate: ${metrics.failure_rate}%`,
+                body: body,
+                labels: ['auto-fix', 'alert', 'high-failure-rate', 'p1']
+              });
+            } else {
+              // Update existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues.data[0].number,
+                body: `## Updated Alert - ${new Date().toISOString()}\n\n${body}`
+              });
+            }
+
+      - name: Create Issue - Stuck Runs
+        if: steps.alert_stuck_runs.outputs.stuck_runs == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## ⚠️ Auto-Fix Stuck Runs Detected
+
+            Found ${{ steps.db_health.outputs.stuck_runs }} workflow runs stuck in 'running' state for over ${{ env.STUCK_RUN_HOURS }} hours.
+
+            ### Issue
+            - **Stuck Runs:** ${{ steps.db_health.outputs.stuck_runs }}
+            - **Threshold:** ${{ env.STUCK_RUN_HOURS }} hours
+
+            ### Recommended Actions
+            1. Check GitHub Actions for hung workflows
+            2. Manually cancel stuck workflow runs
+            3. Update database to mark runs as failed
+            4. Review logs for the stuck runs to identify root cause
+
+            ### Automated Remediation Suggestions
+            - **Manual intervention required:** Cancel hung workflows in GitHub Actions UI
+            - **Database cleanup:** Run \`UPDATE autofix_runs SET status='failure', error_message='Stuck run timeout' WHERE status='running' AND started_at < datetime('now', '-${{ env.STUCK_RUN_HOURS }} hours');\`
+            - **Prevention:** Add workflow timeout limits to prevent future hangs
+
+            ### SQL Cleanup Query
+            \`\`\`sql
+            UPDATE autofix_runs
+            SET status = 'failure',
+                error_message = 'Workflow stuck for >${{ env.STUCK_RUN_HOURS }} hours - auto-terminated',
+                completed_at = datetime('now')
+            WHERE status = 'running'
+              AND started_at < datetime('now', '-${{ env.STUCK_RUN_HOURS }} hours');
+            \`\`\`
+
+            ---
+            *This issue was created automatically by the auto-fix health monitor*`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[Alert] Auto-Fix Stuck Runs: ${this.steps.db_health.outputs.stuck_runs} workflows hung`,
+              body: body,
+              labels: ['auto-fix', 'alert', 'stuck-runs', 'p1']
+            });
+
+      - name: Create Issue - Database Problems
+        if: steps.alert_db_issues.outputs.db_issues == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dbHealth = {
+              integrity: '${{ steps.db_health.outputs.integrity }}',
+              size_mb: '${{ steps.db_health.outputs.size_mb }}',
+              size_warning: '${{ steps.db_health.outputs.size_warning }}'
+            };
+
+            let issues_list = [];
+            if (dbHealth.integrity !== 'ok') {
+              issues_list.push('- **Integrity Check Failed:** Database may be corrupted');
+            }
+            if (dbHealth.size_warning === 'true') {
+              issues_list.push(`- **Large Database:** ${dbHealth.size_mb} MB (threshold: ${{ env.DB_SIZE_THRESHOLD_MB }} MB)`);
+            }
+
+            const body = `## ⚠️ Auto-Fix Database Health Issues
+
+            The monitoring database has health problems that require attention.
+
+            ### Issues Detected
+            ${issues_list.join('\n')}
+
+            ### Database Status
+            - **Size:** ${dbHealth.size_mb} MB
+            - **Integrity:** ${dbHealth.integrity}
+            - **Location:** \`./autofix-monitor.db\`
+
+            ### Recommended Actions
+
+            #### If Integrity Failed
+            1. Backup current database: \`cp autofix-monitor.db autofix-monitor.db.backup\`
+            2. Run integrity check: \`sqlite3 autofix-monitor.db "PRAGMA integrity_check;"\`
+            3. Attempt recovery: \`sqlite3 autofix-monitor.db ".recover" | sqlite3 autofix-monitor-recovered.db\`
+            4. Restore from last known good backup if recovery fails
+
+            #### If Database Too Large
+            1. Archive old runs: Export runs older than 90 days to JSON
+            2. Delete archived runs from database
+            3. Run VACUUM to reclaim space: \`sqlite3 autofix-monitor.db "VACUUM;"\`
+            4. Consider implementing automatic archival policy
+
+            ### Automated Remediation Suggestions
+
+            **Archive Old Data:**
+            \`\`\`bash
+            # Export runs older than 90 days
+            sqlite3 autofix-monitor.db -json "SELECT * FROM autofix_runs WHERE created_at < datetime('now', '-90 days');" > archive-$(date +%Y%m%d).json
+
+            # Delete old runs
+            sqlite3 autofix-monitor.db "DELETE FROM autofix_runs WHERE created_at < datetime('now', '-90 days');"
+
+            # Vacuum to reclaim space
+            sqlite3 autofix-monitor.db "VACUUM;"
+            \`\`\`
+
+            **Integrity Recovery:**
+            \`\`\`bash
+            # Create backup
+            cp autofix-monitor.db autofix-monitor.db.bak-$(date +%Y%m%d)
+
+            # Attempt recovery
+            sqlite3 autofix-monitor.db ".recover" | sqlite3 autofix-monitor-recovered.db
+
+            # If successful, replace
+            mv autofix-monitor.db autofix-monitor.db.corrupted
+            mv autofix-monitor-recovered.db autofix-monitor.db
+            \`\`\`
+
+            ---
+            *This issue was created automatically by the auto-fix health monitor*`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '[Alert] Auto-Fix Database Health Issues',
+              body: body,
+              labels: ['auto-fix', 'alert', 'database', 'p2']
+            });
+
+      - name: Upload Health Report Artifact
+        if: steps.health_check.outputs.report_generated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: autofix-health-report-${{ github.run_id }}
+          path: health-report.json
+          retention-days: 30

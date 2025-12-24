@@ -1,0 +1,255 @@
+name: Auto-Fix Performance Report
+
+on:
+  schedule:
+    # Run weekly on Monday at 9am UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      week_offset:
+        description: 'Week offset (0=current, 1=last week, etc.)'
+        required: false
+        default: '0'
+        type: string
+
+env:
+  DB_PATH: ./autofix.db
+
+permissions:
+  contents: read
+  discussions: write
+  id-token: write
+
+jobs:
+  generate-report:
+    name: Generate Weekly Performance Report
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: |
+          npm run build --workspace=packages/core
+          npx tsc scripts/generate-performance-report.ts --outDir scripts/dist --esModuleInterop --resolveJsonModule --skipLibCheck
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Download analytics database
+        id: download
+        run: |
+          # Download the latest analytics database from GCS
+          BUCKET="${{ vars.ANALYTICS_BUCKET }}"
+          if [ -z "$BUCKET" ]; then
+            echo "ANALYTICS_BUCKET not configured, using test data"
+            echo "has_data=false" >> $GITHUB_OUTPUT
+          else
+            if gcloud storage cp "gs://${BUCKET}/autofix.db" ${{ env.DB_PATH }}; then
+              echo "has_data=true" >> $GITHUB_OUTPUT
+              echo "Database downloaded successfully"
+              ls -lh ${{ env.DB_PATH }}
+            else
+              echo "Failed to download database from GCS"
+              echo "has_data=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Generate performance report
+        if: steps.download.outputs.has_data == 'true'
+        id: report
+        env:
+          DB_PATH: ${{ env.DB_PATH }}
+          WEEK_OFFSET: ${{ github.event.inputs.week_offset || '0' }}
+          INCLUDE_CHARTS: 'true'
+          OUTPUT_FILE: ./report.md
+        run: |
+          node scripts/dist/generate-performance-report.js
+
+          # Capture report title for discussion
+          TITLE=$(head -n 1 report.md | sed 's/# //')
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+
+          # Check report size
+          SIZE=$(wc -c < report.md)
+          echo "Report size: ${SIZE} bytes"
+
+      - name: Get or create discussion category
+        if: steps.download.outputs.has_data == 'true'
+        id: category
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Query for existing category
+            const query = `
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  discussionCategories(first: 100) {
+                    nodes {
+                      id
+                      name
+                      slug
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query, {
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const categories = result.repository.discussionCategories.nodes;
+            let category = categories.find(c => c.name === 'Auto-Fix Reports');
+
+            if (!category) {
+              // Create category if it doesn't exist
+              console.log('Creating Auto-Fix Reports category...');
+
+              const createMutation = `
+                mutation($repositoryId: ID!, $name: String!, $emoji: String!) {
+                  createDiscussionCategory(input: {
+                    repositoryId: $repositoryId,
+                    name: $name,
+                    emoji: $emoji
+                  }) {
+                    discussionCategory {
+                      id
+                      name
+                      slug
+                    }
+                  }
+                }
+              `;
+
+              const repoQuery = `
+                query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) {
+                    id
+                  }
+                }
+              `;
+
+              const repoResult = await github.graphql(repoQuery, {
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+
+              const createResult = await github.graphql(createMutation, {
+                repositoryId: repoResult.repository.id,
+                name: 'Auto-Fix Reports',
+                emoji: ':chart_with_upwards_trend:'
+              });
+
+              category = createResult.createDiscussionCategory.discussionCategory;
+            }
+
+            console.log(`Using category: ${category.name} (${category.id})`);
+            return category.id;
+
+      - name: Post report to discussions
+        if: steps.download.outputs.has_data == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportBody = fs.readFileSync('./report.md', 'utf-8');
+            const categoryId = ${{ steps.category.outputs.result }};
+            const title = `${{ steps.report.outputs.title }}`;
+
+            const mutation = `
+              mutation($repositoryId: ID!, $categoryId: ID!, $title: String!, $body: String!) {
+                createDiscussion(input: {
+                  repositoryId: $repositoryId,
+                  categoryId: $categoryId,
+                  title: $title,
+                  body: $body
+                }) {
+                  discussion {
+                    id
+                    url
+                    number
+                  }
+                }
+              }
+            `;
+
+            const repoQuery = `
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  id
+                }
+              }
+            `;
+
+            const repoResult = await github.graphql(repoQuery, {
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const result = await github.graphql(mutation, {
+              repositoryId: repoResult.repository.id,
+              categoryId: categoryId,
+              title: title,
+              body: reportBody
+            });
+
+            const discussion = result.createDiscussion.discussion;
+            console.log(`Discussion created: ${discussion.url}`);
+            core.summary
+              .addHeading('Weekly Performance Report Published')
+              .addLink('View Discussion', discussion.url)
+              .addRaw(`\nDiscussion #${discussion.number}`)
+              .write();
+
+      - name: No data available
+        if: steps.download.outputs.has_data == 'false'
+        run: |
+          echo "No analytics data available. Skipping report generation."
+          echo "Configure ANALYTICS_BUCKET variable to enable automated reports."
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ${{ env.DB_PATH }}
+          rm -f report.md
+
+  summary:
+    name: Report Summary
+    needs: generate-report
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Workflow summary
+        run: |
+          echo "# Auto-Fix Performance Report Workflow" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run ID:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.generate-report.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.generate-report.result }}" == "success" ]; then
+            echo "✅ Report generated and posted to Discussions successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Report generation failed. Check logs for details." >> $GITHUB_STEP_SUMMARY
+          fi

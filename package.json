@@ -46,7 +46,8 @@
     "tools:verify": "bash scripts/verify-tools.sh",
     "hooks:preflight": "bash scripts/hooks/preflight.sh",
     "hooks:postflight": "bash scripts/hooks/postflight.sh",
-    "hooks:wrap": "bash scripts/hooks/run-with-hooks.sh"
+    "hooks:wrap": "bash scripts/hooks/run-with-hooks.sh",
+    "budget:monitor": "npx tsx scripts/budget-monitor.ts"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",

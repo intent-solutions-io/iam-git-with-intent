@@ -1,0 +1,96 @@
+# Budget Monitoring Configuration Example
+#
+# This file shows how to configure budget monitoring for your organization.
+# Copy these settings to your repository variables or workflow inputs.
+
+# ==============================================================================
+# Repository Variables (Recommended)
+# ==============================================================================
+# Set these in your GitHub repository settings:
+# Settings > Secrets and variables > Actions > Variables
+
+# Monthly budget threshold in USD
+BUDGET_THRESHOLD_USD: "100"
+
+# Warning threshold (percentage of budget)
+# Alert when spending exceeds this percentage
+WARNING_THRESHOLD_PERCENT: "80"
+
+# Critical threshold (percentage of budget)
+# Create high-priority alert when spending exceeds this percentage
+CRITICAL_THRESHOLD_PERCENT: "95"
+
+# ==============================================================================
+# Manual Workflow Trigger
+# ==============================================================================
+# You can override the budget threshold when manually triggering the workflow:
+#
+# Via GitHub CLI:
+#   gh workflow run auto-fix-budget.yml --field budget_threshold=200
+#
+# Via GitHub UI:
+#   Actions > Auto-Fix Budget Monitoring > Run workflow > Enter budget
+
+# ==============================================================================
+# Common Budget Configurations
+# ==============================================================================
+
+# Startup / Small Team ($100/month)
+# - Good for: Small teams, side projects, early development
+# - Supports: ~1000-2000 auto-fix runs/month (depending on complexity)
+# BUDGET_THRESHOLD_USD: "100"
+# WARNING_THRESHOLD_PERCENT: "80"
+# CRITICAL_THRESHOLD_PERCENT: "95"
+
+# Growing Team ($500/month)
+# - Good for: Active development teams, multiple repositories
+# - Supports: ~5000-10000 auto-fix runs/month
+# BUDGET_THRESHOLD_USD: "500"
+# WARNING_THRESHOLD_PERCENT: "75"
+# CRITICAL_THRESHOLD_PERCENT: "90"
+
+# Enterprise ($2000/month)
+# - Good for: Large organizations, high-volume usage
+# - Supports: ~20000-40000 auto-fix runs/month
+# BUDGET_THRESHOLD_USD: "2000"
+# WARNING_THRESHOLD_PERCENT: "70"
+# CRITICAL_THRESHOLD_PERCENT: "85"
+
+# ==============================================================================
+# Alert Priorities
+# ==============================================================================
+# Issues are created with priority labels based on status:
+#
+# - p2 (warning): 80-95% of budget used
+#   Action: Monitor closely, review high-cost repositories
+#
+# - p1 (critical): 95-100% of budget used
+#   Action: Immediate review required, optimize spending
+#
+# - p0 (exceeded): >100% of budget used
+#   Action: Budget exceeded, reduce usage or increase budget
+
+# ==============================================================================
+# Cost Optimization Tips
+# ==============================================================================
+#
+# 1. Use Gemini Flash for simpler tasks
+#    - Triage agent: Already uses Gemini Flash
+#    - Consider for code review and basic analysis
+#
+# 2. Adjust complexity thresholds
+#    - Higher thresholds = fewer auto-fix runs
+#    - Target high-impact PRs only
+#
+# 3. Repository-level controls
+#    - Disable auto-fix on low-priority repositories
+#    - Use manual approval for expensive operations
+#
+# 4. Monitor provider costs
+#    - Anthropic (Claude): Most expensive, best quality
+#    - Google (Gemini): Cost-effective, good for simple tasks
+#    - Balance provider usage based on complexity
+#
+# 5. Batch operations
+#    - Group related fixes together
+#    - Reduce redundant API calls
