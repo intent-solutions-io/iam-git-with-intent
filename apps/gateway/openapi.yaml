@@ -739,6 +739,7 @@ paths:
       responses:
         '204':
           description: User deleted
+          content: {}
         '401':
           $ref: '#/components/responses/ScimUnauthorized'
         '404':
@@ -895,6 +896,7 @@ paths:
       responses:
         '204':
           description: Group deleted
+          content: {}
         '401':
           $ref: '#/components/responses/ScimUnauthorized'
         '404':
