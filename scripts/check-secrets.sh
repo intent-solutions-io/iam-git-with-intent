@@ -55,8 +55,8 @@ SECRET_PATTERNS=(
 
 FOUND_SECRETS=0
 
-# Files to skip for high-entropy base64 patterns (false positives from integrity hashes and documentation)
-SKIP_BASE64_FILES="package-lock.json|pnpm-lock.yaml|yarn.lock|README.md|CLAUDE.md|openapi.yaml|\.test\.ts$|\.spec\.ts$|test/.*\.ts$|examples/.*\.ts$"
+# Files to skip for high-entropy base64 patterns (false positives from integrity hashes, documentation, and code with long URLs)
+SKIP_BASE64_FILES="package-lock.json|pnpm-lock.yaml|yarn.lock|README.md|CLAUDE.md|openapi.yaml|\.test\.ts$|\.spec\.ts$|test/.*\.ts$|examples/.*\.ts$|apps/.*/src/.*\.ts$"
 
 for pattern in "${SECRET_PATTERNS[@]}"; do
   # Check each staged file for the pattern

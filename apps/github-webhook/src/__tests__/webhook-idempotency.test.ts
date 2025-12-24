@@ -67,7 +67,7 @@ function createTestApp() {
         ...result.result,
         duplicate: !result.processed,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       if (error instanceof IdempotencyProcessingError) {
         return res.status(202).json({
           status: 'processing',

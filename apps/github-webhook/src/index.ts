@@ -190,7 +190,7 @@ app.post('/webhook', async (req: express.Request & { rawBody?: string }, res) =>
       ...idempotencyResult.result,
       duplicate: !idempotencyResult.processed,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     // Handle concurrent processing (another instance is handling this webhook)
     if (error instanceof IdempotencyProcessingError) {
       console.log(JSON.stringify({
