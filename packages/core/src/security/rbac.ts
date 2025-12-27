@@ -12,6 +12,7 @@
  * @module @gwi/core/security/rbac
  */
 
+import type { Request } from 'express';
 import {
   getCurrentContext,
   createLogger,
@@ -363,7 +364,7 @@ export function requireTenantPermission(
 /**
  * Express request with RBAC context
  */
-export interface RBACRequest {
+export interface RBACRequest extends Request {
   rbacContext?: RBACContext;
   context?: {
     userId?: string;

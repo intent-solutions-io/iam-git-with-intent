@@ -222,6 +222,12 @@ export * from './ga-readiness/index.js';
 // Secrets exports (A9: Secrets Model)
 export * from './secrets/index.js';
 
+// Governance exports (Epic E: RBAC & Governance)
+export * from './governance/index.js';
+
+// Tenants exports (Epic E: RBAC & Governance)
+export * from './tenants/index.js';
+
 // SLO exports (A12: SLO Definitions + Perf Tests)
 // Explicit exports to resolve naming conflicts with observability-v2/telemetry
 export {
