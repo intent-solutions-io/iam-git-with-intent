@@ -431,7 +431,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     return next();
   }
 
-  // TODO: Verify Firebase Auth token
+  // SECURITY: Firebase Auth token verification needed (tracked in git-with-intent-scod)
   // const authHeader = req.headers.authorization;
   // if (!authHeader?.startsWith('Bearer ')) {
   //   return res.status(401).json({ error: 'Missing authorization header' });
@@ -2772,7 +2772,7 @@ app.post('/tenants/:tenantId/billing/checkout', authMiddleware, tenantAuthMiddle
     let customerId = (tenant as any).stripeCustomerId;
     if (!customerId) {
       customerId = await stripe.createCustomer(tenantId, req.context!.email || '', tenant.displayName);
-      // TODO: Save customerId to tenant
+      // DATA INTEGRITY: Need to persist customerId (tracked in git-with-intent-bf0k)
     }
 
     // Create checkout session

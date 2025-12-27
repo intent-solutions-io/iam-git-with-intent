@@ -311,7 +311,7 @@ async function handleInstallationEvent(
 
     case 'suspend':
     case 'unsuspend':
-      // TODO: Handle suspend/unsuspend in future phase
+      // Future enhancement: Handle suspend/unsuspend webhooks
       return {
         status: 'skipped',
         skipped: true,

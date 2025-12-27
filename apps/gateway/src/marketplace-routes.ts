@@ -408,7 +408,7 @@ router.get('/v1/connectors/:id/:version/signature', async (req, res) => {
  */
 router.post('/v1/connectors', async (req, res) => {
   try {
-    // TODO: Add authentication middleware
+    // SECURITY: Authentication needed (tracked in git-with-intent-vs49)
     const publishedBy = req.headers['x-user-id'] as string || 'anonymous';
 
     const { connectorId, version, manifest, signature, tarballChecksum, changelog, releaseNotes, prerelease } = req.body;
