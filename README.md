@@ -2,7 +2,7 @@
 
 **TL;DR:** CLI tool that automates PR workflows and predicts repository outcomes. Ships now: resolves merge conflicts, creates PRs from issues, reviews code, full autopilot mode with approval gating. Building next: Airbyte-style data ingestion + TimeGPT forecasting to predict merge times, sprint completion probability, and technical debt trajectories.
 
-**Status:** Active development. Core PR automation works. Analytics and prediction layer in progress.
+**Version:** 0.3.0 | **Status:** Active development. Core PR automation works. RBAC & governance complete. CI/CD operational.
 
 **Security:** [Security policy](SECURITY.md) | Comprehensive audit completed Dec 2025 | Responsible disclosure program
 
@@ -608,20 +608,22 @@ Vertex AI:
 
 ## Current State
 
-**What works:**
+**What works (v0.3.0):**
 - ✅ Merge conflict resolution (semantic, not just textual)
 - ✅ Issue-to-PR code generation
 - ✅ PR complexity scoring (deterministic 1-10 scale)
 - ✅ Autopilot mode (triage → resolve → review → commit)
 - ✅ Approval gating with hash binding (no surprise commits)
 - ✅ Multi-agent AI routing (fast models for simple tasks, powerful for complex)
-- ✅ 1700+ passing tests, ARV pre-commit checks, CI/CD
+- ✅ RBAC & governance (tenant lifecycle, quotas, secrets, audit)
+- ✅ CI/CD pipeline (4-shard parallel tests, auto-deploy, release automation)
+- ✅ E2E and SDK integration tests (78 tests)
+- ✅ 1700+ unit tests, ARV pre-commit checks
 
 **What's in progress:**
-- 🚧 BigQuery data warehouse integration
+- 🚧 Web dashboard
 - 🚧 Repository analysis engine
 - 🚧 Multi-repo pattern detection
-- 🚧 Web dashboard
 
 **What's planned:**
 - ⏳ TimeGPT forecasting integration

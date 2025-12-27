@@ -12,9 +12,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### In Progress
-- GitHub Actions integration
-- Webhook-triggered automation
 - Web dashboard improvements
+- TimeGPT forecasting integration
+
+---
+
+## [0.3.0] - 2025-12-27
+
+Epic E (RBAC & Governance) complete. Enterprise CI/CD pipeline operational. High-performance testing infrastructure in place.
+
+### Added
+
+#### Epic E: RBAC & Governance (~8,600 lines)
+- **Tenant Lifecycle** - State machine (active/suspended/paused/deactivated), plan management, soft/hard delete
+- **Quota Enforcement** - Express middleware, 3 enforcement modes (hard/soft/warn), burst allowances
+- **Secrets Management** - AES-256-GCM encryption, unique IVs per secret, constant-time comparison
+- **Governance & Audit** - 5 compliance report types, anomaly detection, CSV/JSON export
+
+#### CI/CD Pipeline (4 workflows)
+- **test.yml** - 4-shard parallel test execution, coverage collection, PR comments
+- **ci-enhanced.yml** - Security scanning, quality gates, ARV integration
+- **deploy.yml** - Auto-deploy to staging/production via OpenTofu
+- **release.yml** - Semantic versioning, changelog generation, GitHub releases
+
+#### Testing Infrastructure
+- **Vitest configuration** - Multi-threaded execution (all CPU cores), V8 coverage
+- **Test sharding** - 4x speedup (180s → 45s)
+- **Marketplace E2E tests** - 33 tests for connector installation flows
+- **SDK integration tests** - 45 tests for SCIM, Registry, Workflows APIs
+
+### Fixed
+- Module exports for governance and tenants packages
+- RBACRequest type now extends Express Request (includes params/query/body)
+- TypeScript strict mode violations in Epic E code
+- CI false positives (.env detection, credential file checks)
+
+### Documentation
+- `docs/CICD.md` - Complete CI/CD workflow documentation
+- `docs/TESTING.md` - Testing infrastructure guide
 
 ---
 
@@ -78,6 +113,7 @@ Initial project structure.
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.3.0 | 2025-12-27 | Epic E (RBAC), CI/CD pipeline, testing infrastructure |
 | 0.2.0 | 2025-12-18 | 68 core modules, 1700+ tests, production infrastructure |
 | 0.1.0 | 2025-12-15 | Initial structure |
 

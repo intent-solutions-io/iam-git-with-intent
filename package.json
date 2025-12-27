@@ -1,6 +1,6 @@
 {
   "name": "git-with-intent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "AI-powered DevOps automation platform for PRs, merge conflicts, and issue-to-PR workflows",
   "keywords": [
