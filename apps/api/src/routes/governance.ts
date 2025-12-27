@@ -15,10 +15,12 @@ import {
   createComplianceService,
   type AuditQueryFilters,
   type ReportPeriod,
-  type ExportFormat,
-} from '@gwi/core/governance';
-import { createQuotaManager, InMemoryQuotaStore, InMemoryUsageStore } from '@gwi/core/quotas';
-import { getSecurityAuditStore } from '@gwi/core/security/audit';
+  type GovernanceExportFormat,
+  createQuotaManager,
+  InMemoryQuotaStore,
+  InMemoryUsageStore,
+  getSecurityAuditStore,
+} from '@gwi/core';
 
 // =============================================================================
 // Request Schemas
