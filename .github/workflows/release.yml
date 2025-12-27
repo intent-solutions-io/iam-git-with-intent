@@ -1,0 +1,314 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (v1.0.0, v0.2.1, etc.)
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # =============================================================================
+  # Validate Release
+  # =============================================================================
+
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_number: ${{ steps.version.outputs.version_number }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${{ github.ref_name }}"
+          fi
+
+          # Remove 'v' prefix for version number
+          VERSION_NUMBER="${VERSION#v}"
+
+          # Check if pre-release (alpha, beta, rc)
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_number=${VERSION_NUMBER}" >> $GITHUB_OUTPUT
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+(\.[0-9]+)?)?$ ]]; then
+            echo "::error::Invalid version format: $VERSION"
+            echo "Expected format: vMAJOR.MINOR.PATCH[-PRERELEASE]"
+            echo "Examples: v1.0.0, v0.2.1-alpha.1, v1.0.0-beta"
+            exit 1
+          fi
+
+      - name: Check if tag exists
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if git rev-parse "${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "::error::Tag ${{ steps.version.outputs.version }} already exists"
+            exit 1
+          fi
+
+  # =============================================================================
+  # Run Tests
+  # =============================================================================
+
+  test:
+    name: Test Before Release
+    needs: validate
+    uses: ./.github/workflows/test.yml
+
+  # =============================================================================
+  # Build Release Artifacts
+  # =============================================================================
+
+  build:
+    name: Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Create tarball
+        run: |
+          tar -czf git-with-intent-${{ needs.validate.outputs.version_number }}.tar.gz \
+            packages/*/dist \
+            apps/*/dist \
+            package.json \
+            README.md \
+            LICENSE
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: git-with-intent-${{ needs.validate.outputs.version_number }}.tar.gz
+
+  # =============================================================================
+  # Generate Changelog
+  # =============================================================================
+
+  changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    needs: validate
+    outputs:
+      changelog: ${{ steps.changelog.outputs.changelog }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" HEAD)
+          else
+            echo "Changes since $PREV_TAG"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" ${PREV_TAG}..HEAD)
+          fi
+
+          # Create changelog
+          CHANGELOG="## What's Changed
+
+          $COMMITS
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION}"
+
+          # Save to output (escape newlines)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  # =============================================================================
+  # Create GitHub Release
+  # =============================================================================
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate, test, build, changelog]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.validate.outputs.version }}
+          name: Release ${{ needs.validate.outputs.version }}
+          body: ${{ needs.changelog.outputs.changelog }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ needs.validate.outputs.is_prerelease }}
+          files: |
+            git-with-intent-${{ needs.validate.outputs.version_number }}.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # =============================================================================
+  # Publish to npm (if applicable)
+  # =============================================================================
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [validate, release]
+    if: needs.validate.outputs.is_prerelease == 'false'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: |
+          echo "Publishing @gwi/cli to npm..."
+          # Uncomment when ready to publish
+          # npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # =============================================================================
+  # Deploy to Production
+  # =============================================================================
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [validate, release]
+    if: needs.validate.outputs.is_prerelease == 'false'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+      version: ${{ needs.validate.outputs.version }}
+    secrets: inherit
+
+  # =============================================================================
+  # Post-Release Tasks
+  # =============================================================================
+
+  post-release:
+    name: Post-Release Tasks
+    runs-on: ubuntu-latest
+    needs: [validate, release]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update version in package.json (next dev cycle)
+        run: |
+          VERSION="${{ needs.validate.outputs.version_number }}"
+
+          # Bump to next dev version
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          NEXT_PATCH=$((patch + 1))
+          NEXT_VERSION="${major}.${minor}.${NEXT_PATCH}-dev"
+
+          # Update package.json (would need to commit in separate workflow)
+          echo "Next development version: $NEXT_VERSION"
+
+      - name: Create release announcement
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.validate.outputs.version }}';
+            const isPre = '${{ needs.validate.outputs.is_prerelease }}' === 'true';
+
+            // Create discussion or issue for release announcement
+            const body = `🎉 **${version} has been released!**
+
+            Check out the [release notes](https://github.com/${{ github.repository }}/releases/tag/${version}) for details.
+
+            ${isPre ? '⚠️ This is a pre-release version.' : ''}`;
+
+            // Uncomment to create announcement
+            // await github.rest.issues.create({
+            //   owner: context.repo.owner,
+            //   repo: context.repo.repo,
+            //   title: `Release ${version}`,
+            //   body: body,
+            //   labels: ['release']
+            // });
+
+      - name: Release summary
+        run: |
+          echo "## 🎉 Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Type:** ${{ needs.validate.outputs.is_prerelease == 'true' && 'Pre-release' || 'Stable' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate.outputs.version }})" >> $GITHUB_STEP_SUMMARY

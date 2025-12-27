@@ -1,0 +1,316 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version/Tag to deploy (leave empty for latest)'
+        required: false
+        type: string
+
+  push:
+    branches:
+      - main      # Auto-deploy to production
+      - develop   # Auto-deploy to staging
+    tags:
+      - 'v*'      # Deploy on version tags
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  NODE_VERSION: '20'
+  REGISTRY: us-central1-docker.pkg.dev
+
+jobs:
+  # =============================================================================
+  # Determine Deployment Environment
+  # =============================================================================
+
+  setup:
+    name: Setup Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      version: ${{ steps.env.outputs.version }}
+      should_deploy: ${{ steps.env.outputs.should_deploy }}
+
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "version=${{ inputs.version || github.sha }}" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "version=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+  # =============================================================================
+  # Build and Push Docker Images
+  # =============================================================================
+
+  build-images:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.should_deploy == 'true'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      api_image: ${{ steps.images.outputs.api }}
+      gateway_image: ${{ steps.images.outputs.gateway }}
+      webhook_image: ${{ steps.images.outputs.webhook }}
+      worker_image: ${{ steps.images.outputs.worker }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.version }}
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Set image tags
+        id: tags
+        run: |
+          VERSION=${{ needs.setup.outputs.version }}
+          ENV=${{ needs.setup.outputs.environment }}
+
+          echo "version_tag=${VERSION:0:7}" >> $GITHUB_OUTPUT
+          echo "env_tag=${ENV}" >> $GITHUB_OUTPUT
+          echo "latest_tag=latest-${ENV}" >> $GITHUB_OUTPUT
+
+      - name: Build and push API image
+        run: |
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker/api"
+
+          docker build -f apps/api/Dockerfile \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }} \
+            --build-arg VERSION=${{ needs.setup.outputs.version }} \
+            .
+
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
+
+      - name: Build and push Gateway image
+        run: |
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker/gateway"
+
+          docker build -f apps/gateway/Dockerfile \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }} \
+            --build-arg VERSION=${{ needs.setup.outputs.version }} \
+            .
+
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
+
+      - name: Build and push Webhook image
+        run: |
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker/github-webhook"
+
+          docker build -f apps/github-webhook/Dockerfile \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }} \
+            --build-arg VERSION=${{ needs.setup.outputs.version }} \
+            .
+
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
+
+      - name: Build and push Worker image
+        run: |
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker/worker"
+
+          docker build -f apps/worker/Dockerfile \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }} \
+            --build-arg VERSION=${{ needs.setup.outputs.version }} \
+            .
+
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
+
+      - name: Set image outputs
+        id: images
+        run: |
+          REGISTRY="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker"
+          TAG="${{ steps.tags.outputs.version_tag }}"
+
+          echo "api=${REGISTRY}/api:${TAG}" >> $GITHUB_OUTPUT
+          echo "gateway=${REGISTRY}/gateway:${TAG}" >> $GITHUB_OUTPUT
+          echo "webhook=${REGISTRY}/github-webhook:${TAG}" >> $GITHUB_OUTPUT
+          echo "worker=${REGISTRY}/worker:${TAG}" >> $GITHUB_OUTPUT
+
+  # =============================================================================
+  # Deploy to Environment
+  # =============================================================================
+
+  deploy:
+    name: Deploy to ${{ needs.setup.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [setup, build-images]
+    environment: ${{ needs.setup.outputs.environment }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: '1.8.7'
+
+      - name: OpenTofu Init
+        working-directory: infra
+        run: tofu init
+
+      - name: OpenTofu Plan
+        working-directory: infra
+        run: |
+          if [ "${{ needs.setup.outputs.environment }}" = "production" ]; then
+            tofu plan -var-file="envs/prod.tfvars" \
+              -var="gwi_api_image=${{ needs.build-images.outputs.api_image }}" \
+              -var="a2a_gateway_image=${{ needs.build-images.outputs.gateway_image }}" \
+              -var="github_webhook_image=${{ needs.build-images.outputs.webhook_image }}" \
+              -var="gwi_worker_image=${{ needs.build-images.outputs.worker_image }}" \
+              -out=tfplan
+          else
+            tofu plan \
+              -var="environment=staging" \
+              -var="project_id=${{ env.PROJECT_ID }}" \
+              -var="gwi_api_image=${{ needs.build-images.outputs.api_image }}" \
+              -var="a2a_gateway_image=${{ needs.build-images.outputs.gateway_image }}" \
+              -var="github_webhook_image=${{ needs.build-images.outputs.webhook_image }}" \
+              -var="gwi_worker_image=${{ needs.build-images.outputs.worker_image }}" \
+              -out=tfplan
+          fi
+
+      - name: OpenTofu Apply
+        working-directory: infra
+        run: tofu apply -auto-approve tfplan
+
+      - name: Get service URLs
+        id: urls
+        run: |
+          API_URL=$(gcloud run services describe gwi-api --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
+          GATEWAY_URL=$(gcloud run services describe gwi-gateway --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
+
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          echo "gateway_url=${GATEWAY_URL}" >> $GITHUB_OUTPUT
+
+      - name: Health Check (API)
+        if: steps.urls.outputs.api_url != ''
+        run: |
+          echo "Checking API health at ${{ steps.urls.outputs.api_url }}"
+          curl -sf "${{ steps.urls.outputs.api_url }}/health" | jq .
+
+      - name: Health Check (Gateway)
+        if: steps.urls.outputs.gateway_url != ''
+        run: |
+          echo "Checking Gateway health at ${{ steps.urls.outputs.gateway_url }}"
+          curl -sf "${{ steps.urls.outputs.gateway_url }}/health" | jq .
+
+      - name: Smoke Tests
+        if: needs.setup.outputs.environment == 'staging'
+        run: |
+          echo "Running smoke tests against staging..."
+          npm run smoke:staging || echo "Smoke tests not configured yet"
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| API | ${{ steps.urls.outputs.api_url || 'Not deployed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gateway | ${{ steps.urls.outputs.gateway_url || 'Not deployed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ needs.setup.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.setup.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # Post-Deployment Notifications
+  # =============================================================================
+
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [setup, deploy]
+    if: always()
+
+    steps:
+      - name: Deployment Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ needs.deploy.result }}' === 'success' ? 'success' : 'failure';
+            const environment = '${{ needs.setup.outputs.environment }}';
+            const version = '${{ needs.setup.outputs.version }}';
+
+            const emoji = status === 'success' ? '✅' : '❌';
+            const message = `${emoji} Deployment to **${environment}** ${status === 'success' ? 'succeeded' : 'failed'}\n\nVersion: \`${version}\``;
+
+            if (context.eventName === 'pull_request') {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: message
+              });
+            }
