@@ -547,3 +547,55 @@ export function getSecretsClient(config?: SecretsClientConfig): SecretsClient {
 export function resetSecretsClient(): void {
   defaultClient = null;
 }
+
+// =============================================================================
+// Tenant Secrets Management (Epic E: RBAC & Governance)
+// =============================================================================
+
+/**
+ * Re-export tenant secrets store and service
+ *
+ * The tenant secrets system provides encrypted storage for tenant-specific
+ * secrets like API keys, tokens, and credentials using AES-256-GCM encryption.
+ */
+export {
+  // Store types
+  type SecretStore,
+  type SecretMetadata,
+  type StoredSecret,
+  type SecretListItem,
+  type CreateSecretInput,
+  type UpdateSecretInput,
+
+  // Store implementations
+  InMemorySecretStore,
+  FirestoreSecretStore,
+  SECRETS_COLLECTION,
+
+  // Store singleton
+  getSecretStore,
+  resetSecretStore,
+  setSecretStore,
+} from './store.js';
+
+export {
+  // Service functions
+  storeSecret,
+  retrieveSecret,
+  listTenantSecrets,
+  deleteSecret,
+  rotateSecret,
+  secretExists,
+  deleteAllTenantSecrets,
+
+  // Utility functions
+  secretEquals,
+  generateMasterKey,
+  clearMasterKeyCache,
+  deriveKey,
+  generateSalt,
+
+  // Types
+  type StoreSecretInput,
+  type StoreSecretResult,
+} from './service.js';

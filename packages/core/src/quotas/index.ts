@@ -763,3 +763,19 @@ export function createQuotaStore(): InMemoryQuotaStore {
 export function createUsageStore(): InMemoryUsageStore {
   return new InMemoryUsageStore();
 }
+
+// =============================================================================
+// Middleware Exports
+// =============================================================================
+
+export {
+  enforceQuota,
+  checkQuota,
+  recordQuotaUsage,
+  quotaErrorHandler,
+  QuotaExceededError,
+  type QuotaRequest,
+  type QuotaResponse,
+  type QuotaNext,
+  type QuotaMiddlewareConfig,
+} from './middleware.js';
