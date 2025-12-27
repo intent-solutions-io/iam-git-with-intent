@@ -39,7 +39,7 @@ Check backlog: `bd list --status open`
 | CLI Command | `gwi` |
 | Target Users | Developers wanting AI assistance with PR workflows |
 | Business Model | CLI open-source; hosted service paid |
-| Current Version | v0.2.0 |
+| Current Version | v0.3.0 |
 | Status | Active development (422 open tasks across 9 epics) |
 
 ### Technology Stack
@@ -221,7 +221,7 @@ gwi run approve <id>     # Approve changes for commit
 - **Deployment flow**: GitHub Actions → OpenTofu → Cloud Run
 - **NEVER use direct `gcloud deploy`** - All deployments go through GitHub Actions + OpenTofu
 - **CI checks**: ARV (forbidden patterns, contracts, goldens, smoke), drift detection, OpenTofu plan
-- **Branches**: `main` → prod, `develop` → dev
+- **Branch strategy**: Single `main` branch for all deployments (staging and production controlled via OpenTofu environments)
 
 ### GitHub Actions Workflows
 
