@@ -61,6 +61,7 @@
     "@types/node": "^20.10.0",
     "@typescript-eslint/eslint-plugin": "^8.50.0",
     "@typescript-eslint/parser": "^8.50.0",
+    "@vitest/coverage-v8": "^1.6.1",
     "better-sqlite3": "^12.5.0",
     "husky": "^9.0.0",
     "js-yaml": "^4.1.0",

@@ -15,7 +15,7 @@
  */
 
 import { z } from 'zod';
-import type { TenantStore, TenantSettings, RiskMode, AuditStore } from '../storage/interfaces.js';
+import type { TenantStore, TenantSettings, AuditStore } from '../storage/interfaces.js';
 import { createLogger } from '../telemetry/index.js';
 
 // =============================================================================
@@ -325,7 +325,8 @@ export class TenantSettingsService {
     updates: Partial<ExtendedTenantSettings>,
     updatedBy: string
   ): Promise<ExtendedTenantSettings> {
-    const tenant = await this.getTenantOrThrow(tenantId);
+    // Validate tenant exists (getTenantOrThrow will throw if not)
+    await this.getTenantOrThrow(tenantId);
     const current = await this.getTenantSettings(tenantId);
 
     logger.info('Updating extended tenant settings', {

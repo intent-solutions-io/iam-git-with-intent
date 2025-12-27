@@ -332,7 +332,7 @@ export function recordQuotaUsage(quotaManager: QuotaManager, config: QuotaMiddle
     getMetadata = (req) => req.quotaMetadata,
   } = config;
 
-  return async (req: QuotaRequest, res: QuotaResponse, next: QuotaNext) => {
+  return async (req: QuotaRequest, _res: QuotaResponse, next: QuotaNext) => {
     const telemetryContext = getCurrentContext();
     const tenantId = getTenantId(req);
 

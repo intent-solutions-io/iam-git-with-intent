@@ -19,19 +19,17 @@
  * @module @gwi/core/tenants/routes
  */
 
-import type { Request, Response, NextFunction, Router } from 'express';
+import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import type { TenantStore, AuditStore, MembershipStore } from '../storage/interfaces.js';
 import {
   TenantLifecycleService,
-  CreateTenantParamsSchema,
   UpdatePlanParamsSchema,
   SuspendTenantParamsSchema,
 } from './lifecycle.js';
 import {
   TenantSettingsService,
   UpdateTenantSettingsSchema,
-  ExtendedTenantSettingsSchema,
 } from './settings.js';
 import {
   expressRequireAuth,
