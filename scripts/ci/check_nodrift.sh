@@ -41,7 +41,7 @@ fi
 # Check for credential files (security)
 echo "🔒 Checking for credential files..."
 CRED_FILES=$(find . -type f \( -name "*.json" \) -path "*key*" \
-    2>/dev/null | grep -vE "package|tsconfig|turbo|node_modules" || true)
+    2>/dev/null | grep -vE "package|tsconfig|turbo|node_modules|data/keyword-weights" || true)
 if [ -n "$CRED_FILES" ]; then
     echo "❌ VIOLATION: Possible credential files found"
     echo "$CRED_FILES"
