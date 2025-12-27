@@ -1,24 +1,25 @@
 /**
- * Login Page
+ * Signup Page
  *
- * Multi-provider authentication: GitHub OAuth, Google OAuth, Email/Password.
+ * User registration with email/password and OAuth providers.
  */
 
 import { useState } from 'react';
 import { Navigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-export function Login() {
-  const { user, loading, signInWithGitHub, signInWithGoogle, signInWithEmail } = useAuth();
+export function Signup() {
+  const { user, loading, signInWithGitHub, signInWithGoogle, signUpWithEmail } = useAuth();
   const [error, setError] = useState<string | null>(null);
-  const [signingIn, setSigningIn] = useState(false);
+  const [signingUp, setSigningUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showEmailForm, setShowEmailForm] = useState(false);
   const location = useLocation();
 
   const from = (location.state as { from?: { pathname: string } })?.from
-    ?.pathname || '/dashboard';
+    ?.pathname || '/onboarding';
 
   if (loading) {
     return (
@@ -32,46 +33,57 @@ export function Login() {
     return <Navigate to={from} replace />;
   }
 
-  const handleGitHubLogin = async () => {
+  const handleGitHubSignup = async () => {
     setError(null);
-    setSigningIn(true);
+    setSigningUp(true);
     try {
       await signInWithGitHub();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to sign in with GitHub'
+        err instanceof Error ? err.message : 'Failed to sign up with GitHub'
       );
     } finally {
-      setSigningIn(false);
+      setSigningUp(false);
     }
   };
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleSignup = async () => {
     setError(null);
-    setSigningIn(true);
+    setSigningUp(true);
     try {
       await signInWithGoogle();
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to sign in with Google'
+        err instanceof Error ? err.message : 'Failed to sign up with Google'
       );
     } finally {
-      setSigningIn(false);
+      setSigningUp(false);
     }
   };
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+
     setError(null);
-    setSigningIn(true);
+    setSigningUp(true);
     try {
-      await signInWithEmail(email, password);
+      await signUpWithEmail(email, password);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Failed to sign in with email'
+        err instanceof Error ? err.message : 'Failed to create account'
       );
     } finally {
-      setSigningIn(false);
+      setSigningUp(false);
     }
   };
 
@@ -79,10 +91,10 @@ export function Login() {
     <div className="min-h-[60vh] flex items-center justify-center">
       <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200 w-full max-w-md">
         <h1 className="text-2xl font-bold text-gray-900 mb-2 text-center">
-          Sign in to Git With Intent
+          Create your account
         </h1>
         <p className="text-gray-600 text-center mb-6">
-          Connect your GitHub account to get started
+          Get started with Git With Intent
         </p>
 
         {error && (
@@ -95,14 +107,14 @@ export function Login() {
           <>
             {/* OAuth Providers */}
             <button
-              onClick={handleGitHubLogin}
-              disabled={signingIn}
+              onClick={handleGitHubSignup}
+              disabled={signingUp}
               className="w-full flex items-center justify-center space-x-2 bg-gray-900 text-white px-4 py-3 rounded-md font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed mb-3"
             >
-              {signingIn ? (
+              {signingUp ? (
                 <>
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                  <span>Signing in...</span>
+                  <span>Creating account...</span>
                 </>
               ) : (
                 <>
@@ -118,14 +130,14 @@ export function Login() {
                       clipRule="evenodd"
                     />
                   </svg>
-                  <span>Continue with GitHub</span>
+                  <span>Sign up with GitHub</span>
                 </>
               )}
             </button>
 
             <button
-              onClick={handleGoogleLogin}
-              disabled={signingIn}
+              onClick={handleGoogleSignup}
+              disabled={signingUp}
               className="w-full flex items-center justify-center space-x-2 bg-white text-gray-700 px-4 py-3 rounded-md font-medium border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -146,7 +158,7 @@ export function Login() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              <span>Continue with Google</span>
+              <span>Sign up with Google</span>
             </button>
 
             <div className="relative mb-4">
@@ -162,13 +174,13 @@ export function Login() {
               onClick={() => setShowEmailForm(true)}
               className="w-full text-center text-sm text-gray-600 hover:text-gray-900 font-medium"
             >
-              Sign in with email
+              Sign up with email
             </button>
           </>
         ) : (
           <>
             {/* Email/Password Form */}
-            <form onSubmit={handleEmailLogin} className="space-y-4">
+            <form onSubmit={handleEmailSignup} className="space-y-4">
               <div>
                 <label htmlFor="email" className="text-sm font-medium text-gray-700">
                   Email
@@ -192,15 +204,33 @@ export function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={8}
+                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  At least 8 characters
+                </p>
+              </div>
+              <div>
+                <label htmlFor="confirmPassword" className="text-sm font-medium text-gray-700">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  minLength={8}
                   className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
                 />
               </div>
               <button
                 type="submit"
-                disabled={signingIn}
+                disabled={signingUp}
                 className="w-full bg-gray-900 text-white px-4 py-3 rounded-md font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {signingIn ? 'Signing in...' : 'Sign in'}
+                {signingUp ? 'Creating account...' : 'Create account'}
               </button>
             </form>
 
@@ -210,18 +240,18 @@ export function Login() {
             >
               Back to other options
             </button>
-
-            <p className="mt-4 text-sm text-center text-gray-600">
-              Don't have an account?{' '}
-              <Link to="/signup" className="text-blue-600 hover:underline">
-                Sign up
-              </Link>
-            </p>
           </>
         )}
 
+        <p className="mt-6 text-sm text-center text-gray-600">
+          Already have an account?{' '}
+          <Link to="/login" className="text-blue-600 hover:underline">
+            Sign in
+          </Link>
+        </p>
+
         <p className="mt-4 text-xs text-gray-500 text-center">
-          By signing in, you agree to our Terms of Service and Privacy Policy
+          By signing up, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>
     </div>

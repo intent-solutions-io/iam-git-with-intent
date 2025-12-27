@@ -43,6 +43,152 @@ Vertex AI Agent Engine (agent runtime)
 └── Reviewer Agent (Claude Sonnet)
 ```
 
+## Epic H1: Cloud Run Service Topology
+
+### Service Architecture (Mermaid)
+
+```mermaid
+flowchart TB
+    subgraph Internet
+        GH[GitHub Webhooks]
+        Users[API Clients]
+    end
+
+    subgraph CloudRun["Cloud Run Services"]
+        API[gwi-api<br/>REST API]
+        GW[gwi-gateway<br/>A2A Gateway]
+        WH[gwi-webhook<br/>GitHub Webhook]
+        WK[gwi-worker<br/>Background Jobs]
+    end
+
+    subgraph VPC["Private VPC (Production)"]
+        VC[VPC Connector]
+        NAT[Cloud NAT]
+    end
+
+    subgraph GCP["Google Cloud Services"]
+        FS[(Firestore)]
+        SM[Secret Manager]
+        PS[Pub/Sub]
+        AE[Agent Engine]
+    end
+
+    GH -->|HMAC Auth| WH
+    Users -->|IAM Auth| API
+    Users -->|IAM Auth| GW
+
+    WH <-->|IAM Token| API
+    WH <-->|IAM Token| GW
+    WH <-->|IAM Token| WK
+
+    API <-->|IAM Token| GW
+    API <-->|IAM Token| WK
+    GW <-->|IAM Token| WK
+
+    CloudRun --> VC
+    VC --> NAT
+    VC --> FS
+    VC --> SM
+    VC --> PS
+    VC --> AE
+
+    PS -->|Push| WK
+```
+
+### Service Topology Configuration
+
+| Service | CPU | Memory | Concurrency | Timeout | Min/Max (Prod) | Min/Max (Dev) |
+|---------|-----|--------|-------------|---------|----------------|---------------|
+| API | 1 vCPU | 512Mi | 100 | 60s | 1-20 | 0-5 |
+| Gateway | 1 vCPU | 512Mi | 80 | 300s | 1-20 | 0-5 |
+| Webhook | 1 vCPU | 512Mi | 80 | 300s | 1-20 | 0-5 |
+| Worker | 2 vCPU | 1Gi | 1 | 600s | 1-20 | 0-5 |
+
+### Service-to-Service Authentication
+
+All Cloud Run services authenticate to each other using IAM tokens:
+
+```
++-------------+--------+---------+--------+--------+
+| From\To     | API    | Gateway | Webhook| Worker |
++-------------+--------+---------+--------+--------+
+| API         |   -    |    X    |        |   X    |
+| Gateway     |   X    |    -    |        |   X    |
+| Webhook     |   X    |    X    |    -   |   X    |
+| Worker      |   X    |    X    |        |   -    |
+| External    |   X*   |    X*   |   X**  |        |
++-------------+--------+---------+--------+--------+
+* Configurable public access (allow_public_access)
+** Always public (GitHub cannot authenticate to IAM)
+```
+
+### VPC Networking (Production)
+
+Production deployments use VPC Serverless Connector for enhanced security:
+
+- **Private VPC**: Isolates Cloud Run services from public internet
+- **VPC Connector**: Enables Cloud Run to access VPC resources
+- **Cloud NAT**: Provides outbound internet access with static IP
+- **Private Google Access**: Routes GCP API calls through private network
+
+```hcl
+# Enable in prod.tfvars
+enable_vpc_connector = true
+vpc_connector_cidr   = "10.8.0.0/28"
+vpc_egress_setting   = "private-ranges-only"
+```
+
+### Health Check Configuration
+
+Each service includes liveness and startup probes:
+
+| Probe | Path | Initial Delay | Timeout | Period | Failure Threshold |
+|-------|------|---------------|---------|--------|-------------------|
+| Liveness | /health | 5s | 3s | 10s | 3 |
+| Startup | /health/ready | 0s | 3s | 5s | 10 (15 for worker) |
+
+### Cost Estimate
+
+| Environment | VPC | Min Instances | Estimated Monthly Cost |
+|-------------|-----|---------------|------------------------|
+| Dev | Disabled | 0 for all | $5-15 (pay per use) |
+| Staging | Optional | 0 for all | $10-30 |
+| Production | Enabled | 1 for all | $100-150 baseline |
+
+Production cost breakdown:
+- API (1x always-on): ~$20/month
+- Gateway (1x always-on): ~$20/month
+- Webhook (1x always-on): ~$20/month
+- Worker (1x always-on, 2 CPU): ~$40/month
+- VPC Connector (2 e2-micro): ~$15/month
+
+### Epic H1 Implementation Status
+
+| Step | Description | Status | Files |
+|------|-------------|--------|-------|
+| H1.s1 | Define Cloud Run service topology | Complete | `service_topology.tf` |
+| H1.s2 | Configure Cloud Run scaling | Complete | `service_topology.tf`, `cloud_run.tf` |
+| H1.s3 | Add VPC Serverless Connector | Complete | `network.tf` |
+| H1.s4 | Implement service-to-service auth | Complete | `service_auth.tf`, `iam.tf` |
+| H1.s5 | Add Cloud Run health checks | Complete | `cloud_run.tf`, `apps/*/src/index.ts` |
+
+### Graceful Shutdown Handling
+
+All Cloud Run services implement graceful shutdown to handle SIGTERM signals:
+
+```typescript
+// Example from apps/worker/src/index.ts
+process.on('SIGTERM', async () => {
+  logger.info('Received SIGTERM, shutting down gracefully');
+  if (broker) {
+    await broker.stop();
+  }
+  process.exit(0);
+});
+```
+
+Cloud Run sends SIGTERM and waits up to 10 seconds (configurable) for graceful shutdown before forcing termination.
+
 ### Agent Engine Deployment Model
 
 Git With Intent uses **Vertex AI Agent Engine** as the runtime for all AI agents. Agent Engine is NOT managed by OpenTofu due to lack of provider support (as of December 2025). Instead, agents are deployed via:

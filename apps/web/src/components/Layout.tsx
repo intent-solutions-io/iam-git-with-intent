@@ -1,59 +1,54 @@
 /**
  * Layout Component
  *
- * Main application layout with navigation and tenant selector.
+ * Main application layout with responsive sidebar and navigation.
  */
 
 
-import { Link, Outlet } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../hooks/useTenant';
+import { Sidebar } from './Sidebar';
 
 export function Layout() {
   const { user, signOut } = useAuth();
   const { tenants, currentTenant, selectTenant } = useTenant();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  const showSidebar = user && !['/', '/login', '/signup', '/features', '/install', '/how-it-works', '/security', '/pricing', '/docs'].includes(location.pathname);
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header className="bg-white border-b border-gray-200 fixed top-0 left-0 right-0 z-40">
+        <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Logo */}
-            <Link to="/" className="flex items-center space-x-2">
-              <span className="text-xl font-bold text-gray-900">
-                Git With Intent
-              </span>
-            </Link>
-
-            {/* Navigation */}
-            {user && (
-              <nav className="flex items-center space-x-6">
-                <Link
-                  to="/dashboard"
-                  className="text-gray-600 hover:text-gray-900"
+            {/* Left side: Menu + Logo */}
+            <div className="flex items-center space-x-4">
+              {/* Mobile menu button */}
+              {showSidebar && (
+                <button
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  className="lg:hidden p-2 rounded-md hover:bg-gray-100"
+                  aria-label="Toggle menu"
                 >
-                  Dashboard
-                </Link>
-                <Link to="/runs" className="text-gray-600 hover:text-gray-900">
-                  Runs
-                </Link>
-                <Link to="/usage" className="text-gray-600 hover:text-gray-900">
-                  Usage
-                </Link>
-                <Link to="/marketplace" className="text-gray-600 hover:text-gray-900">
-                  Marketplace
-                </Link>
-                <Link
-                  to="/settings"
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  Settings
-                </Link>
-              </nav>
-            )}
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              )}
 
-            {/* User menu */}
+              {/* Logo */}
+              <Link to="/" className="flex items-center space-x-2">
+                <span className="text-xl font-bold text-gray-900">
+                  Git With Intent
+                </span>
+              </Link>
+            </div>
+
+            {/* Right side: Tenant + User menu */}
             <div className="flex items-center space-x-4">
               {/* Tenant selector */}
               {user && tenants.length > 0 && (
@@ -88,21 +83,36 @@ export function Layout() {
                   </button>
                 </div>
               ) : (
-                <Link
-                  to="/login"
-                  className="bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-800"
-                >
-                  Sign in
-                </Link>
+                <div className="flex items-center space-x-2">
+                  <Link
+                    to="/login"
+                    className="text-sm text-gray-600 hover:text-gray-900 px-3 py-2"
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="bg-gray-900 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-800"
+                  >
+                    Sign up
+                  </Link>
+                </div>
               )}
             </div>
           </div>
         </div>
       </header>
 
+      {/* Sidebar (only for authenticated pages) */}
+      {showSidebar && (
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      )}
+
       {/* Main content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Outlet />
+      <main className={`pt-16 ${showSidebar ? 'lg:pl-64' : ''}`}>
+        <div className={`${showSidebar ? 'px-4 sm:px-6 lg:px-8 py-8' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}`}>
+          <Outlet />
+        </div>
       </main>
 
       {/* Footer */}

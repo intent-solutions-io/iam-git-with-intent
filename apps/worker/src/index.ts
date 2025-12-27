@@ -98,8 +98,9 @@ app.get('/health', (_req, res) => {
 
 /**
  * Readiness probe - can we process jobs?
+ * Cloud Run startup probe expects /health/ready
  */
-app.get('/ready', async (_req, res) => {
+app.get('/health/ready', async (_req, res) => {
   try {
     // Check if broker is connected
     const brokerReady = broker?.isConnected() ?? false;

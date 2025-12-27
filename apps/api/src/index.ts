@@ -643,6 +643,37 @@ app.get('/health', (_req, res) => {
 });
 
 /**
+ * GET /health/ready - Startup/readiness probe endpoint
+ * Cloud Run startup probe checks this to determine when the service is ready.
+ */
+app.get('/health/ready', async (_req, res) => {
+  try {
+    // Verify storage backend is accessible
+    const isReady = config.storeBackend === 'memory' || config.storeBackend === 'firestore';
+
+    if (isReady) {
+      res.json({
+        status: 'ready',
+        app: config.appName,
+        version: config.appVersion,
+        storeBackend: config.storeBackend,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      res.status(503).json({
+        status: 'not_ready',
+        reason: 'Storage backend not configured',
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'not_ready',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
  * Internal-only middleware for metrics endpoints
  * Requires authenticated user or Cloud Run internal request
  */

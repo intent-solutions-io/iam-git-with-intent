@@ -192,7 +192,7 @@ const ForemanRequestSchema = z.object({
 });
 
 /**
- * Health check endpoint
+ * Health check endpoint (liveness probe)
  */
 app.get('/health', (_req, res) => {
   res.json({
@@ -202,6 +202,31 @@ app.get('/health', (_req, res) => {
     env: config.env,
     timestamp: Date.now(),
   });
+});
+
+/**
+ * Startup/readiness probe endpoint
+ * Cloud Run startup probe checks this to determine when the service is ready.
+ */
+app.get('/health/ready', (_req, res) => {
+  // Gateway is ready when agent engines are configured
+  const hasEngines = Object.keys(agentEngines).length > 0;
+
+  if (hasEngines) {
+    res.json({
+      status: 'ready',
+      app: config.appName,
+      version: config.appVersion,
+      agents: Object.keys(agentEngines),
+      timestamp: Date.now(),
+    });
+  } else {
+    res.status(503).json({
+      status: 'not_ready',
+      reason: 'No agent engines configured',
+      timestamp: Date.now(),
+    });
+  }
 });
 
 /**
