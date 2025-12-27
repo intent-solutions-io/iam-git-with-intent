@@ -656,5 +656,8 @@ export type ScimUser = GatewayComponents['schemas']['ScimUser'];
 /** SCIM group resource */
 export type ScimGroup = GatewayComponents['schemas']['ScimGroup'];
 
+/** SCIM list response */
+export type ScimListResponse = GatewayComponents['schemas']['ScimListResponse'];
+
 /** SSO authentication response */
 export type SsoAuthResponse = GatewayComponents['schemas']['SsoAuthResponse'];
