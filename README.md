@@ -350,7 +350,7 @@ npm run arv:smoke     # Boot smoke test
 
 ---
 
-## Task Backlog (422 Open Tasks)
+## Task Backlog (Active Development)
 
 **We use [beads](https://github.com/Dicklesworthstone/beads_viewer) for task tracking.**
 
@@ -358,21 +358,21 @@ Check current status: `bd list --status open`
 
 ### By Epic (Team Assignment)
 
-| Epic | Open Tasks | Focus Area |
-|------|------------|------------|
-| **@orchestrator** | 85 | Multi-agent workflow coordination, run execution |
-| **@connectors** | 80 | GitHub/GitLab/JIRA integrations, data ingestion |
-| **@backend** | 73 | Core platform features, API endpoints |
-| **@security** | 72 | Auth, RBAC, audit logging, policy engine |
-| **@frontend** | 45 | Web dashboard, visualization, UI components |
-| **@infra** | 37 | OpenTofu, Cloud Run, deployment automation |
-| **@ai** | 30 | ML features, forecasting, embeddings, quality metrics |
+| Epic | Status | Open Tasks | Focus Area |
+|------|--------|------------|------------|
+| **@security** | ✅ Complete | 0 | Epic E: RBAC, governance, quotas (v0.3.0) |
+| **@orchestrator** | 🚧 Active | 85 | Multi-agent workflow coordination, run execution |
+| **@connectors** | 📋 Planned | 80 | GitHub/GitLab/JIRA integrations, data ingestion |
+| **@backend** | 🚧 Active | 73 | Core platform features, API endpoints |
+| **@frontend** | 🚧 Active | 45 | Web dashboard, visualization, UI components |
+| **@infra** | 🚧 Active | 37 | OpenTofu, Cloud Run, deployment automation |
+| **@ai** | 🚧 Active | 30 | ML features, forecasting, embeddings, quality metrics |
 
 ---
 
-### Epic Breakdown (All 9 Epics)
+### Epic Breakdown (8 Active + 1 Complete)
 
-Each epic has 6-12 stories, each story has 5-6 steps. Total: 422 open tasks.
+Each epic has 6-12 stories, each story has 5-6 steps.
 
 #### Epic A: Core Infrastructure (@backend, @security)
 Foundation layer for multi-tenant, production-grade operations.
@@ -430,16 +430,16 @@ Governance, compliance, and audit trail for enterprise deployments.
 - **D7** - Compliance-ready access logs
 - **D8** - Supply-chain hooks (foundation)
 
-#### Epic E: Security & Governance (@security)
-RBAC, tenant management, quotas, and enterprise readiness.
+#### Epic E: RBAC & Governance (@security) ✅ COMPLETE (v0.3.0)
+Enterprise-grade multi-tenant security, governance, and compliance.
 
-- **E1** - RBAC model + enforcement
-- **E2** - Tenant management
-- **E3** - Quotas & metering
-- **E4** - Secret references and rotation workflows
-- **E5** - Org/repo governance
-- **E6** - Compliance export console
-- **E7** - Enterprise readiness checklist
+- ✅ **E1** - RBAC model + enforcement (~2,200 lines)
+- ✅ **E2** - Tenant lifecycle management (state machine, soft/hard delete)
+- ✅ **E3** - Quota enforcement (3 modes: hard/soft/warn, burst allowances)
+- ✅ **E4** - Secrets management (AES-256-GCM encryption, rotation)
+- ✅ **E5** - Governance & audit (5 compliance report types, anomaly detection)
+- ✅ **E6** - Compliance export (CSV/JSON, immutable audit trail)
+- ✅ **E7** - Express middleware + 47 integration tests
 
 #### Epic F: Web Dashboard (@frontend)
 React SPA for repository health, runs, approvals, and analytics.
@@ -621,15 +621,15 @@ Vertex AI:
 - ✅ 1700+ unit tests, ARV pre-commit checks
 
 **What's in progress:**
-- 🚧 Web dashboard
-- 🚧 Repository analysis engine
-- 🚧 Multi-repo pattern detection
+- 🚧 Auto-fix monitoring system (grading, CI workflows, metrics)
+- 🚧 Web dashboard (React SPA for runs, approvals, analytics)
+- 🚧 TimeGPT forecasting integration (run outcome prediction, quality trends)
 
 **What's planned:**
-- ⏳ TimeGPT forecasting integration
-- ⏳ GitHub App for webhooks
-- ⏳ Slack/Discord bot
-- ⏳ Multi-tenant SaaS
+- ⏳ Data ingestion connectors (GitHub/GitLab/JIRA Airbyte-style)
+- ⏳ Repository analysis engine (multi-repo pattern detection)
+- ⏳ GitHub App for automated webhooks
+- ⏳ Slack/Discord integration
 
 ---
 
