@@ -32,9 +32,14 @@ jobs:
             echo "::error::.env is not in .gitignore - plaintext secrets may leak!"
             exit 1
           fi
-          # Check for any tracked .env files
-          if git ls-files | grep -E "^\.env|\.env\."; then
+          # Check for any tracked .env files (excluding .env.example, .env.template)
+          if git ls-files | grep -E "(^|/)\.env$" | grep -v -E "\.(example|template|sample)$"; then
             echo "::error::Found tracked .env files - these should be gitignored!"
+            exit 1
+          fi
+          # Also check for environment-specific files
+          if git ls-files | grep -E "\.(env\.local|env\.dev|env\.prod|env\.staging)$"; then
+            echo "::error::Found tracked environment files - these should be gitignored!"
             exit 1
           fi
           echo "✓ .env files properly gitignored"
