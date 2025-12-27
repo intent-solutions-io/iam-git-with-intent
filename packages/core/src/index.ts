@@ -223,7 +223,30 @@ export * from './ga-readiness/index.js';
 export * from './secrets/index.js';
 
 // Governance exports (Epic E: RBAC & Governance)
-export * from './governance/index.js';
+// Use explicit exports to avoid naming conflicts
+export {
+  // Audit Query Service
+  AuditQueryService,
+  createAuditQueryService,
+  type AuditQueryFilters,
+  type AuditQueryResult as GovernanceAuditQueryResult,
+  type AuditStatistics as GovernanceAuditStatistics,
+  type AnomalyType,
+  type AnomalySeverity,
+  type Anomaly,
+  type AnomalyDetectionResult as GovernanceAnomalyDetectionResult,
+  // Compliance Service
+  ComplianceService,
+  createComplianceService,
+  type ReportPeriod,
+  type ExportFormat as GovernanceExportFormat,
+  type BaseReport,
+  type AccessReport,
+  type RBACComplianceReport,
+  type QuotaComplianceReport,
+  type SecretAccessReport,
+  type HighRiskActionsReport,
+} from './governance/index.js';
 
 // Tenants exports (Epic E: RBAC & Governance)
 export * from './tenants/index.js';
