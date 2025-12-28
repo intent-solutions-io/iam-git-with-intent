@@ -65,7 +65,6 @@ jobs:
         run: |
           npx vitest run \
             --shard=${{ matrix.shard }}/4 \
-            --coverage \
             --reporter=json \
             --reporter=default
         env:
