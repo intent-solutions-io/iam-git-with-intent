@@ -11,24 +11,17 @@ env:
 
 jobs:
   # =============================================================================
-  # Parallel Test Execution with Sharding
+  # Run Tests via Turbo (respects individual package configs)
   # =============================================================================
 
   test:
-    name: Test (Shard ${{ matrix.shard }}/4)
+    name: Test Suite
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    strategy:
-      fail-fast: false  # Run all shards even if one fails
-      matrix:
-        shard: [1, 2, 3, 4]  # 4 parallel test shards
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for better caching
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -36,131 +29,27 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        id: cache-deps
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-            apps/*/node_modules
-          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-
-            ${{ runner.os }}-node-
-
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: npm ci
 
-      - name: Cache Turbo
-        uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
+      - name: Build packages
+        run: npm run build
 
-      - name: Run tests (Shard ${{ matrix.shard }}/4)
-        run: |
-          npx vitest run \
-            --shard=${{ matrix.shard }}/4 \
-            --reporter=json \
-            --reporter=default
+      - name: Run tests
+        run: npm run test
         env:
           CI: true
           NODE_ENV: test
 
-      - name: Upload coverage (Shard ${{ matrix.shard }})
+      - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-shard-${{ matrix.shard }}
-          path: coverage/
+          name: test-results
+          path: |
+            **/test-results/
+            **/coverage/
           retention-days: 7
-
-      - name: Upload test results (Shard ${{ matrix.shard }})
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-shard-${{ matrix.shard }}
-          path: test-results/
-          retention-days: 7
-
-  # =============================================================================
-  # Merge Coverage Reports
-  # =============================================================================
-
-  coverage:
-    name: Merge Coverage
-    runs-on: ubuntu-latest
-    needs: test
-    if: always()
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: coverage-shard-*
-          path: coverage-shards/
-
-      - name: Merge coverage reports
-        run: |
-          npm install -g nyc
-          mkdir -p coverage
-
-          # Merge all shard coverage reports
-          nyc merge coverage-shards coverage/coverage-final.json || echo "Coverage merge not available"
-
-          # Generate summary
-          if [ -f coverage/coverage-final.json ]; then
-            nyc report \
-              --reporter=text \
-              --reporter=text-summary \
-              --reporter=lcov \
-              --report-dir=coverage
-          fi
-
-      - name: Display coverage summary
-        run: |
-          if [ -f coverage/coverage-summary.txt ]; then
-            cat coverage/coverage-summary.txt
-          else
-            echo "No coverage summary available"
-          fi
-
-      - name: Upload merged coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-merged
-          path: coverage/
-          retention-days: 30
-
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            if (fs.existsSync('coverage/coverage-summary.txt')) {
-              const summary = fs.readFileSync('coverage/coverage-summary.txt', 'utf8');
-              const body = `## 📊 Test Coverage\n\n\`\`\`\n${summary}\n\`\`\``;
-
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: body
-              });
-            }
 
   # =============================================================================
   # Test Summary
@@ -169,56 +58,17 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test, coverage]
+    needs: test
     if: always()
 
     steps:
-      - name: Download all test results
-        uses: actions/download-artifact@v4
-        with:
-          pattern: test-results-shard-*
-          path: test-results/
-
-      - name: Generate test summary
-        run: |
-          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          total_tests=0
-          passed_tests=0
-          failed_tests=0
-
-          for result in test-results/test-results-shard-*/results.json; do
-            if [ -f "$result" ]; then
-              # Parse JSON and count tests
-              tests=$(jq '.numTotalTests // 0' "$result" 2>/dev/null || echo "0")
-              passed=$(jq '.numPassedTests // 0' "$result" 2>/dev/null || echo "0")
-              failed=$(jq '.numFailedTests // 0' "$result" 2>/dev/null || echo "0")
-
-              total_tests=$((total_tests + tests))
-              passed_tests=$((passed_tests + passed))
-              failed_tests=$((failed_tests + failed))
-            fi
-          done
-
-          echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Total Tests | $total_tests |" >> $GITHUB_STEP_SUMMARY
-          echo "| ✅ Passed | $passed_tests |" >> $GITHUB_STEP_SUMMARY
-          echo "| ❌ Failed | $failed_tests |" >> $GITHUB_STEP_SUMMARY
-
-          if [ $failed_tests -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ **$failed_tests test(s) failed**" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
-          fi
-
       - name: Check test status
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "::error::Tests failed"
+          if [ "${{ needs.test.result }}" == "success" ]; then
+            echo "## ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ❌ Tests Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the Test Suite job for details." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
