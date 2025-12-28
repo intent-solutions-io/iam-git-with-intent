@@ -1,0 +1,73 @@
+{
+  "name": "@gwi/connectors",
+  "version": "0.1.0",
+  "description": "Data ingestion connector framework for Git With Intent (Epic B)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
+    },
+    "./secrets": {
+      "types": "./dist/secrets/index.d.ts",
+      "import": "./dist/secrets/index.js"
+    },
+    "./observability": {
+      "types": "./dist/observability/index.d.ts",
+      "import": "./dist/observability/index.js"
+    },
+    "./github": {
+      "types": "./dist/github/index.d.ts",
+      "import": "./dist/github/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:unit": "vitest run --testPathPattern=__tests__/.*\\.test\\.ts$",
+    "test:integration": "vitest run --testPathPattern=__tests__/.*\\.integration\\.test\\.ts$",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "git-with-intent",
+    "gwi",
+    "connectors",
+    "data-ingestion",
+    "typescript",
+    "github",
+    "gitlab",
+    "linear"
+  ],
+  "author": "Intent Solutions <jeremy@intentsolutions.io>",
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "@gwi/core": "*",
+    "@google-cloud/secret-manager": "^5.6.0",
+    "@octokit/auth-app": "^7.1.0",
+    "@octokit/rest": "^21.0.0",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^137.0.0",
+    "axios": "^1.7.0",
+    "prom-client": "^15.1.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.56.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
