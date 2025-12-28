@@ -529,9 +529,9 @@ export class TimeGPTClient {
   private async handleErrorResponse(
     response: Response,
     requestId: string | undefined,
-    retryCount: number,
-    endpoint: string,
-    body: unknown
+    _retryCount: number,
+    _endpoint: string,
+    _body: unknown
   ): Promise<never> {
     let errorBody: { message?: string; detail?: string; code?: string } = {};
 
