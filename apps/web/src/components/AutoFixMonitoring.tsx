@@ -4,7 +4,7 @@
  * Displays real-time metrics and trends for auto-fix quality
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // ============================================================================
 // Types
@@ -116,12 +116,12 @@ const TrendChart: React.FC<{ trends: AutoFixMetrics['trends'] }> = ({ trends }) 
     <div className="bg-white rounded-lg shadow p-6">
       <h3 className="text-lg font-medium text-gray-900 mb-4">Score Trend (Last 7 Days)</h3>
       <div className="h-48 flex items-end space-x-2">
-        {trends.map((trend, idx) => {
+        {trends.map((trend) => {
           const height = (trend.avgScore / maxScore) * 100;
           const color = trend.avgScore >= 80 ? 'bg-green-500' : trend.avgScore >= 60 ? 'bg-yellow-500' : 'bg-red-500';
 
           return (
-            <div key={idx} className="flex-1 flex flex-col items-center">
+            <div key={trend.period} className="flex-1 flex flex-col items-center">
               <div className="w-full relative group">
                 <div
                   className={`${color} rounded-t transition-all duration-500 hover:opacity-80 cursor-pointer`}
@@ -228,7 +228,7 @@ export const AutoFixMonitoring: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = useCallback(async () => {
     try {
       setLoading(true);
       // In production, fetch from API
@@ -275,18 +275,18 @@ export const AutoFixMonitoring: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchMetrics();
-  }, []);
+  }, [fetchMetrics]);
 
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(fetchMetrics, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, [autoRefresh]);
+  }, [autoRefresh, fetchMetrics]);
 
   if (loading && !metrics) {
     return (

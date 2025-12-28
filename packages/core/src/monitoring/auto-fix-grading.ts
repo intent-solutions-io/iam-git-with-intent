@@ -225,7 +225,13 @@ Respond in JSON format with:
         return new MockAIProvider().analyzeCodeQuality(diff, metrics);
       }
 
-      const analysis = JSON.parse(jsonMatch[0]);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.warn('Failed to parse JSON from Gemini, falling back to rules:', parseError);
+        return new MockAIProvider().analyzeCodeQuality(diff, metrics);
+      }
       return {
         score: Math.max(0, Math.min(100, analysis.score || 75)),
         strengths: Array.isArray(analysis.strengths) ? analysis.strengths : [],
@@ -289,7 +295,14 @@ Respond in JSON format:
         return new MockAIProvider().analyzeCommitMessage(message);
       }
 
-      const analysis = JSON.parse(jsonMatch[0]);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.warn('Failed to parse JSON from Gemini, falling back to rules:', parseError);
+        return new MockAIProvider().analyzeCommitMessage(message);
+      }
+
       return {
         clarity: Math.max(0, Math.min(100, analysis.clarity || 50)),
         completeness: Math.max(0, Math.min(100, analysis.completeness || 50)),
@@ -386,7 +399,13 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         return new MockAIProvider().analyzeCodeQuality(diff, metrics);
       }
 
-      const analysis = JSON.parse(jsonMatch[0]);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.warn('Failed to parse JSON from Claude, falling back to rules:', parseError);
+        return new MockAIProvider().analyzeCodeQuality(diff, metrics);
+      }
       return {
         score: Math.max(0, Math.min(100, analysis.score || 75)),
         strengths: Array.isArray(analysis.strengths) ? analysis.strengths : [],
@@ -455,7 +474,14 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         return new MockAIProvider().analyzeCommitMessage(message);
       }
 
-      const analysis = JSON.parse(jsonMatch[0]);
+      let analysis;
+      try {
+        analysis = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.warn('Failed to parse JSON from Claude, falling back to rules:', parseError);
+        return new MockAIProvider().analyzeCommitMessage(message);
+      }
+
       return {
         clarity: Math.max(0, Math.min(100, analysis.clarity || 50)),
         completeness: Math.max(0, Math.min(100, analysis.completeness || 50)),
