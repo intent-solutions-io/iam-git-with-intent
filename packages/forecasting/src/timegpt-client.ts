@@ -17,6 +17,18 @@ import {
 } from './models/index.js';
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_FINETUNE_STEPS = 50;
+const DEFAULT_FINETUNE_LOSS = 'default';
+const MAPE_PERCENTAGE_MULTIPLIER = 100;
+const SMAPE_PERCENTAGE_MULTIPLIER = 200;
+const EXPONENTIAL_BACKOFF_BASE = 2;
+const EXPONENTIAL_BACKOFF_MULTIPLIER_MS = 1000;
+
+// =============================================================================
 // API Request/Response Schemas
 // =============================================================================
 
@@ -163,7 +175,7 @@ export class TimeGPTClient {
         : 1,
       timeoutMs: process.env.TIMEGPT_TIMEOUT_MS
         ? parseInt(process.env.TIMEGPT_TIMEOUT_MS, 10)
-        : 30000,
+        : DEFAULT_TIMEOUT_MS,
     });
   }
 
@@ -209,8 +221,8 @@ export class TimeGPTClient {
 
     // Add finetune parameters if requested
     if (options.finetune ?? this.config.finetune?.enabled) {
-      request.finetune_steps = options.finetuneSteps ?? this.config.finetune?.steps ?? 50;
-      request.finetune_loss = options.finetuneLoss ?? this.config.finetune?.loss ?? 'default';
+      request.finetune_steps = options.finetuneSteps ?? this.config.finetune?.steps ?? DEFAULT_FINETUNE_STEPS;
+      request.finetune_loss = options.finetuneLoss ?? this.config.finetune?.loss ?? DEFAULT_FINETUNE_LOSS;
     }
 
     const response = await this.makeRequest<TimeGPTAPIResponse>(
@@ -291,8 +303,12 @@ export class TimeGPTClient {
       const absErrors = errors.map(e => Math.abs(e));
       const sqErrors = errors.map(e => e * e);
 
-      const mae = absErrors.reduce((a, b) => a + b, 0) / absErrors.length;
-      const rmse = Math.sqrt(sqErrors.reduce((a, b) => a + b, 0) / sqErrors.length);
+      const mae = absErrors.length > 0
+        ? absErrors.reduce((a, b) => a + b, 0) / absErrors.length
+        : 0;
+      const rmse = sqErrors.length > 0
+        ? Math.sqrt(sqErrors.reduce((a, b) => a + b, 0) / sqErrors.length)
+        : 0;
 
       validations.push({
         foldIndex: fold,
@@ -310,8 +326,12 @@ export class TimeGPTClient {
     const allAbsErrors = allErrors.map(e => Math.abs(e));
     const allSqErrors = allErrors.map(e => e * e);
 
-    const mae = allAbsErrors.reduce((a, b) => a + b, 0) / allAbsErrors.length;
-    const rmse = Math.sqrt(allSqErrors.reduce((a, b) => a + b, 0) / allSqErrors.length);
+    const mae = allAbsErrors.length > 0
+      ? allAbsErrors.reduce((a, b) => a + b, 0) / allAbsErrors.length
+      : 0;
+    const rmse = allSqErrors.length > 0
+      ? Math.sqrt(allSqErrors.reduce((a, b) => a + b, 0) / allSqErrors.length)
+      : 0;
 
     // MAPE and SMAPE (handle division by zero)
     let mape: number | null = null;
@@ -320,7 +340,7 @@ export class TimeGPTClient {
     const nonZeroActual = allActual.filter(a => a !== 0);
     if (nonZeroActual.length > 0) {
       const apeValues = allActual.map((a, i) =>
-        a !== 0 ? Math.abs((a - allPredicted[i]) / a) * 100 : null
+        a !== 0 ? Math.abs((a - allPredicted[i]) / a) * MAPE_PERCENTAGE_MULTIPLIER : null
       ).filter((v): v is number => v !== null);
 
       if (apeValues.length > 0) {
@@ -330,7 +350,7 @@ export class TimeGPTClient {
       const smapeValues = allActual.map((a, i) => {
         const denominator = Math.abs(a) + Math.abs(allPredicted[i]);
         return denominator !== 0
-          ? (Math.abs(a - allPredicted[i]) / denominator) * 200
+          ? (Math.abs(a - allPredicted[i]) / denominator) * SMAPE_PERCENTAGE_MULTIPLIER
           : null;
       }).filter((v): v is number => v !== null);
 
@@ -460,8 +480,22 @@ export class TimeGPTClient {
       const requestId = response.headers.get('x-request-id') ?? undefined;
 
       if (!response.ok) {
-        await this.handleErrorResponse(response, requestId, retryCount);
-        // handleErrorResponse will throw or retry
+        // Handle error and potentially retry
+        try {
+          await this.handleErrorResponse(response, requestId, retryCount, endpoint, body);
+        } catch (error) {
+          // If it's a rate limit error and we should retry, do it here
+          if (error instanceof TimeGPTRateLimitError && retryCount < this.config.maxRetries) {
+            const retryAfter = response.headers.get('retry-after');
+            const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
+            const delay = retryAfterMs ?? Math.pow(EXPONENTIAL_BACKOFF_BASE, retryCount) * EXPONENTIAL_BACKOFF_MULTIPLIER_MS;
+
+            await this.sleep(delay);
+            return this.makeRequest<T>(endpoint, body, retryCount + 1);
+          }
+          throw error;
+        }
+        // handleErrorResponse will throw
         throw new TimeGPTError('Unexpected error', 'UNKNOWN', response.status, requestId);
       }
 
@@ -495,13 +529,28 @@ export class TimeGPTClient {
   private async handleErrorResponse(
     response: Response,
     requestId: string | undefined,
-    retryCount: number
+    retryCount: number,
+    endpoint: string,
+    body: unknown
   ): Promise<never> {
     let errorBody: { message?: string; detail?: string; code?: string } = {};
 
     try {
-      const parsed = await response.json() as { message?: string; detail?: string; code?: string };
-      errorBody = parsed;
+      const parsed = await response.json();
+      // Safe type check instead of assertion
+      if (parsed && typeof parsed === 'object') {
+        errorBody = {
+          message: typeof (parsed as Record<string, unknown>).message === 'string'
+            ? (parsed as Record<string, unknown>).message as string
+            : undefined,
+          detail: typeof (parsed as Record<string, unknown>).detail === 'string'
+            ? (parsed as Record<string, unknown>).detail as string
+            : undefined,
+          code: typeof (parsed as Record<string, unknown>).code === 'string'
+            ? (parsed as Record<string, unknown>).code as string
+            : undefined,
+        };
+      }
     } catch {
       // Ignore JSON parse errors
     }
@@ -515,13 +564,6 @@ export class TimeGPTClient {
       case 429: {
         const retryAfter = response.headers.get('retry-after');
         const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : undefined;
-
-        if (retryCount < this.config.maxRetries) {
-          const delay = retryAfterMs ?? Math.pow(2, retryCount) * 1000;
-          await this.sleep(delay);
-          // The caller should retry
-        }
-
         throw new TimeGPTRateLimitError(message, retryAfterMs, requestId);
       }
 
