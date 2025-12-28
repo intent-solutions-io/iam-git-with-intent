@@ -1,5 +1,16 @@
-# Cloud Run Gateways
-# R3: Cloud Run as gateway only (proxy to Agent Engine via REST)
+# =============================================================================
+# Cloud Run Services
+# =============================================================================
+#
+# Epic H1: Cloud Run Service Topology
+#
+# Architecture:
+# - 4 Cloud Run services: API, Gateway, Webhook, Worker
+# - Service-to-service authentication via IAM
+# - VPC Serverless Connector for private networking (optional)
+# - Enhanced health checks with startup probes
+#
+# =============================================================================
 
 # A2A Gateway Service
 resource "google_cloud_run_service" "a2a_gateway" {
@@ -65,41 +76,67 @@ resource "google_cloud_run_service" "a2a_gateway" {
           value = var.environment
         }
 
+        # Service URLs for inter-service communication
+        env {
+          name  = "API_SERVICE_URL"
+          value = var.gwi_api_image != "" ? google_cloud_run_service.gwi_api[0].status[0].url : ""
+        }
+
+        env {
+          name  = "WORKER_SERVICE_URL"
+          value = var.gwi_worker_image != "" ? google_cloud_run_service.gwi_worker[0].status[0].url : ""
+        }
+
         # Note: PORT is set automatically by Cloud Run
 
-        # Resource limits
+        # Resource limits (from service topology)
         resources {
           limits = {
-            cpu    = "1000m"
-            memory = "512Mi"
+            cpu    = local.effective_topology.gateway.cpu
+            memory = local.effective_topology.gateway.memory
           }
         }
 
-        # Health check
+        # Liveness probe: Is the service responsive?
         liveness_probe {
           http_get {
-            path = "/health"
+            path = var.health_check_config.liveness.path
           }
-          initial_delay_seconds = 10
-          timeout_seconds       = 3
-          period_seconds        = 10
-          failure_threshold     = 3
+          initial_delay_seconds = var.health_check_config.liveness.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.liveness.timeout_seconds
+          period_seconds        = var.health_check_config.liveness.period_seconds
+          failure_threshold     = var.health_check_config.liveness.failure_threshold
+        }
+
+        # Startup probe: Has the service finished starting?
+        startup_probe {
+          http_get {
+            path = var.health_check_config.startup.path
+          }
+          initial_delay_seconds = var.health_check_config.startup.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.startup.timeout_seconds
+          period_seconds        = var.health_check_config.startup.period_seconds
+          failure_threshold     = var.health_check_config.startup.failure_threshold
         }
       }
 
-      # Scaling
-      container_concurrency = 80
+      # Scaling (from service topology)
+      container_concurrency = local.effective_topology.gateway.concurrency
 
-      # Timeout
-      timeout_seconds = 300
+      # Timeout (from service topology)
+      timeout_seconds = local.effective_topology.gateway.timeout_seconds
     }
 
     metadata {
-      annotations = {
-        "autoscaling.knative.dev/minScale"  = "0"
-        "autoscaling.knative.dev/maxScale"  = tostring(var.gateway_max_instances)
-        "run.googleapis.com/cpu-throttling" = "true"
-      }
+      annotations = merge(
+        {
+          "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.gateway.min_instances)
+          "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.gateway.max_instances)
+          "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.gateway.cpu_throttling)
+          "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.gateway.startup_cpu_boost)
+        },
+        local.vpc_connector_annotations
+      )
 
       labels = merge(
         var.labels,
@@ -108,6 +145,7 @@ resource "google_cloud_run_service" "a2a_gateway" {
           app         = var.app_name
           version     = replace(var.app_version, ".", "-")
           component   = "a2a-gateway"
+          epic        = "h1"
         }
       )
     }
@@ -175,36 +213,70 @@ resource "google_cloud_run_service" "github_webhook" {
           value = var.environment
         }
 
+        # Service URLs for inter-service communication
+        env {
+          name  = "API_SERVICE_URL"
+          value = var.gwi_api_image != "" ? google_cloud_run_service.gwi_api[0].status[0].url : ""
+        }
+
+        env {
+          name  = "GATEWAY_SERVICE_URL"
+          value = google_cloud_run_service.a2a_gateway.status[0].url
+        }
+
+        env {
+          name  = "WORKER_SERVICE_URL"
+          value = var.gwi_worker_image != "" ? google_cloud_run_service.gwi_worker[0].status[0].url : ""
+        }
+
         # Note: PORT is set automatically by Cloud Run
 
+        # Resource limits (from service topology)
         resources {
           limits = {
-            cpu    = "1000m"
-            memory = "512Mi"
+            cpu    = local.effective_topology.webhook.cpu
+            memory = local.effective_topology.webhook.memory
           }
         }
 
+        # Liveness probe
         liveness_probe {
           http_get {
-            path = "/health"
+            path = var.health_check_config.liveness.path
           }
-          initial_delay_seconds = 10
-          timeout_seconds       = 3
-          period_seconds        = 10
-          failure_threshold     = 3
+          initial_delay_seconds = var.health_check_config.liveness.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.liveness.timeout_seconds
+          period_seconds        = var.health_check_config.liveness.period_seconds
+          failure_threshold     = var.health_check_config.liveness.failure_threshold
+        }
+
+        # Startup probe
+        startup_probe {
+          http_get {
+            path = var.health_check_config.startup.path
+          }
+          initial_delay_seconds = var.health_check_config.startup.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.startup.timeout_seconds
+          period_seconds        = var.health_check_config.startup.period_seconds
+          failure_threshold     = var.health_check_config.startup.failure_threshold
         }
       }
 
-      container_concurrency = 80
-      timeout_seconds       = 300
+      # Scaling (from service topology)
+      container_concurrency = local.effective_topology.webhook.concurrency
+      timeout_seconds       = local.effective_topology.webhook.timeout_seconds
     }
 
     metadata {
-      annotations = {
-        "autoscaling.knative.dev/minScale"  = "0"
-        "autoscaling.knative.dev/maxScale"  = tostring(var.gateway_max_instances)
-        "run.googleapis.com/cpu-throttling" = "true"
-      }
+      annotations = merge(
+        {
+          "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.webhook.min_instances)
+          "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.webhook.max_instances)
+          "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.webhook.cpu_throttling)
+          "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.webhook.startup_cpu_boost)
+        },
+        local.vpc_connector_annotations
+      )
 
       labels = merge(
         var.labels,
@@ -213,6 +285,7 @@ resource "google_cloud_run_service" "github_webhook" {
           app         = var.app_name
           version     = replace(var.app_version, ".", "-")
           component   = "github-webhook"
+          epic        = "h1"
         }
       )
     }
@@ -304,41 +377,67 @@ resource "google_cloud_run_service" "gwi_api" {
           value = var.app_version
         }
 
+        # Service URLs for inter-service communication
+        env {
+          name  = "GATEWAY_SERVICE_URL"
+          value = google_cloud_run_service.a2a_gateway.status[0].url
+        }
+
+        env {
+          name  = "WORKER_SERVICE_URL"
+          value = var.gwi_worker_image != "" ? google_cloud_run_service.gwi_worker[0].status[0].url : ""
+        }
+
         # Note: PORT is set automatically by Cloud Run
 
-        # Resource limits
+        # Resource limits (from service topology)
         resources {
           limits = {
-            cpu    = "1000m"
-            memory = "512Mi"
+            cpu    = local.effective_topology.api.cpu
+            memory = local.effective_topology.api.memory
           }
         }
 
-        # Health check
+        # Liveness probe
         liveness_probe {
           http_get {
-            path = "/health"
+            path = var.health_check_config.liveness.path
           }
-          initial_delay_seconds = 10
-          timeout_seconds       = 3
-          period_seconds        = 10
-          failure_threshold     = 3
+          initial_delay_seconds = var.health_check_config.liveness.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.liveness.timeout_seconds
+          period_seconds        = var.health_check_config.liveness.period_seconds
+          failure_threshold     = var.health_check_config.liveness.failure_threshold
+        }
+
+        # Startup probe
+        startup_probe {
+          http_get {
+            path = var.health_check_config.startup.path
+          }
+          initial_delay_seconds = var.health_check_config.startup.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.startup.timeout_seconds
+          period_seconds        = var.health_check_config.startup.period_seconds
+          failure_threshold     = var.health_check_config.startup.failure_threshold
         }
       }
 
-      # Scaling
-      container_concurrency = 100
+      # Scaling (from service topology)
+      container_concurrency = local.effective_topology.api.concurrency
 
-      # Timeout
-      timeout_seconds = 60
+      # Timeout (from service topology)
+      timeout_seconds = local.effective_topology.api.timeout_seconds
     }
 
     metadata {
-      annotations = {
-        "autoscaling.knative.dev/minScale"  = var.environment == "prod" ? "1" : "0"
-        "autoscaling.knative.dev/maxScale"  = tostring(var.gwi_api_max_instances)
-        "run.googleapis.com/cpu-throttling" = "true"
-      }
+      annotations = merge(
+        {
+          "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.api.min_instances)
+          "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.api.max_instances)
+          "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.api.cpu_throttling)
+          "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.api.startup_cpu_boost)
+        },
+        local.vpc_connector_annotations
+      )
 
       labels = merge(
         var.labels,
@@ -347,7 +446,7 @@ resource "google_cloud_run_service" "gwi_api" {
           app         = var.app_name
           version     = replace(var.app_version, ".", "-")
           component   = "api"
-          phase       = "phase-11"
+          epic        = "h1"
         }
       )
     }
@@ -459,12 +558,12 @@ resource "google_cloud_run_service" "gwi_worker" {
 
         env {
           name  = "WORKER_MAX_CONCURRENT"
-          value = tostring(var.gwi_worker_concurrency)
+          value = tostring(local.effective_topology.worker.concurrency)
         }
 
         env {
           name  = "WORKER_JOB_TIMEOUT_MS"
-          value = "300000" # 5 minutes
+          value = tostring(local.effective_topology.worker.timeout_seconds * 1000)
         }
 
         env {
@@ -485,6 +584,17 @@ resource "google_cloud_run_service" "gwi_worker" {
         env {
           name  = "APP_VERSION"
           value = var.app_version
+        }
+
+        # Service URLs for inter-service communication
+        env {
+          name  = "API_SERVICE_URL"
+          value = var.gwi_api_image != "" ? google_cloud_run_service.gwi_api[0].status[0].url : ""
+        }
+
+        env {
+          name  = "GATEWAY_SERVICE_URL"
+          value = google_cloud_run_service.a2a_gateway.status[0].url
         }
 
         # Note: PORT is set automatically by Cloud Run
@@ -511,40 +621,54 @@ resource "google_cloud_run_service" "gwi_worker" {
           value = "/tmp/gwi-workspaces"
         }
 
-        # Resource limits (workers need more resources)
+        # Resource limits (from service topology)
         resources {
           limits = {
-            cpu    = "2000m"
-            memory = "1Gi"
+            cpu    = local.effective_topology.worker.cpu
+            memory = local.effective_topology.worker.memory
           }
         }
 
-        # Health check
+        # Liveness probe
         liveness_probe {
           http_get {
-            path = "/health"
+            path = var.health_check_config.liveness.path
           }
-          initial_delay_seconds = 10
-          timeout_seconds       = 3
-          period_seconds        = 10
-          failure_threshold     = 3
+          initial_delay_seconds = var.health_check_config.liveness.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.liveness.timeout_seconds
+          period_seconds        = var.health_check_config.liveness.period_seconds
+          failure_threshold     = var.health_check_config.liveness.failure_threshold
         }
-        # Note: readiness_probe not supported in Cloud Run v1 API
+
+        # Startup probe (workers may take longer to start)
+        startup_probe {
+          http_get {
+            path = var.health_check_config.startup.path
+          }
+          initial_delay_seconds = var.health_check_config.startup.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.startup.timeout_seconds
+          period_seconds        = var.health_check_config.startup.period_seconds
+          failure_threshold     = 15 # Workers get extra time to start
+        }
       }
 
-      # Workers process one job at a time per container
-      container_concurrency = var.gwi_worker_concurrency
+      # Workers process limited concurrent jobs
+      container_concurrency = local.effective_topology.worker.concurrency
 
       # Longer timeout for job processing
-      timeout_seconds = 600 # 10 minutes
+      timeout_seconds = local.effective_topology.worker.timeout_seconds
     }
 
     metadata {
-      annotations = {
-        "autoscaling.knative.dev/minScale"  = var.environment == "prod" ? "1" : "0"
-        "autoscaling.knative.dev/maxScale"  = tostring(var.gwi_worker_max_instances)
-        "run.googleapis.com/cpu-throttling" = "false" # Keep CPU for background work
-      }
+      annotations = merge(
+        {
+          "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.worker.min_instances)
+          "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.worker.max_instances)
+          "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.worker.cpu_throttling)
+          "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.worker.startup_cpu_boost)
+        },
+        local.vpc_connector_annotations
+      )
 
       labels = merge(
         var.labels,
@@ -553,7 +677,7 @@ resource "google_cloud_run_service" "gwi_worker" {
           app         = var.app_name
           version     = replace(var.app_version, ".", "-")
           component   = "worker"
-          phase       = "phase-16"
+          epic        = "h1"
         }
       )
     }

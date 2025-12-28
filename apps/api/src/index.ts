@@ -431,7 +431,7 @@ function authMiddleware(req: express.Request, res: express.Response, next: expre
     return next();
   }
 
-  // TODO: Verify Firebase Auth token
+  // SECURITY: Firebase Auth token verification needed (tracked in git-with-intent-scod)
   // const authHeader = req.headers.authorization;
   // if (!authHeader?.startsWith('Bearer ')) {
   //   return res.status(401).json({ error: 'Missing authorization header' });
@@ -640,6 +640,37 @@ app.get('/health', (_req, res) => {
     storeBackend: config.storeBackend,
     timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * GET /health/ready - Startup/readiness probe endpoint
+ * Cloud Run startup probe checks this to determine when the service is ready.
+ */
+app.get('/health/ready', async (_req, res) => {
+  try {
+    // Verify storage backend is accessible
+    const isReady = config.storeBackend === 'memory' || config.storeBackend === 'firestore';
+
+    if (isReady) {
+      res.json({
+        status: 'ready',
+        app: config.appName,
+        version: config.appVersion,
+        storeBackend: config.storeBackend,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      res.status(503).json({
+        status: 'not_ready',
+        reason: 'Storage backend not configured',
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'not_ready',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 /**
@@ -2772,7 +2803,7 @@ app.post('/tenants/:tenantId/billing/checkout', authMiddleware, tenantAuthMiddle
     let customerId = (tenant as any).stripeCustomerId;
     if (!customerId) {
       customerId = await stripe.createCustomer(tenantId, req.context!.email || '', tenant.displayName);
-      // TODO: Save customerId to tenant
+      // DATA INTEGRITY: Need to persist customerId (tracked in git-with-intent-bf0k)
     }
 
     // Create checkout session

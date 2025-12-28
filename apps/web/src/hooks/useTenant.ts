@@ -24,6 +24,7 @@ export interface Tenant {
   installationId: number;
   plan: 'free' | 'pro' | 'enterprise';
   createdAt: Date;
+  role?: string; // User's role in this tenant
 }
 
 export interface Membership {
@@ -59,12 +60,12 @@ export function useTenant() {
       membershipsQuery,
       async (snapshot) => {
         try {
-          const memberships = snapshot.docs.map(
+          const fetchedMemberships = snapshot.docs.map(
             (doc) => doc.data() as Membership
           );
 
-          // Fetch tenant details for each membership
-          const tenantPromises = memberships.map(async (membership) => {
+          // Fetch tenant details for each membership and attach role
+          const tenantPromises = fetchedMemberships.map(async (membership) => {
             const tenantDoc = await getDoc(
               doc(db, 'gwi_tenants', membership.tenantId)
             );
@@ -72,6 +73,7 @@ export function useTenant() {
               return {
                 id: tenantDoc.id,
                 ...tenantDoc.data(),
+                role: membership.role, // Attach user's role in this tenant
               } as Tenant;
             }
             return null;

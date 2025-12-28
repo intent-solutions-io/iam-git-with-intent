@@ -5,8 +5,8 @@
  * and context-aware matching for negation detection.
  */
 
-import fs from 'fs';
-import path from 'path';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 export interface KeywordWeight {
   keywords: string[];
@@ -113,8 +113,8 @@ export class KeywordMatcher {
 
   constructor(weightsPath?: string) {
     // Load weights from file or use default path
-    const dataPath = weightsPath || path.join(process.cwd(), 'data', 'keyword-weights.json');
-    const rawData = fs.readFileSync(dataPath, 'utf-8');
+    const dataPath = weightsPath || join(process.cwd(), 'data', 'keyword-weights.json');
+    const rawData = readFileSync(dataPath, 'utf-8');
     this.weights = JSON.parse(rawData) as KeywordWeights;
 
     // Build keyword lookup map
@@ -142,7 +142,7 @@ export class KeywordMatcher {
     const words = lowerText.split(/\s+/);
 
     // Match each keyword
-    for (const [keyword, keywordWeight] of this.allKeywords.entries()) {
+    for (const [keyword, keywordWeight] of Array.from(this.allKeywords.entries())) {
       for (let i = 0; i < words.length; i++) {
         const word = words[i];
 

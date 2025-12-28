@@ -256,7 +256,7 @@ export class CoderAgent extends BaseAgent {
 
     return {
       code: result,
-      tokensUsed: { input: 0, output: 0 }, // TODO: Track from response
+      tokensUsed: { input: 0, output: 0 }, // Enhancement: Track from response
     };
   }
 

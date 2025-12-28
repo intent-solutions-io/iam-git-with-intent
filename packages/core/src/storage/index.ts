@@ -142,19 +142,19 @@ export function createStoreFactory(config?: Partial<StorageConfig>): StoreFactor
       return new SQLiteStoreFactory(finalConfig.sqlitePath);
 
     case 'turso':
-      // TODO: Implement TursoStoreFactory
+      // Alternative storage backends tracked in git-with-intent-u08v
       throw new Error('Turso storage not yet implemented. Use sqlite for now.');
 
     case 'postgres':
-      // TODO: Implement PostgresStoreFactory
+      // Alternative storage backends tracked in git-with-intent-u08v
       throw new Error('PostgreSQL storage not yet implemented. Use sqlite for now.');
 
     case 'firestore':
-      // TODO: Implement FirestoreStoreFactory
+      // Alternative storage backends tracked in git-with-intent-u08v
       throw new Error('Firestore storage not yet implemented. Use sqlite for now.');
 
     case 'memory':
-      // TODO: Implement MemoryStoreFactory for testing
+      // Alternative storage backends tracked in git-with-intent-u08v
       throw new Error('Memory storage not yet implemented. Use sqlite for now.');
 
     default:

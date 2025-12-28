@@ -547,7 +547,7 @@ export class AutopilotExecutor {
       return { passed: false, error: 'No workspace available for tests' };
     }
 
-    // TODO: Implement test runner
+    // Test runner implementation tracked in git-with-intent-cgo3
     // For now, return success - tests will be validated by CI after PR is created
     return { passed: true };
   }
