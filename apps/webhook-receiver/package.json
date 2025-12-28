@@ -1,0 +1,31 @@
+{
+  "name": "@gwi/webhook-receiver",
+  "version": "0.1.0",
+  "description": "Multi-source webhook receiver for Git With Intent connector framework (GitHub, GitLab, Linear, Slack)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@google-cloud/pubsub": "^4.4.0",
+    "@gwi/core": "*",
+    "express": "^4.18.2",
+    "helmet": "^7.1.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.4",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  }
+}

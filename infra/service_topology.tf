@@ -198,6 +198,18 @@ locals {
     })
   }
 
+  # Epic B: Webhook Receiver topology (optimized for fast response <500ms)
+  effective_webhook_receiver_topology = {
+    cpu               = "1000m"
+    memory            = "512Mi"
+    concurrency       = 100 # High concurrency for webhook handling
+    timeout_seconds   = 10  # Fast timeout for webhook responses
+    min_instances     = var.environment == "prod" ? 1 : 0
+    max_instances     = 50 # Scale quickly for webhook bursts
+    cpu_throttling    = true
+    startup_cpu_boost = true
+  }
+
   # VPC connector annotation (if enabled)
   vpc_connector_annotations = var.enable_vpc_connector ? {
     "run.googleapis.com/vpc-access-connector" = google_vpc_access_connector.gwi_connector[0].id
