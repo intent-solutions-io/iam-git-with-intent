@@ -6,7 +6,7 @@
 **Priority:** P1
 **Status:** Planning
 **Created:** 2025-12-28
-**Estimated Tasks:** 35-40
+**Total Tasks:** 66 (9 stories)
 
 ---
 
@@ -21,7 +21,7 @@ Build production-ready, Airbyte-style connector framework for ingesting data fro
 - Support both pull (API polling) and push (webhooks) patterns
 
 **Success Metrics:**
-- 5+ production-ready connectors
+- 6 production-ready connectors (GitHub, GitLab, Linear, Jira/Plane, Slack, Vertex AI)
 - < 2 days to add new connector
 - 99.9% webhook delivery reliability
 - Comprehensive test coverage (>80%)
@@ -104,6 +104,17 @@ Build production-ready, Airbyte-style connector framework for ingesting data fro
 - **Features:** Events API, webhooks, slash commands
 - **Interactive:** Buttons, modals, app home
 - **Use Case:** Notifications, interactive approvals
+
+#### Vertex AI API (Google Cloud)
+- **Free Tier:** $300 credit for 90 days (new accounts)
+- **Features:** Gemini models, text embeddings, streaming
+- **Models:** Gemini 2.0 Flash, Gemini Pro, PaLM
+- **Rate Limits:** Generous free tier quotas
+- **Use Case:** AI/ML integration, code analysis, embeddings
+- **Links:**
+  - Console: https://console.cloud.google.com/vertex-ai
+  - Docs: https://cloud.google.com/vertex-ai/docs
+  - Pricing: https://cloud.google.com/vertex-ai/pricing
 
 ---
 
@@ -213,19 +224,29 @@ Epic B: Data Ingestion & Connector Framework (P1)
 │   ├── Task B7.7: Write integration tests
 │   └── Task B7.8: Add to connector registry
 │
-└── Story B8: Slack Connector (Week 7)
-    ├── Task B8.1: Create Slack app in workspace
-    ├── Task B8.2: Implement OAuth flow
-    ├── Task B8.3: Add Events API subscription
-    ├── Task B8.4: Implement slash commands
-    ├── Task B8.5: Add interactive components (buttons, modals)
-    ├── Task B8.6: Implement notification sending
-    ├── Task B8.7: Write integration tests
-    └── Task B8.8: Add to connector registry
+├── Story B8: Slack Connector (Week 7)
+│   ├── Task B8.1: Create Slack app in workspace
+│   ├── Task B8.2: Implement OAuth flow
+│   ├── Task B8.3: Add Events API subscription
+│   ├── Task B8.4: Implement slash commands
+│   ├── Task B8.5: Add interactive components (buttons, modals)
+│   ├── Task B8.6: Implement notification sending
+│   ├── Task B8.7: Write integration tests
+│   └── Task B8.8: Add to connector registry
+│
+└── Story B9: Vertex AI Connector (Week 8)
+    ├── Task B9.1: Set up Vertex AI project
+    ├── Task B9.2: Implement authentication (API key/service account)
+    ├── Task B9.3: Add Gemini API client
+    ├── Task B9.4: Add embeddings support
+    ├── Task B9.5: Implement streaming responses
+    ├── Task B9.6: Add quota/rate limiting
+    ├── Task B9.7: Write integration tests
+    └── Task B9.8: Add to connector registry
 ```
 
-**Total Tasks:** 58 (granular breakdown)
-**Timeline:** 7 weeks for full epic completion
+**Total Tasks:** 66 (granular breakdown)
+**Timeline:** 8 weeks for full epic completion
 
 ---
 
@@ -778,6 +799,72 @@ query Issues {
 
 ---
 
+### Story B9: Vertex AI Connector
+
+**Goal:** Integrate Google Cloud Vertex AI platform for ML/AI capabilities
+
+**Tasks:**
+
+#### B9.1: Set up Vertex AI project
+- Enable Vertex AI API in GCP project
+- Create service account with appropriate IAM roles
+- Configure authentication (API key or service account JSON)
+- **Acceptance:** Vertex AI enabled and accessible
+
+#### B9.2: Implement authentication
+- API key authentication
+- Service account JSON key support
+- Application Default Credentials (ADC)
+- Token refresh handling
+- **Acceptance:** Auth working for all methods
+
+#### B9.3: Add Gemini API client
+- Models API integration (generateContent endpoint)
+- Streaming support
+- Safety settings configuration
+- Multi-modal input support (text, images)
+- **Acceptance:** Can invoke Gemini models
+
+#### B9.4: Add embeddings support
+- Text embeddings API client
+- Batch processing for multiple texts
+- Embedding dimensions configuration
+- **Acceptance:** Can generate embeddings
+
+#### B9.5: Implement streaming responses
+- Server-sent events (SSE) handling
+- Token-by-token streaming
+- Error handling during streaming
+- Stream cancellation support
+- **Acceptance:** Streaming responses working
+
+#### B9.6: Add quota/rate limiting
+- Quota tracking per project
+- Exponential backoff on rate limits
+- Circuit breaker pattern
+- Per-model quota management
+- **Acceptance:** Rate limits handled gracefully
+
+#### B9.7: Write integration tests
+- Real Vertex AI API calls (with test project)
+- Streaming tests
+- Error handling tests
+- Quota limit tests
+- **Acceptance:** >80% coverage
+
+#### B9.8: Add to connector registry
+- Register connector
+- Deploy to Cloud Run
+- Health check endpoint
+- **Acceptance:** Production-ready connector
+
+**Dependencies:** B4 (Framework ready)
+**Assignee:** @connectors-ai-lead
+**Priority:** P2
+**Estimated:** 5 days
+
+---
+
 ## Dependencies & Sequencing
 
 ### Critical Path
@@ -785,7 +872,7 @@ query Issues {
 ```
 B1 (Study) → B2 (Design) → B3 (Framework) → B4 (GitHub)
                                                   ↓
-                                    B5, B6, B7, B8 (parallel)
+                                    B5, B6, B7, B8, B9 (parallel)
 ```
 
 ### Dependency Rules
@@ -793,8 +880,8 @@ B1 (Study) → B2 (Design) → B3 (Framework) → B4 (GitHub)
 1. **B1 must complete before B2**: Need to study patterns before designing
 2. **B2 must complete before B3**: Need design before implementation
 3. **B3 must complete before any connector**: Framework must exist
-4. **B4 should complete before B5-B8**: GitHub connector is reference implementation
-5. **B5-B8 can run in parallel**: Once B4 is done, all other connectors can proceed independently
+4. **B4 should complete before B5-B9**: GitHub connector is reference implementation
+5. **B5-B9 can run in parallel**: Once B4 is done, all other connectors can proceed independently
 
 ### Team Assignments
 
@@ -802,7 +889,7 @@ B1 (Study) → B2 (Design) → B3 (Framework) → B4 (GitHub)
 - **Week 2:** Architect on B2, rest on B3 prep
 - **Week 3:** Full team on B3 (framework)
 - **Week 4:** Full team on B4 (GitHub reference)
-- **Week 5-7:** Split team across B5-B8 (2 people per connector)
+- **Week 5-8:** Split team across B5-B9 (1-2 people per connector)
 
 ---
 
