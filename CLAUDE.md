@@ -26,18 +26,29 @@ bd ready                         # See available tasks
 
 ### During Work
 
+**🚨 CRITICAL: You MUST mark beads tasks as you work**
+
 ```bash
-# Start task (marks breadcrumb for recovery)
+# STEP 1: BEFORE starting ANY work - mark task in_progress
 bd update <id> --status in_progress
 
-# Do work...
+# STEP 2: Do the actual work
+# ... coding, research, testing, etc. ...
 
-# Complete task with evidence
-bd close <id> --reason "Evidence of completion"
+# STEP 3: AFTER completing work - close with evidence
+bd close <id> --reason "Evidence of completion (commit hash, test results, etc.)"
 
-# Sync immediately (auto-sync via git hooks, but explicit is safer)
+# STEP 4: Sync to git (saves state for post-compaction recovery)
 bd sync
 ```
+
+**Enforcement Rules:**
+1. ❌ NEVER start coding/research without marking a task `in_progress` first
+2. ❌ NEVER finish work without closing the task with evidence
+3. ❌ NEVER skip `bd sync` after closing tasks
+4. ✅ ALWAYS follow the 4-step workflow above
+
+**Why this matters:** This is the ONLY way post-compaction recovery works. If you don't mark tasks, the next session won't know what you were doing.
 
 ### Session End
 
