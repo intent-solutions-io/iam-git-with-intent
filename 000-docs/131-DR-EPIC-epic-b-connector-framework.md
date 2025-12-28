@@ -6,7 +6,7 @@
 **Priority:** P1
 **Status:** Planning
 **Created:** 2025-12-28
-**Total Tasks:** 66 (9 stories)
+**Total Tasks:** 69 (9 stories)
 
 ---
 
@@ -245,7 +245,7 @@ Epic B: Data Ingestion & Connector Framework (P1)
     └── Task B9.8: Add to connector registry
 ```
 
-**Total Tasks:** 66 (granular breakdown)
+**Total Tasks:** 69 (granular breakdown)
 **Timeline:** 8 weeks for full epic completion
 
 ---
