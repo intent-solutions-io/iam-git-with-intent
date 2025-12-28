@@ -23,6 +23,9 @@ resource "google_project_service" "required_apis" {
     "cloudresourcemanager.googleapis.com", # Resource Manager
     "artifactregistry.googleapis.com",     # Artifact Registry
     "cloudscheduler.googleapis.com",       # Cloud Scheduler (scheduled tasks)
+    "vpcaccess.googleapis.com",            # VPC Serverless Access (H1)
+    "compute.googleapis.com",              # Compute Engine (for VPC) (H1)
+    "dns.googleapis.com",                  # Cloud DNS (for private Google Access) (H1)
   ])
 
   project            = var.project_id

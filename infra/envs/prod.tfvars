@@ -58,3 +58,77 @@ labels = {
   managed-by  = "opentofu"
   critical    = "true"
 }
+
+# =============================================================================
+# Epic H1: Cloud Run Service Topology
+# =============================================================================
+
+# VPC Networking (enabled for production security)
+enable_vpc_connector        = true
+vpc_connector_cidr          = "10.8.0.0/28"
+vpc_connector_machine_type  = "e2-micro"
+vpc_connector_min_instances = 2
+vpc_connector_max_instances = 3
+vpc_egress_setting          = "private-ranges-only"
+
+# Service Topology (production-grade)
+service_topology = {
+  api = {
+    cpu               = "1000m"
+    memory            = "512Mi"
+    concurrency       = 100
+    timeout_seconds   = 60
+    min_instances     = 1 # Always-on for production
+    max_instances     = 20
+    cpu_throttling    = true
+    startup_cpu_boost = true
+  }
+  gateway = {
+    cpu               = "1000m"
+    memory            = "512Mi"
+    concurrency       = 80
+    timeout_seconds   = 300
+    min_instances     = 1 # Always-on for production
+    max_instances     = 20
+    cpu_throttling    = true
+    startup_cpu_boost = true
+  }
+  webhook = {
+    cpu               = "1000m"
+    memory            = "512Mi"
+    concurrency       = 80
+    timeout_seconds   = 300
+    min_instances     = 1 # Always-on for production
+    max_instances     = 20
+    cpu_throttling    = true
+    startup_cpu_boost = true
+  }
+  worker = {
+    cpu               = "2000m"
+    memory            = "1Gi"
+    concurrency       = 1
+    timeout_seconds   = 600
+    min_instances     = 1 # Always-on for production
+    max_instances     = 20
+    cpu_throttling    = false # Keep CPU active for background jobs
+    startup_cpu_boost = true
+  }
+}
+
+# Health Check Configuration
+health_check_config = {
+  liveness = {
+    path                  = "/health"
+    initial_delay_seconds = 5
+    timeout_seconds       = 3
+    period_seconds        = 10
+    failure_threshold     = 3
+  }
+  startup = {
+    path                  = "/health/ready"
+    initial_delay_seconds = 0
+    timeout_seconds       = 3
+    period_seconds        = 5
+    failure_threshold     = 10
+  }
+}
