@@ -318,10 +318,17 @@ jobs:
       - name: Grade Auto-Fix Quality
         id: grade
         if: steps.parse.outputs.pr_url != ''
+        env:
+          GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # Use Node.js to grade the fix
+          # Extract commit message and diff for AI analysis
+          COMMIT_MSG=$(git log -1 --pretty=%B HEAD 2>/dev/null || echo "Auto-fix commit")
+          DIFF_CONTENT=$(git diff HEAD~1 2>/dev/null || echo "")
+
+          # Use Node.js to grade the fix with AI assistance
           node -e "
-          const { GradingEngine } = require('./packages/core/dist/scoring/grading-engine.js');
+          const { AutoFixGradingService } = require('./packages/core/dist/monitoring/auto-fix-grading.js');
 
           const run = {
             id: '${{ steps.autofix.outputs.run_id }}',
@@ -344,19 +351,35 @@ jobs:
             tokensUsed: 0,
             apiCost: 0,
             durationMs: ${{ steps.autofix.outputs.duration_ms }},
-            commitMessage: '',
-            diffContent: '',
+            commitMessage: process.env.COMMIT_MSG || '',
+            diffContent: process.env.DIFF_CONTENT || '',
             readmeUpdated: false,
             commentsAdded: 0,
             docsChanged: false
           };
 
-          const engine = new GradingEngine();
-          const grade = engine.grade(run);
+          // Initialize grading service with Gemini provider
+          const service = new AutoFixGradingService({
+            aiProvider: 'gemini',
+            useAI: true
+          });
 
-          console.log('letter_grade=' + grade.letterGrade);
-          console.log('overall_score=' + grade.overallScore);
-          console.log('summary=' + grade.summary);
+          // Grade with AI assistance (falls back to rules if no API key)
+          service.grade(run, true).then(grade => {
+            console.log('letter_grade=' + grade.letterGrade);
+            console.log('overall_score=' + Math.round(grade.overallScore));
+            console.log('summary=' + grade.summary.replace(/'/g, ''));
+
+            // Extract top strengths and weaknesses
+            const strengths = grade.strengths.slice(0, 3).join('; ').replace(/'/g, '');
+            const weaknesses = grade.weaknesses.slice(0, 3).join('; ').replace(/'/g, '');
+
+            console.log('strengths=' + (strengths || 'None identified'));
+            console.log('weaknesses=' + (weaknesses || 'None identified'));
+          }).catch(err => {
+            console.error('Grading failed:', err);
+            process.exit(1);
+          });
           " >> $GITHUB_OUTPUT
 
           cat $GITHUB_OUTPUT
