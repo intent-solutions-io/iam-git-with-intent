@@ -190,7 +190,8 @@ describe('ExponentialBackoffRetryHandler', () => {
     });
 
     it('should respect Retry-After header (HTTP date)', async () => {
-      const retryDate = new Date(Date.now() + 500); // 500ms from now
+      // Use 2000ms to account for test setup overhead
+      const retryDate = new Date(Date.now() + 2000); // 2000ms from now
       const error = createHttpError(429);
       error.response = {
         status: 429,
@@ -203,9 +204,9 @@ describe('ExponentialBackoffRetryHandler', () => {
       await handler.retry(fn, { initialDelayMs: 100 });
       const elapsed = Date.now() - startTime;
 
-      // Should wait ~500ms (allowing for timing variance and execution overhead)
-      expect(elapsed).toBeGreaterThanOrEqual(300);
-      expect(elapsed).toBeLessThan(1000);
+      // Should wait ~2000ms (allowing for timing variance and execution overhead)
+      expect(elapsed).toBeGreaterThanOrEqual(1500);
+      expect(elapsed).toBeLessThan(3000);
     });
 
     it('should fall back to exponential backoff if Retry-After invalid', async () => {

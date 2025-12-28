@@ -334,12 +334,17 @@ describe('Analytics Queries', () => {
     });
 
     it('should filter success rate by date range', () => {
+      // repo1 runs have dates: 2025-12-20, 2025-12-21, 2025-12-21, 2025-12-22, 2025-12-22
+      // repo2 runs have dates: 2025-12-22, 2025-12-23, 2025-12-24
+      // Use a range that should include all runs
       const results = analytics.getSuccessRateByRepo({
-        date_from: '2025-12-22T00:00:00Z',
-        date_to: '2025-12-23T23:59:59Z'
+        date_from: '2025-12-20T00:00:00Z',
+        date_to: '2025-12-24T23:59:59Z'
       });
 
-      expect(results.length).toBeGreaterThan(0);
+      expect(results.length).toBe(2); // Both repos should be included
+      expect(results.some(r => r.repo_name === 'repo1')).toBe(true);
+      expect(results.some(r => r.repo_name === 'repo2')).toBe(true);
     });
   });
 

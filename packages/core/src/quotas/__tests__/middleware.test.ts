@@ -135,8 +135,8 @@ describe('Quota Middleware', () => {
     });
 
     it('should block request when hard quota exceeded', async () => {
-      // Record 100 API calls to hit limit
-      for (let i = 0; i < 100; i++) {
+      // Record 120 API calls to exceed burst limit (100 + 20% burst = 120)
+      for (let i = 0; i < 120; i++) {
         await quotaManager.recordUsage('tenant_123', 'api_calls', 1);
       }
 
@@ -155,14 +155,14 @@ describe('Quota Middleware', () => {
       expect(res.jsonData).toMatchObject({
         error: 'QuotaExceeded',
         resourceType: 'api_calls',
-        currentUsage: 100,
+        currentUsage: 120,
         limit: 100,
       });
     });
 
     it('should set Retry-After header when quota exceeded', async () => {
-      // Record usage to hit limit
-      for (let i = 0; i < 100; i++) {
+      // Record 120 API calls to exceed burst limit
+      for (let i = 0; i < 120; i++) {
         await quotaManager.recordUsage('tenant_123', 'api_calls', 1);
       }
 

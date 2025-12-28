@@ -6,12 +6,21 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { GradingEngine, type AutoFixRun, type GradeResult } from '../grading-engine.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get the directory of this test file
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Navigate from packages/core/src/scoring/__tests__/ to repo root (5 levels up)
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..', '..');
+const KEYWORD_WEIGHTS_PATH = path.join(REPO_ROOT, 'data', 'keyword-weights.json');
 
 describe('GradingEngine', () => {
   let engine: GradingEngine;
 
   beforeAll(() => {
-    engine = new GradingEngine();
+    engine = new GradingEngine(undefined, KEYWORD_WEIGHTS_PATH);
   });
 
   // ============================================================================

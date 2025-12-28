@@ -139,7 +139,7 @@ export class AuditQueryService {
     });
 
     const hasMore = filters.limit
-      ? filtered.length >= filters.limit && filtered.length < total
+      ? (filters.offset || 0) + filtered.length < total
       : false;
 
     const nextOffset = hasMore && filters.limit ? (filters.offset || 0) + filters.limit : undefined;
