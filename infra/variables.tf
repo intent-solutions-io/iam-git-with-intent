@@ -311,3 +311,31 @@ variable "artifact_signed_url_expiry_minutes" {
   type        = number
   default     = 15
 }
+
+# ============================================================================
+# Epic B: Multi-Source Webhook Receiver Configuration
+# ============================================================================
+
+variable "webhook_receiver_image" {
+  description = "Docker image for multi-source webhook receiver"
+  type        = string
+  default     = ""
+}
+
+variable "webhook_rate_limit_per_minute" {
+  description = "Maximum webhooks per minute per tenant per source"
+  type        = number
+  default     = 100
+}
+
+variable "webhook_require_signature" {
+  description = "Require HMAC signature verification (always true in prod)"
+  type        = bool
+  default     = true
+}
+
+variable "webhook_topic_prefix" {
+  description = "Prefix for Pub/Sub webhook topics"
+  type        = string
+  default     = "gwi"
+}

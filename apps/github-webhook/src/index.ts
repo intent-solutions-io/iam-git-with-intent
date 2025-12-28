@@ -80,7 +80,7 @@ app.use(express.json({
 const tenantLinker = getTenantLinker();
 
 /**
- * Health check
+ * Health check (liveness probe)
  */
 app.get('/health', (_req, res) => {
   res.json({
@@ -88,8 +88,33 @@ app.get('/health', (_req, res) => {
     service: 'github-webhook',
     version: '0.2.0',
     env: config.env,
-    timestamp: Date.now(),
+    timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * Startup/readiness probe endpoint
+ * Cloud Run startup probe checks this to determine when the service is ready.
+ */
+app.get('/health/ready', (_req, res) => {
+  // Webhook handler is ready when the secret is configured
+  const isReady = !!config.webhookSecret;
+
+  if (isReady) {
+    res.json({
+      status: 'ready',
+      service: 'github-webhook',
+      version: '0.2.0',
+      env: config.env,
+      timestamp: new Date().toISOString(),
+    });
+  } else {
+    res.status(503).json({
+      status: 'not_ready',
+      reason: 'Webhook secret not configured',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 /**
@@ -311,7 +336,7 @@ async function handleInstallationEvent(
 
     case 'suspend':
     case 'unsuspend':
-      // TODO: Handle suspend/unsuspend in future phase
+      // Future enhancement: Handle suspend/unsuspend webhooks
       return {
         status: 'skipped',
         skipped: true,

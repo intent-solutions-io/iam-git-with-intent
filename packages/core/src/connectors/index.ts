@@ -180,3 +180,6 @@ export {
   FederatedRegistryClient,
   createFederatedRegistry,
 } from './federation.js';
+
+// Testing utilities (B3.7)
+export * as testing from './testing/index.js';

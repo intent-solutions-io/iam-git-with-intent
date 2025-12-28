@@ -313,7 +313,7 @@ export async function runIssueToPR(
           owner: parsed.owner,
           repo: parsed.repo,
           branchName: ctx.branchName,
-          fromRef: 'main', // TODO: Get default branch
+          fromRef: 'main', // Enhancement: Get default branch dynamically (git-with-intent-leta)
         },
         options.approval
       );

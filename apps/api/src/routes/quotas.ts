@@ -17,9 +17,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type {
   QuotaManager,
-  QuotaResourceType,
   QuotaPeriod,
-  QuotaEnforcement,
 } from '@gwi/core';
 import {
   expressRequireAuth,
@@ -94,7 +92,7 @@ const UpdateQuotaSchema = z.object({
 /**
  * Assign quota to tenant request
  */
-const AssignQuotaSchema = z.object({
+const _AssignQuotaSchema = z.object({
   quotaId: z.string(),
   customLimit: z.number().int().positive().optional(),
 });
@@ -454,7 +452,7 @@ export function createQuotaRoutes(quotaManager: QuotaManager): Router {
         const updated = await quotaManager.getQuota(quotaId);
         // Note: QuotaManager doesn't expose updateQuota, so we'll need to add it
         // For now, return the existing quota
-        // TODO: Add updateQuota method to QuotaManager
+        // Missing functionality tracked in git-with-intent-wcth
 
         logger.info('Quota definition updated', {
           eventName: 'quotas.admin.updated',
@@ -603,7 +601,7 @@ export function createQuotaRoutes(quotaManager: QuotaManager): Router {
         }
 
         // Remove the assignment (via QuotaStore directly)
-        // TODO: Expose removeAssignment on QuotaManager
+        // Missing functionality tracked in git-with-intent-79wu
         // await quotaManager.removeAssignment(assignmentId);
 
         logger.info('Quota assignment removed', {

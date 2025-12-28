@@ -357,7 +357,7 @@ export function exampleManualUsageRecording(quotaManager: QuotaManager): Router 
       }
 
       res.json(result);
-    } catch (err) {
+    } catch {
       // Don't record usage on failure
       res.status(500).json({ error: 'AnalysisFailed' });
     }

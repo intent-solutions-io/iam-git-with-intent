@@ -4,7 +4,7 @@
 
 **Version:** 0.3.0 | **Status:** Active development. Core PR automation works. RBAC & governance complete. CI/CD operational.
 
-**Security:** [Security policy](SECURITY.md) | Comprehensive audit completed Dec 2025 | Responsible disclosure program
+**Security:** [Security policy](000-docs/004-BL-POLI-security-policy.md) | Comprehensive audit completed Dec 2025 | Responsible disclosure program
 
 ---
 
@@ -653,7 +653,7 @@ This repo is currently private and under active development. If you're intereste
 
 ## Security
 
-See [SECURITY.md](SECURITY.md) for our security policy, responsible disclosure program, and security posture.
+See [Security Policy](000-docs/004-BL-POLI-security-policy.md) for our security policy, responsible disclosure program, and security posture.
 
 **TL;DR:**
 - ✅ Comprehensive security audit completed (Dec 2025)

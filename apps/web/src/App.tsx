@@ -11,6 +11,7 @@ import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
+import { Signup } from './pages/Signup';
 import { Dashboard } from './pages/Dashboard';
 import { Runs } from './pages/Runs';
 import { RunDetail } from './pages/RunDetail';
@@ -55,6 +56,7 @@ export function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
             {/* Product pages */}
             <Route path="/features" element={<Features />} />
             <Route path="/install" element={<Install />} />

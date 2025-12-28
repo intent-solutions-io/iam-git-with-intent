@@ -8,18 +8,24 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { KeywordMatcher } from '../keyword-matcher.js';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// Get the directory of this test file
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Navigate from packages/core/src/scoring/__tests__/ to repo root (5 levels up)
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..', '..');
 
 describe('KeywordMatcher', () => {
   let matcher: KeywordMatcher;
 
   beforeAll(() => {
-    // Ensure data directory and keyword-weights.json exist
-    const dataDir = path.join(process.cwd(), 'data');
-    const weightsPath = path.join(dataDir, 'keyword-weights.json');
+    // Resolve weights file relative to repo root (not cwd)
+    const weightsPath = path.join(REPO_ROOT, 'data', 'keyword-weights.json');
 
     if (!fs.existsSync(weightsPath)) {
       throw new Error(
-        `keyword-weights.json not found at ${weightsPath}. Run setup first.`
+        `keyword-weights.json not found at ${weightsPath}. Ensure data/keyword-weights.json exists in repo root.`
       );
     }
 

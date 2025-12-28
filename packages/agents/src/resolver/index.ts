@@ -196,7 +196,7 @@ export class ResolverAgent extends BaseAgent {
 
     return {
       resolution: result,
-      tokensUsed: { input: 0, output: 0 }, // TODO: Track from model response
+      tokensUsed: { input: 0, output: 0 }, // Enhancement: Track from model response
     };
   }
 

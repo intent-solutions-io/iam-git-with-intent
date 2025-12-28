@@ -182,6 +182,126 @@ function validateBody<T>(schema: z.ZodSchema<T>) {
 }
 
 // =============================================================================
+// Authentication Middleware (Phase 30+: Security hardening)
+// =============================================================================
+
+/** Check if running in development environment */
+function isDevEnvironment(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.GWI_ENV !== 'production';
+}
+
+/** Publisher context attached to authenticated requests */
+interface PublisherContext {
+  publisherId: string;
+  isServiceAccount: boolean;
+}
+
+/** Extended request with publisher context */
+interface AuthenticatedRequest extends Request {
+  publisher?: PublisherContext;
+}
+
+/**
+ * Publisher authentication middleware
+ *
+ * Validates that the request comes from an authenticated publisher.
+ * In production: Requires valid Authorization header (Bearer token or API key).
+ * In development: Accepts X-Debug-Publisher header for testing.
+ */
+function publisherAuthMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  // DEVELOPMENT ONLY: Accept debug header for testing
+  const debugPublisher = req.headers['x-debug-publisher'] as string;
+  if (debugPublisher && isDevEnvironment()) {
+    req.publisher = {
+      publisherId: debugPublisher,
+      isServiceAccount: false,
+    };
+    return next();
+  }
+
+  // Check for Authorization header
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({
+      error: 'Authentication required',
+      message: 'Missing Authorization header',
+      hint: isDevEnvironment() ? 'Set X-Debug-Publisher header for development' : undefined,
+    });
+  }
+
+  // Bearer token authentication
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+
+    // Validate API key format (gwi_pub_<base64>)
+    if (token.startsWith('gwi_pub_')) {
+      // API key authentication
+      // TODO: Validate against stored API keys (tracked in git-with-intent-auth1)
+      const publisherId = validatePublisherApiKey(token);
+      if (!publisherId) {
+        return res.status(401).json({
+          error: 'Invalid API key',
+          message: 'The provided API key is invalid or expired',
+        });
+      }
+      req.publisher = {
+        publisherId,
+        isServiceAccount: false,
+      };
+      return next();
+    }
+
+    // Firebase/JWT token authentication
+    // TODO: Implement Firebase token verification (tracked in git-with-intent-auth2)
+    return res.status(401).json({
+      error: 'Invalid token',
+      message: 'Bearer token authentication not yet implemented',
+      hint: 'Use API key authentication (gwi_pub_*) or contact support',
+    });
+  }
+
+  return res.status(401).json({
+    error: 'Invalid authorization',
+    message: 'Authorization header must use Bearer scheme',
+  });
+}
+
+/**
+ * Validate publisher API key
+ * Returns publisher ID if valid, null otherwise.
+ *
+ * TODO: Look up key in database/Secret Manager (tracked in git-with-intent-auth1)
+ * For now, validates format and uses embedded publisher ID for development.
+ */
+function validatePublisherApiKey(apiKey: string): string | null {
+  // API key format: gwi_pub_<base64(publisherId:secret)>
+  if (!apiKey.startsWith('gwi_pub_')) {
+    return null;
+  }
+
+  try {
+    const encoded = apiKey.slice(8);
+    const decoded = Buffer.from(encoded, 'base64').toString('utf-8');
+    const [publisherId] = decoded.split(':');
+
+    if (!publisherId || publisherId.length < 1) {
+      return null;
+    }
+
+    // In development, accept any well-formed key
+    if (isDevEnvironment()) {
+      return publisherId;
+    }
+
+    // In production, validate against stored keys
+    // TODO: Query Firestore/Secret Manager for valid keys (tracked in git-with-intent-auth1)
+    return null; // Reject all keys in production until proper validation is implemented
+  } catch {
+    return null;
+  }
+}
+
+// =============================================================================
 // Search Endpoint
 // =============================================================================
 
@@ -406,10 +526,10 @@ router.get('/v1/connectors/:id/:version/signature', async (req, res) => {
  * Requires authentication and publisher permissions.
  * Use POST /v1/publish for full publish with tarball upload.
  */
-router.post('/v1/connectors', async (req, res) => {
+router.post('/v1/connectors', publisherAuthMiddleware, async (req: AuthenticatedRequest, res) => {
   try {
-    // TODO: Add authentication middleware
-    const publishedBy = req.headers['x-user-id'] as string || 'anonymous';
+    // Publisher authenticated via middleware
+    const publishedBy = req.publisher?.publisherId || 'anonymous';
 
     const { connectorId, version, manifest, signature, tarballChecksum, changelog, releaseNotes, prerelease } = req.body;
 
@@ -456,9 +576,9 @@ router.post('/v1/connectors', async (req, res) => {
   }
 });
 
-/** Publish rate limiter */
+/** Publish rate limiter (uses authenticated publisher ID) */
 const publishRateLimiter = rateLimit({
-  keyFn: (req) => `publish:${req.headers['x-user-id'] || req.ip}`,
+  keyFn: (req: AuthenticatedRequest) => `publish:${req.publisher?.publisherId || req.ip}`,
   maxRequests: MAX_PUBLISH_PER_WINDOW,
   windowMs: RATE_LIMIT_WINDOW_MS,
   message: 'Too many publish requests, please try again later',
@@ -474,7 +594,7 @@ const publishRateLimiter = rateLimit({
  * - Rate limiting (10 publishes per 15 minutes per publisher)
  * - Tarball size limit (50MB)
  * - Schema validation
- * - Publisher authorization
+ * - Publisher authorization (requires valid API key or Bearer token)
  *
  * Body:
  * - manifest: ConnectorManifest object
@@ -483,26 +603,13 @@ const publishRateLimiter = rateLimit({
  */
 router.post(
   '/v1/publish',
+  publisherAuthMiddleware,
   publishRateLimiter,
   validateBody(FullPublishRequestSchema),
-  async (req, res) => {
+  async (req: AuthenticatedRequest, res) => {
   try {
-    // Authentication: require user ID or API key
-    const publishedBy = req.headers['x-user-id'] as string;
-    const apiKey = req.headers['x-api-key'] as string;
-
-    // Must have either user ID or API key
-    if (!publishedBy && !apiKey) {
-      return res.status(401).json({
-        error: 'Authentication required',
-        message: 'Provide x-user-id header or x-api-key header',
-      });
-    }
-
-    // Validate API key if provided
-    if (apiKey && process.env.REGISTRY_API_KEY && apiKey !== process.env.REGISTRY_API_KEY) {
-      return res.status(401).json({ error: 'Invalid API key' });
-    }
+    // Publisher authenticated via middleware
+    const publishedBy = req.publisher?.publisherId || 'anonymous';
 
     const { manifest, tarball, signature } = req.body;
 
@@ -514,7 +621,7 @@ router.post(
     const existingConnector = await service.getConnector(connectorId);
     if (existingConnector) {
       // Check if publisher owns this connector
-      const publisher = await service.getPublisher(publishedBy || apiKey);
+      const publisher = await service.getPublisher(publishedBy);
       if (!publisher) {
         return res.status(403).json({
           error: 'Publisher not registered',
