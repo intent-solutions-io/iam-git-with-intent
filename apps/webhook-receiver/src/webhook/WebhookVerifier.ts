@@ -258,7 +258,7 @@ export class WebhookVerifier {
         valid: isValid,
         error: isValid ? undefined : 'Signature verification failed',
       };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         error: 'Invalid signature encoding',
