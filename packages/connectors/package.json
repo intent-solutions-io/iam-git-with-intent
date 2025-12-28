@@ -25,6 +25,14 @@
     "./github": {
       "types": "./dist/github/index.d.ts",
       "import": "./dist/github/index.js"
+    },
+    "./jira": {
+      "types": "./dist/jira/index.d.ts",
+      "import": "./dist/jira/index.js"
+    },
+    "./vertex-ai": {
+      "types": "./dist/vertex-ai/index.d.ts",
+      "import": "./dist/vertex-ai/index.js"
     }
   },
   "scripts": {
