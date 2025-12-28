@@ -26,7 +26,7 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { z } from 'zod';
-import { createEngine, idempotencyMiddleware, requireIdempotency, getIdempotencyMetrics } from '@gwi/engine';
+import { createEngine, idempotencyMiddleware, getIdempotencyMetrics } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 import {
   getTenantStore,
@@ -47,9 +47,6 @@ import {
   checkConcurrencyLimit,
   type Role,
   // A7: Telemetry
-  createContextFromRequest,
-  runWithContextAsync,
-  type TelemetryContext,
   generateTraceId,
   type Action,
   type PlanId,

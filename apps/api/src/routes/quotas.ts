@@ -17,9 +17,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type {
   QuotaManager,
-  QuotaResourceType,
   QuotaPeriod,
-  QuotaEnforcement,
 } from '@gwi/core';
 import {
   expressRequireAuth,
@@ -94,7 +92,7 @@ const UpdateQuotaSchema = z.object({
 /**
  * Assign quota to tenant request
  */
-const AssignQuotaSchema = z.object({
+const _AssignQuotaSchema = z.object({
   quotaId: z.string(),
   customLimit: z.number().int().positive().optional(),
 });
