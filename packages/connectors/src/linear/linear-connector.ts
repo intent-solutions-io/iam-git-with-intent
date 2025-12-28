@@ -229,7 +229,7 @@ export class LinearConnector extends BaseConnector implements IConnector {
           });
         }
       }
-    } catch (error) {
+    } catch {
       // Rate limit query might not be supported
       checks.push({
         name: 'rate_limit',
