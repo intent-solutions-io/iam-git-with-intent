@@ -58,7 +58,7 @@ export default defineConfig({
     // ===================================================================
 
     coverage: {
-      enabled: true,
+      enabled: false, // Disabled until coverage provider properly configured across all packages
       provider: 'v8', // v8 is faster than istanbul/c8
       reporter: ['text', 'text-summary', 'json', 'html', 'lcov'],
       reportsDirectory: './coverage',
