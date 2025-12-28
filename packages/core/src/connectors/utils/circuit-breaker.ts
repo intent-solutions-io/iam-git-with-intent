@@ -470,7 +470,7 @@ export class CircuitBreaker implements ICircuitBreaker {
       }
 
       return isHealthy;
-    } catch (error) {
+    } catch {
       // Health check failed
       return false;
     }

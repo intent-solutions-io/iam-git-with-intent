@@ -171,6 +171,7 @@ export class MockConnector implements Connector {
    * Create a mock tool with configurable behavior
    */
   private createMockTool(name: string): ToolSpec {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const connector = this;
 
     return {
