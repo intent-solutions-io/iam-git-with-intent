@@ -23,7 +23,7 @@ import {
 /**
  * TimeGPT API forecast request
  */
-const TimeGPTForecastRequestSchema = z.object({
+const _TimeGPTForecastRequestSchema = z.object({
   /** Time series data in long format */
   y: z.record(z.unknown()),
   /** Column containing timestamps */
@@ -47,12 +47,12 @@ const TimeGPTForecastRequestSchema = z.object({
   clean_ex_first: z.boolean().optional(),
 });
 
-type TimeGPTForecastRequest = z.infer<typeof TimeGPTForecastRequestSchema>;
+type TimeGPTForecastRequest = z.infer<typeof _TimeGPTForecastRequestSchema>;
 
 /**
  * TimeGPT API response
  */
-const TimeGPTAPIResponseSchema = z.object({
+const _TimeGPTAPIResponseSchema = z.object({
   data: z.object({
     forecast: z.array(z.object({
       ds: z.string(),
@@ -69,7 +69,7 @@ const TimeGPTAPIResponseSchema = z.object({
   requestID: z.string().optional(),
 });
 
-type TimeGPTAPIResponse = z.infer<typeof TimeGPTAPIResponseSchema>;
+type TimeGPTAPIResponse = z.infer<typeof _TimeGPTAPIResponseSchema>;
 
 // =============================================================================
 // Error Types
