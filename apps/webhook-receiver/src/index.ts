@@ -36,8 +36,8 @@ import {
 } from './types.js';
 import { WebhookVerifier, extractEventId, extractEventType, extractSignature } from './webhook/WebhookVerifier.js';
 import { WebhookRouter } from './pubsub/WebhookRouter.js';
-import { RateLimiter, getRateLimiter } from './ratelimit/RateLimiter.js';
-import { createLogger, StructuredLogger } from './logger.js';
+import { getRateLimiter } from './ratelimit/RateLimiter.js';
+import { createLogger } from './logger.js';
 import { createSecretManager } from './secrets.js';
 
 // =============================================================================
