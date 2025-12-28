@@ -264,7 +264,7 @@ describe('WebhookVerifier', () => {
 
       const result = await verifier.verify(event, tenantId, '{}');
       expect(result.valid).toBe(false);
-      expect(result.error).toContain('timestamp');
+      expect(result.error).toContain('Timestamp');
     });
   });
 
