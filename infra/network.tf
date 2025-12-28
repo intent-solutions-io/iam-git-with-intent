@@ -165,65 +165,26 @@ resource "google_compute_router_nat" "gwi_nat" {
 # =============================================================================
 # Firewall Rules
 # =============================================================================
-
-# Allow internal communication between services
-resource "google_compute_firewall" "allow_internal" {
-  count = var.enable_vpc_connector ? 1 : 0
-
-  name        = "${var.app_name}-allow-internal-${var.environment}"
-  project     = var.project_id
-  network     = google_compute_network.gwi_vpc[0].name
-  description = "Allow internal communication between GWI services"
-
-  allow {
-    protocol = "tcp"
-    ports    = ["443", "8080"]
-  }
-
-  allow {
-    protocol = "icmp"
-  }
-
-  source_ranges = [var.vpc_connector_cidr]
-  target_tags   = ["gwi-service"]
-}
-
-# Allow health checks from Google's health check IPs
-resource "google_compute_firewall" "allow_health_checks" {
-  count = var.enable_vpc_connector ? 1 : 0
-
-  name        = "${var.app_name}-allow-health-checks-${var.environment}"
-  project     = var.project_id
-  network     = google_compute_network.gwi_vpc[0].name
-  description = "Allow GCP health check probes"
-
-  allow {
-    protocol = "tcp"
-    ports    = ["8080"]
-  }
-
-  # Google's health check IP ranges
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
-  target_tags   = ["gwi-service"]
-}
-
-# Deny all other ingress by default (defense in depth)
-resource "google_compute_firewall" "deny_all_ingress" {
-  count = var.enable_vpc_connector ? 1 : 0
-
-  name        = "${var.app_name}-deny-all-ingress-${var.environment}"
-  project     = var.project_id
-  network     = google_compute_network.gwi_vpc[0].name
-  description = "Deny all other ingress traffic"
-  priority    = 65534
-
-  deny {
-    protocol = "all"
-  }
-
-  source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["gwi-service"]
-}
+#
+# NOTE: Firewall rules with target_tags are NOT applicable to Cloud Run services.
+# Cloud Run is a fully managed serverless platform that:
+# - Doesn't use Compute Engine VMs (no network tags)
+# - Uses VPC Serverless Connector only for EGRESS traffic
+# - Controls INGRESS via Cloud Run IAM policies and ingress settings
+# - Doesn't require firewall rules for health checks (managed automatically)
+#
+# The VPC and VPC Serverless Connector are used ONLY for:
+# - Egress traffic from Cloud Run to VPC resources
+# - Private Google Access to GCP services (Firestore, Secret Manager)
+# - Cloud NAT for outbound internet access
+#
+# Security is enforced via:
+# - Cloud Run IAM policies (service_auth.tf)
+# - Cloud Run ingress settings (internal, internal-and-cloud-load-balancing, all)
+# - Service-to-service authentication (IAM invoker roles)
+#
+# If migrating to Compute Engine or GKE in the future, firewall rules would be required.
+# =============================================================================
 
 # =============================================================================
 # Private Service Connect (for Google APIs)

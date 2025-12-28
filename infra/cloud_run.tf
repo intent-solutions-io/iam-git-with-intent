@@ -132,6 +132,8 @@ resource "google_cloud_run_service" "a2a_gateway" {
         {
           "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.gateway.min_instances)
           "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.gateway.max_instances)
+          "autoscaling.knative.dev/target"       = tostring(var.scaling_behavior.target_cpu_utilization)
+          "autoscaling.knative.dev/scaleDownDelay" = "${var.scaling_behavior.scale_down_delay_seconds}s"
           "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.gateway.cpu_throttling)
           "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.gateway.startup_cpu_boost)
         },
@@ -272,6 +274,8 @@ resource "google_cloud_run_service" "github_webhook" {
         {
           "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.webhook.min_instances)
           "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.webhook.max_instances)
+          "autoscaling.knative.dev/target"       = tostring(var.scaling_behavior.target_cpu_utilization)
+          "autoscaling.knative.dev/scaleDownDelay" = "${var.scaling_behavior.scale_down_delay_seconds}s"
           "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.webhook.cpu_throttling)
           "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.webhook.startup_cpu_boost)
         },
@@ -433,6 +437,8 @@ resource "google_cloud_run_service" "gwi_api" {
         {
           "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.api.min_instances)
           "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.api.max_instances)
+          "autoscaling.knative.dev/target"       = tostring(var.scaling_behavior.target_cpu_utilization)
+          "autoscaling.knative.dev/scaleDownDelay" = "${var.scaling_behavior.scale_down_delay_seconds}s"
           "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.api.cpu_throttling)
           "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.api.startup_cpu_boost)
         },
@@ -664,6 +670,8 @@ resource "google_cloud_run_service" "gwi_worker" {
         {
           "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.worker.min_instances)
           "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.worker.max_instances)
+          "autoscaling.knative.dev/target"       = tostring(var.scaling_behavior.target_cpu_utilization)
+          "autoscaling.knative.dev/scaleDownDelay" = "${var.scaling_behavior.scale_down_delay_seconds}s"
           "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.worker.cpu_throttling)
           "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.worker.startup_cpu_boost)
         },
