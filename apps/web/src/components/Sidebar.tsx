@@ -99,7 +99,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {user.photoURL && (
                   <img
                     src={user.photoURL}
-                    alt=""
+                    alt={user.displayName || 'User avatar'}
                     className="w-8 h-8 rounded-full"
                   />
                 )}

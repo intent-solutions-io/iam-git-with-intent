@@ -218,13 +218,13 @@ app.get('/health/ready', (_req, res) => {
       app: config.appName,
       version: config.appVersion,
       agents: Object.keys(agentEngines),
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     });
   } else {
     res.status(503).json({
       status: 'not_ready',
       reason: 'No agent engines configured',
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     });
   }
 });

@@ -514,17 +514,53 @@ const AdminOps = lazy(() => import('./pages/AdminOps'));
 
 **Workaround**: Service worker (planned for Epic F5)
 
-### Issue: No Firestore security rules
+### Issue: Firestore security rules (SECURITY PRIORITY)
 
-**Workaround**: Add rules (high priority)
+**Status**: Tracked in git-with-intent-fsr1 (high priority)
+
+**Required before production deployment**:
+- Implement comprehensive Firestore security rules
+- Enforce RBAC model at database level
+- Validate all client-side writes
 
 ```javascript
-// firestore.rules
-match /gwi_runs/{runId} {
-  allow read: if request.auth != null &&
-    resource.data.tenantId in getUserTenants(request.auth.uid);
+// firestore.rules (example implementation)
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper: Get user's memberships
+    function getUserMembership(tenantId) {
+      return get(/databases/$(database)/documents/gwi_memberships/$(request.auth.uid + '_' + tenantId));
+    }
+
+    // Helper: Check if user has minimum role
+    function hasMinRole(tenantId, minRole) {
+      let membership = getUserMembership(tenantId);
+      let roleHierarchy = {'viewer': 0, 'member': 1, 'admin': 2, 'owner': 3};
+      return membership.data.status == 'active' &&
+        roleHierarchy[membership.data.role] >= roleHierarchy[minRole];
+    }
+
+    // Runs: Read requires tenant membership, write requires admin
+    match /gwi_runs/{runId} {
+      allow read: if request.auth != null &&
+        hasMinRole(resource.data.tenantId, 'member');
+      allow write: if request.auth != null &&
+        hasMinRole(resource.data.tenantId, 'admin');
+    }
+
+    // Tenants: Members can read, owners can update
+    match /gwi_tenants/{tenantId} {
+      allow read: if request.auth != null &&
+        hasMinRole(tenantId, 'member');
+      allow update: if request.auth != null &&
+        hasMinRole(tenantId, 'owner');
+    }
+  }
 }
 ```
+
+**Note**: Until implemented, rely on API-level authentication via Cloud Functions.
 
 ---
 

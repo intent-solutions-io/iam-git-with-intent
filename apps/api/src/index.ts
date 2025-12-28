@@ -2800,7 +2800,8 @@ app.post('/tenants/:tenantId/billing/checkout', authMiddleware, tenantAuthMiddle
     let customerId = (tenant as any).stripeCustomerId;
     if (!customerId) {
       customerId = await stripe.createCustomer(tenantId, req.context!.email || '', tenant.displayName);
-      // DATA INTEGRITY: Need to persist customerId (tracked in git-with-intent-bf0k)
+      // Persist the customer ID to avoid creating duplicates
+      await tenantStore.updateTenant(tenantId, { stripeCustomerId: customerId } as any);
     }
 
     // Create checkout session

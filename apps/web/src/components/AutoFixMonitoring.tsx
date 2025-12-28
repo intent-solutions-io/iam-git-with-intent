@@ -284,8 +284,24 @@ export const AutoFixMonitoring: React.FC = () => {
   useEffect(() => {
     if (!autoRefresh) return;
 
-    const interval = setInterval(fetchMetrics, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
+    let timeoutId: NodeJS.Timeout;
+    let isMounted = true;
+
+    const poll = async () => {
+      await fetchMetrics();
+      // Schedule next poll only after current one completes (prevents overlapping)
+      if (isMounted && autoRefresh) {
+        timeoutId = setTimeout(poll, 30000); // Refresh every 30s
+      }
+    };
+
+    // Start first poll after initial delay
+    timeoutId = setTimeout(poll, 30000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [autoRefresh]);
 
   if (loading && !metrics) {

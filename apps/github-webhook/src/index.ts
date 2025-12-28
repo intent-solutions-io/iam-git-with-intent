@@ -88,7 +88,7 @@ app.get('/health', (_req, res) => {
     service: 'github-webhook',
     version: '0.2.0',
     env: config.env,
-    timestamp: Date.now(),
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -106,13 +106,13 @@ app.get('/health/ready', (_req, res) => {
       service: 'github-webhook',
       version: '0.2.0',
       env: config.env,
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     });
   } else {
     res.status(503).json({
       status: 'not_ready',
       reason: 'Webhook secret not configured',
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     });
   }
 });

@@ -141,8 +141,8 @@ export class KeywordMatcher {
     const lowerText = text.toLowerCase();
     const words = lowerText.split(/\s+/);
 
-    // Match each keyword
-    for (const [keyword, keywordWeight] of Array.from(this.allKeywords.entries())) {
+    // Match each keyword (iterate directly over Map entries for better performance)
+    for (const [keyword, keywordWeight] of this.allKeywords) {
       for (let i = 0; i < words.length; i++) {
         const word = words[i];
 

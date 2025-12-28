@@ -31,9 +31,32 @@ const ROLE_HIERARCHY: Record<RBACRole, number> = {
 };
 
 /**
+ * Map data layer role (from Firestore) to application layer role.
+ * Data layer uses lowercase: 'owner', 'admin', 'member'
+ * Application layer uses uppercase: 'OWNER', 'ADMIN', 'DEVELOPER', 'VIEWER'
+ */
+function mapDataRoleToAppRole(dataRole: string | undefined): RBACRole | undefined {
+  if (!dataRole) return undefined;
+
+  const roleMapping: Record<string, RBACRole> = {
+    'owner': 'OWNER',
+    'admin': 'ADMIN',
+    'member': 'DEVELOPER',
+    'viewer': 'VIEWER',
+    // Also support uppercase (in case already mapped)
+    'OWNER': 'OWNER',
+    'ADMIN': 'ADMIN',
+    'DEVELOPER': 'DEVELOPER',
+    'VIEWER': 'VIEWER',
+  };
+
+  return roleMapping[dataRole];
+}
+
+/**
  * Check if user's role meets minimum requirement
  */
-function hasMinimumRole(userRole: RBACRole, requiredRole: RBACRole): boolean {
+export function hasMinimumRole(userRole: RBACRole, requiredRole: RBACRole): boolean {
   return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
 }
 
@@ -56,7 +79,8 @@ export function ProtectedRoute({ children, requireRole }: ProtectedRouteProps) {
 
   // If role is required, check user's role in current tenant
   if (requireRole && currentTenant) {
-    const userRole = currentTenant.role as RBACRole;
+    // Safely map data layer role to application role
+    const userRole = mapDataRoleToAppRole(currentTenant.role);
 
     if (!userRole || !hasMinimumRole(userRole, requireRole)) {
       return (

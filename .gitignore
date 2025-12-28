@@ -51,6 +51,7 @@ Thumbs.db
 # Test artifacts
 __snapshots__/
 *.snap
+test-results/
 
 # Internal documentation (strategy, security, runbooks, planning)
 # These contain operational details not meant for public consumption
