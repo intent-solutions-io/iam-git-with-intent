@@ -122,15 +122,17 @@ describe('Analytics Queries', () => {
   function createSampleData() {
     // Create runs for repo1
     for (let i = 1; i <= 5; i++) {
+      const runId = `repo1-run-${i}`;
+      const createdAt = `2025-12-${20 + Math.floor(i / 2)}T10:00:00Z`;
+
       queries.runs.create({
-        id: `repo1-run-${i}`,
+        id: runId,
         issue_number: 100 + i,
         pr_number: null,
         pr_url: null,
         repo_owner: 'owner1',
         repo_name: 'repo1',
         status: i <= 4 ? 'success' : 'failure',
-        created_at: `2025-12-${20 + Math.floor(i / 2)}T10:00:00Z`,
         started_at: null,
         completed_at: null,
         trigger_source: 'manual',
@@ -148,10 +150,9 @@ describe('Analytics Queries', () => {
         error_stack: null
       });
 
-      // Update duration_ms separately (excluded from create)
-      queries.runs.update(`repo1-run-${i}`, {
-        duration_ms: 5000 + i * 1000
-      });
+      // Update duration_ms and created_at (created_at is excluded from create method)
+      db.prepare('UPDATE autofix_runs SET duration_ms = ?, created_at = ? WHERE id = ?')
+        .run(5000 + i * 1000, createdAt, runId);
 
       // Add AI calls
       queries.aiCalls.create({
@@ -217,15 +218,17 @@ describe('Analytics Queries', () => {
 
     // Create runs for repo2
     for (let i = 1; i <= 3; i++) {
+      const runId = `repo2-run-${i}`;
+      const createdAt = `2025-12-${21 + i}T10:00:00Z`;
+
       queries.runs.create({
-        id: `repo2-run-${i}`,
+        id: runId,
         issue_number: 200 + i,
         pr_number: null,
         pr_url: null,
         repo_owner: 'owner2',
         repo_name: 'repo2',
         status: 'success',
-        created_at: `2025-12-${21 + i}T10:00:00Z`,
         started_at: null,
         completed_at: null,
         trigger_source: 'manual',
@@ -243,10 +246,9 @@ describe('Analytics Queries', () => {
         error_stack: null
       });
 
-      // Update duration_ms separately (excluded from create)
-      queries.runs.update(`repo2-run-${i}`, {
-        duration_ms: 3000 + i * 500
-      });
+      // Update duration_ms and created_at (created_at is excluded from create method)
+      db.prepare('UPDATE autofix_runs SET duration_ms = ?, created_at = ? WHERE id = ?')
+        .run(3000 + i * 500, createdAt, runId);
 
       queries.aiCalls.create({
         run_id: `repo2-run-${i}`,
@@ -274,8 +276,8 @@ describe('Analytics Queries', () => {
         typecheck_errors: 0,
         complexity_delta: -1,
         tests_run: 50,
-        tests_passed: 48 + i,
-        tests_failed: 2 - i,
+        tests_passed: Math.min(48 + i, 50), // Cap at tests_run to prevent >100% pass rate
+        tests_failed: Math.max(2 - i, 0),    // Can't be negative
         tests_skipped: 0,
         test_duration_ms: 3000,
         coverage_before: 80.0,
