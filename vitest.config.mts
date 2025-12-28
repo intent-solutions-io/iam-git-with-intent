@@ -84,6 +84,7 @@ export default defineConfig({
         '**/dist/**',
         '**/*.config.*',
         '**/generated/**',
+        '**/run-prediction/**', // Epic I1 - moved to @gwi/forecasting package
       ],
 
       // Report uncovered files
