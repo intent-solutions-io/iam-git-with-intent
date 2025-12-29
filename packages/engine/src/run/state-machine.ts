@@ -47,6 +47,9 @@
  * Terminal states: completed, failed, cancelled
  * - Once a run reaches a terminal state, no transitions are allowed
  *
+ * Non-terminal waiting states: awaiting_approval, waiting_external
+ * - These are paused states that can resume to running
+ *
  * @module @gwi/engine/run/state-machine
  */
 
@@ -207,6 +210,8 @@ export function getStateMachineDescription(): string {
 
 /**
  * Context for state transition (audit trail)
+ *
+ * Enhanced in C3 to capture approval and external event metadata.
  */
 export interface TransitionContext {
   /** Run ID */
@@ -214,11 +219,39 @@ export interface TransitionContext {
   /** Who requested the transition */
   userId?: string;
   /** User-initiated or system-initiated */
-  initiator?: 'user' | 'system' | 'timeout' | 'policy';
+  initiator?: 'user' | 'system' | 'timeout' | 'policy' | 'webhook' | 'approval';
   /** When the transition was requested */
   timestamp?: Date;
   /** Additional context */
   metadata?: Record<string, unknown>;
+  /** Approval context (for awaiting_approval transitions) */
+  approval?: {
+    /** What action needs approval */
+    action: string;
+    /** Approval requester */
+    requestedBy?: string;
+    /** Approval decision (approved/rejected) */
+    decision?: 'approved' | 'rejected';
+    /** When approval was decided */
+    decidedAt?: Date;
+    /** Who approved/rejected */
+    decidedBy?: string;
+    /** Approval reason or comments */
+    reason?: string;
+  };
+  /** External event context (for waiting_external transitions) */
+  externalEvent?: {
+    /** Event type (webhook, API call, scheduled) */
+    eventType: string;
+    /** Event source (GitHub, GitLab, etc.) */
+    source?: string;
+    /** Event ID or correlation ID */
+    eventId?: string;
+    /** When event was expected */
+    expectedAt?: Date;
+    /** Timeout duration in milliseconds */
+    timeoutMs?: number;
+  };
 }
 
 /**

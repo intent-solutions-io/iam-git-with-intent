@@ -21,7 +21,7 @@ describe('Run Status State Machine', () => {
       expect(RUN_STATUS_TRANSITIONS.pending).toEqual(['running', 'failed', 'cancelled']);
     });
 
-    it('should define transitions from running', () => {
+    it('should define transitions from running (C3)', () => {
       expect(RUN_STATUS_TRANSITIONS.running).toEqual([
         'completed',
         'failed',
@@ -71,6 +71,22 @@ describe('Run Status State Machine', () => {
       expect(isValidRunStatusTransition('waiting_external', 'running')).toBe(true);
     });
 
+    it('should return true for C3 approval transitions (flexible)', () => {
+      expect(isValidRunStatusTransition('running', 'awaiting_approval')).toBe(true);
+      expect(isValidRunStatusTransition('awaiting_approval', 'running')).toBe(true);
+      expect(isValidRunStatusTransition('awaiting_approval', 'cancelled')).toBe(true);
+      expect(isValidRunStatusTransition('awaiting_approval', 'completed')).toBe(true);
+      expect(isValidRunStatusTransition('awaiting_approval', 'failed')).toBe(true);
+    });
+
+    it('should return true for C3 external event transitions (flexible)', () => {
+      expect(isValidRunStatusTransition('running', 'waiting_external')).toBe(true);
+      expect(isValidRunStatusTransition('waiting_external', 'running')).toBe(true);
+      expect(isValidRunStatusTransition('waiting_external', 'failed')).toBe(true);
+      expect(isValidRunStatusTransition('waiting_external', 'completed')).toBe(true);
+      expect(isValidRunStatusTransition('waiting_external', 'cancelled')).toBe(true);
+    });
+
     it('should return false for invalid transitions', () => {
       expect(isValidRunStatusTransition('pending', 'completed')).toBe(false);
       expect(isValidRunStatusTransition('completed', 'running')).toBe(false);
@@ -78,10 +94,21 @@ describe('Run Status State Machine', () => {
       expect(isValidRunStatusTransition('cancelled', 'running')).toBe(false);
     });
 
+    it('should return false for invalid C3 transitions', () => {
+      // Only pending is invalid from waiting states
+      expect(isValidRunStatusTransition('awaiting_approval', 'pending')).toBe(false);
+      expect(isValidRunStatusTransition('waiting_external', 'pending')).toBe(false);
+      // Cannot transition between waiting states
+      expect(isValidRunStatusTransition('awaiting_approval', 'waiting_external')).toBe(false);
+      expect(isValidRunStatusTransition('waiting_external', 'awaiting_approval')).toBe(false);
+    });
+
     it('should return false for self-transitions', () => {
       expect(isValidRunStatusTransition('pending', 'pending')).toBe(false);
       expect(isValidRunStatusTransition('running', 'running')).toBe(false);
       expect(isValidRunStatusTransition('completed', 'completed')).toBe(false);
+      expect(isValidRunStatusTransition('awaiting_approval', 'awaiting_approval')).toBe(false);
+      expect(isValidRunStatusTransition('waiting_external', 'waiting_external')).toBe(false);
     });
   });
 
@@ -134,12 +161,22 @@ describe('Run Status State Machine', () => {
       expect(isTerminalRunStatus('pending')).toBe(false);
       expect(isTerminalRunStatus('running')).toBe(false);
     });
+
+    it('should return false for C3 waiting states (non-terminal)', () => {
+      expect(isTerminalRunStatus('awaiting_approval')).toBe(false);
+      expect(isTerminalRunStatus('waiting_external')).toBe(false);
+    });
   });
 
   describe('isRunInProgress', () => {
     it('should return true for in-progress states', () => {
       expect(isRunInProgress('pending')).toBe(true);
       expect(isRunInProgress('running')).toBe(true);
+    });
+
+    it('should return true for C3 waiting states (paused but in-progress)', () => {
+      expect(isRunInProgress('awaiting_approval')).toBe(true);
+      expect(isRunInProgress('waiting_external')).toBe(true);
     });
 
     it('should return false for finished states', () => {
@@ -159,6 +196,11 @@ describe('Run Status State Machine', () => {
     it('should return false for in-progress states', () => {
       expect(isRunFinished('pending')).toBe(false);
       expect(isRunFinished('running')).toBe(false);
+    });
+
+    it('should return false for C3 waiting states (paused, not finished)', () => {
+      expect(isRunFinished('awaiting_approval')).toBe(false);
+      expect(isRunFinished('waiting_external')).toBe(false);
     });
   });
 });
