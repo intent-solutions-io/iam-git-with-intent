@@ -60,6 +60,94 @@ describe('buildAdjacencyList', () => {
     expect(adj.get('b')).toEqual(['c']);
     expect(adj.get('c')).toEqual([]);
   });
+
+  it('handles parallel_group by connecting dependencies to all parallel steps', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+    ];
+
+    const adj = buildAdjacencyList(steps);
+
+    // 'a' should connect to both 'b' and 'c', not to 'group'
+    expect(adj.get('a')).toEqual(expect.arrayContaining(['b', 'c']));
+    expect(adj.get('a')).not.toContain('group');
+
+    // 'group' should have no adjacency (not part of execution DAG)
+    expect(adj.get('group')).toEqual([]);
+
+    // 'b' and 'c' should have no dependents
+    expect(adj.get('b')).toEqual([]);
+    expect(adj.get('c')).toEqual([]);
+  });
+
+  it('handles parallel_group with dependents waiting for all parallel steps', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+      { id: 'd', name: 'D', type: 'approval', dependsOn: ['group'] },
+    ];
+
+    const adj = buildAdjacencyList(steps);
+
+    // 'a' should connect to 'b' and 'c'
+    expect(adj.get('a')).toEqual(expect.arrayContaining(['b', 'c']));
+
+    // Both 'b' and 'c' should connect to 'd' (fan-in synchronization)
+    expect(adj.get('b')).toEqual(['d']);
+    expect(adj.get('c')).toEqual(['d']);
+
+    // 'd' should have no dependents
+    expect(adj.get('d')).toEqual([]);
+  });
+
+  it('handles parallel_group without dependencies (entry point)', () => {
+    const steps: StepDefinition[] = [
+      { id: 'group', name: 'Group', type: 'parallel_group', parallelSteps: ['a', 'b'] },
+      { id: 'a', name: 'A', type: 'agent', agent: 'test-agent' },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'approval', dependsOn: ['group'] },
+    ];
+
+    const adj = buildAdjacencyList(steps);
+
+    // 'a' and 'b' should both connect to 'c'
+    expect(adj.get('a')).toEqual(['c']);
+    expect(adj.get('b')).toEqual(['c']);
+
+    // 'group' should have no adjacency
+    expect(adj.get('group')).toEqual([]);
+  });
+
+  it('handles nested dependencies with parallel_group', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+      { id: 'd', name: 'D', type: 'approval', dependsOn: ['group'] },
+      { id: 'e', name: 'E', type: 'approval', dependsOn: ['d'] },
+    ];
+
+    const adj = buildAdjacencyList(steps);
+
+    // 'a' → 'b', 'c'
+    expect(adj.get('a')).toEqual(expect.arrayContaining(['b', 'c']));
+
+    // 'b', 'c' → 'd'
+    expect(adj.get('b')).toEqual(['d']);
+    expect(adj.get('c')).toEqual(['d']);
+
+    // 'd' → 'e'
+    expect(adj.get('d')).toEqual(['e']);
+
+    // 'e' has no dependents
+    expect(adj.get('e')).toEqual([]);
+  });
 });
 
 describe('buildReverseAdjacencyList', () => {
@@ -218,6 +306,36 @@ describe('topologicalSort', () => {
     expect(sorted).toContain('b');
     expect(sorted).toContain('c');
   });
+
+  it('handles parallel_group in topological sort', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+      { id: 'd', name: 'D', type: 'approval', dependsOn: ['group'] },
+    ];
+
+    const sorted = topologicalSort(steps);
+
+    // 'a' should come first
+    expect(sorted[0]).toBe('a');
+
+    // 'b' and 'c' can be in any order, but both should come after 'a'
+    const bIndex = sorted.indexOf('b');
+    const cIndex = sorted.indexOf('c');
+    const aIndex = sorted.indexOf('a');
+    expect(bIndex).toBeGreaterThan(aIndex);
+    expect(cIndex).toBeGreaterThan(aIndex);
+
+    // 'd' should come after both 'b' and 'c'
+    const dIndex = sorted.indexOf('d');
+    expect(dIndex).toBeGreaterThan(bIndex);
+    expect(dIndex).toBeGreaterThan(cIndex);
+
+    // 'group' should be in the list but not in execution order
+    expect(sorted).toContain('group');
+  });
 });
 
 describe('findEntryPoints', () => {
@@ -256,6 +374,33 @@ describe('findEntryPoints', () => {
 
     expect(entries).toHaveLength(0);
   });
+
+  it('excludes parallel_group members from entry points', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+    ];
+
+    const entries = findEntryPoints(steps);
+
+    // Only 'a' should be an entry point, not 'b' or 'c' (even though they have no explicit dependsOn)
+    expect(entries).toEqual(['a']);
+  });
+
+  it('includes parallel_group itself as entry point if it has no dependencies', () => {
+    const steps: StepDefinition[] = [
+      { id: 'group', name: 'Group', type: 'parallel_group', parallelSteps: ['a', 'b'] },
+      { id: 'a', name: 'A', type: 'agent', agent: 'test-agent' },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+    ];
+
+    const entries = findEntryPoints(steps);
+
+    // The group itself is the entry point, not the parallel steps
+    expect(entries).toEqual(['group']);
+  });
 });
 
 describe('findExitPoints', () => {
@@ -282,6 +427,37 @@ describe('findExitPoints', () => {
     const exits = findExitPoints(steps);
 
     expect(exits).toHaveLength(2);
+  });
+
+  it('correctly identifies exit points with parallel_group', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+      { id: 'd', name: 'D', type: 'approval', dependsOn: ['group'] },
+    ];
+
+    const exits = findExitPoints(steps);
+
+    // Only 'd' should be an exit point (the parallel steps have dependents)
+    expect(exits).toEqual(['d']);
+  });
+
+  it('excludes parallel_group itself from exit points', () => {
+    const steps: StepDefinition[] = [
+      { id: 'a', name: 'A', type: 'approval' },
+      { id: 'group', name: 'Group', type: 'parallel_group', dependsOn: ['a'], parallelSteps: ['b', 'c'] },
+      { id: 'b', name: 'B', type: 'agent', agent: 'test-agent' },
+      { id: 'c', name: 'C', type: 'agent', agent: 'test-agent' },
+    ];
+
+    const exits = findExitPoints(steps);
+
+    // 'b' and 'c' are exit points, but not 'group' (it's not a real execution node)
+    expect(exits).toHaveLength(2);
+    expect(exits).toContain('b');
+    expect(exits).toContain('c');
   });
 });
 
@@ -348,6 +524,59 @@ describe('analyzeWorkflow', () => {
     expect(analysis.entryPoints).toEqual(['a']);
     expect(analysis.exitPoints).toEqual(['d']);
     expect(analysis.edgeCount).toBe(4);
+  });
+
+  it('analyzes workflow with parallel_group correctly', () => {
+    const workflow: WorkflowDefinition = {
+      id: 'test',
+      version: '1.0.0',
+      name: 'Test',
+      steps: [
+        { id: 'triage', name: 'Triage', type: 'agent', agent: 'triage-agent' },
+        { id: 'parallel-analysis', name: 'Parallel Analysis', type: 'parallel_group', dependsOn: ['triage'], parallelSteps: ['security-scan', 'performance-check', 'code-review'] },
+        { id: 'security-scan', name: 'Security Scan', type: 'agent', agent: 'security-scanner' },
+        { id: 'performance-check', name: 'Performance Check', type: 'agent', agent: 'performance-analyzer' },
+        { id: 'code-review', name: 'Code Review', type: 'agent', agent: 'reviewer-agent' },
+        { id: 'merge', name: 'Merge', type: 'agent', agent: 'merge-agent', dependsOn: ['parallel-analysis'] },
+      ],
+      triggers: [{ type: 'manual', config: {} }],
+    };
+
+    const analysis = analyzeWorkflow(workflow);
+
+    expect(analysis.isAcyclic).toBe(true);
+
+    // Entry point should be 'triage' (not the parallel steps)
+    expect(analysis.entryPoints).toEqual(['triage']);
+
+    // Exit point should be 'merge'
+    expect(analysis.exitPoints).toEqual(['merge']);
+
+    // Should have edges: triage→parallel-analysis, parallel-analysis→merge
+    expect(analysis.edgeCount).toBe(2);
+
+    // Should have topological order
+    expect(analysis.topologicalOrder).toBeDefined();
+    if (analysis.topologicalOrder) {
+      // 'triage' should come first
+      expect(analysis.topologicalOrder[0]).toBe('triage');
+
+      // Parallel steps should come after triage
+      const triageIndex = analysis.topologicalOrder.indexOf('triage');
+      const securityIndex = analysis.topologicalOrder.indexOf('security-scan');
+      const performanceIndex = analysis.topologicalOrder.indexOf('performance-check');
+      const reviewIndex = analysis.topologicalOrder.indexOf('code-review');
+
+      expect(securityIndex).toBeGreaterThan(triageIndex);
+      expect(performanceIndex).toBeGreaterThan(triageIndex);
+      expect(reviewIndex).toBeGreaterThan(triageIndex);
+
+      // 'merge' should come after all parallel steps
+      const mergeIndex = analysis.topologicalOrder.indexOf('merge');
+      expect(mergeIndex).toBeGreaterThan(securityIndex);
+      expect(mergeIndex).toBeGreaterThan(performanceIndex);
+      expect(mergeIndex).toBeGreaterThan(reviewIndex);
+    }
   });
 });
 
