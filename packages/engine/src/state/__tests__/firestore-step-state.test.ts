@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { FirestoreStepStateStore } from '../firestore-step-state.js';
 import { testStepStateStore } from './step-state-store.test.js';
-import type { StepOutput } from '../../step-contract/types.js';
+import type { StepInput, StepOutput } from '../../step-contract/types.js';
 
 /**
  * Check if Firestore emulator is configured
@@ -74,8 +74,8 @@ describe.skipIf(!isFirestoreEmulatorConfigured())('FirestoreStepStateStore', () 
     });
 
     it('should preserve complex objects in input/output', async () => {
-      const input = {
-        runId: 'run-1',
+      const input: StepInput = {
+        runId: '550e8400-e29b-41d4-a716-446655440000',
         stepId: 'step-1',
         tenantId: 'tenant-1',
         repo: {
@@ -88,9 +88,11 @@ describe.skipIf(!isFirestoreEmulatorConfigured())('FirestoreStepStateStore', () 
         riskMode: 'comment_only' as const,
         capabilitiesMode: 'comment-only' as const,
         queuedAt: new Date().toISOString(),
+        attemptNumber: 0,
+        maxAttempts: 3,
       };
 
-      await store.initializeStep('run-1', 'step-1', input as any);
+      await store.initializeStep('run-1', 'step-1', input);
 
       const retrieved = await store.getStepState('run-1', 'step-1');
       expect(retrieved?.input).toEqual(input);
@@ -147,12 +149,21 @@ describe.skipIf(!isFirestoreEmulatorConfigured())('FirestoreStepStateStore', () 
       await store.initializeStep('run-query', 'step-1');
       await store.initializeStep('run-query', 'step-2');
       await store.markStepStarted('run-query', 'step-1');
-      await store.markStepCompleted('run-query', 'step-1', {
-        runId: 'run-query',
+
+      const output: StepOutput = {
+        runId: '550e8400-e29b-41d4-a716-446655440000',
         stepId: 'step-1',
         resultCode: 'ok',
         summary: 'Done',
-      } as StepOutput);
+        timing: {
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          durationMs: 100,
+        },
+        requiresApproval: false,
+      };
+
+      await store.markStepCompleted('run-query', 'step-1', output);
 
       const start = Date.now();
       const pending = await store.getNextPendingSteps('run-query');
