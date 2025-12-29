@@ -68,13 +68,45 @@ export type RunType = 'triage' | 'plan' | 'resolve' | 'review' | 'autopilot';
 
 /**
  * Run status
+ *
+ * States:
+ * - pending: Run created but not yet started
+ * - running: Actively executing steps
+ * - awaiting_approval: Paused waiting for user approval (C3)
+ * - waiting_external: Paused waiting for external event (C3)
+ * - completed: All steps finished successfully
+ * - failed: Run failed due to error
+ * - cancelled: Run was cancelled by user/system
  */
-export type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type RunStatus =
+  | 'pending'
+  | 'running'
+  | 'awaiting_approval'
+  | 'waiting_external'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 /**
  * Step status
+ *
+ * States:
+ * - pending: Step not yet started
+ * - running: Step is executing
+ * - blocked: Step waiting for approval gate (C3)
+ * - waiting: Step waiting for external event (C3)
+ * - completed: Step finished successfully
+ * - failed: Step failed
+ * - skipped: Step was skipped (condition not met)
  */
-export type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+export type StepStatus =
+  | 'pending'
+  | 'running'
+  | 'blocked'
+  | 'waiting'
+  | 'completed'
+  | 'failed'
+  | 'skipped';
 
 /**
  * A single step in a multi-agent run

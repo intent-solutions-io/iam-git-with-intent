@@ -24,3 +24,9 @@ export * from './step-contract/index.js';
 
 // Re-export idempotency module (A4: Idempotency layer)
 export * from './idempotency/index.js';
+
+// Re-export workflow module (C1: Workflow definitions)
+export * from './workflow/index.js';
+
+// Re-export state module (C2: Persistent step state)
+export * from './state/index.js';

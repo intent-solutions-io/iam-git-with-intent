@@ -1,11 +1,12 @@
 /**
- * Tests for Run State Machine (A2.1)
+ * Tests for Run State Machine (A2.1, C3)
  *
  * Tests cover:
  * - Valid state transitions
  * - Invalid state transitions
  * - Terminal state detection
  * - Error context and audit information
+ * - C3: awaiting_approval and waiting_external states
  *
  * @module @gwi/engine/run/__tests__/state-machine
  */
@@ -54,6 +55,66 @@ describe('Run State Machine', () => {
       it('should reject running -> pending', () => {
         expect(isValidTransition('running', 'pending')).toBe(false);
       });
+
+      it('should allow running -> awaiting_approval (C3)', () => {
+        expect(isValidTransition('running', 'awaiting_approval')).toBe(true);
+      });
+
+      it('should allow running -> waiting_external (C3)', () => {
+        expect(isValidTransition('running', 'waiting_external')).toBe(true);
+      });
+    });
+
+    describe('from awaiting_approval (C3)', () => {
+      it('should allow awaiting_approval -> running (resume)', () => {
+        expect(isValidTransition('awaiting_approval', 'running')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> completed (auto-approve)', () => {
+        expect(isValidTransition('awaiting_approval', 'completed')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> failed (reject)', () => {
+        expect(isValidTransition('awaiting_approval', 'failed')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> cancelled', () => {
+        expect(isValidTransition('awaiting_approval', 'cancelled')).toBe(true);
+      });
+
+      it('should reject awaiting_approval -> pending', () => {
+        expect(isValidTransition('awaiting_approval', 'pending')).toBe(false);
+      });
+
+      it('should reject awaiting_approval -> waiting_external', () => {
+        expect(isValidTransition('awaiting_approval', 'waiting_external')).toBe(false);
+      });
+    });
+
+    describe('from waiting_external (C3)', () => {
+      it('should allow waiting_external -> running (external event received)', () => {
+        expect(isValidTransition('waiting_external', 'running')).toBe(true);
+      });
+
+      it('should allow waiting_external -> completed', () => {
+        expect(isValidTransition('waiting_external', 'completed')).toBe(true);
+      });
+
+      it('should allow waiting_external -> failed (timeout/error)', () => {
+        expect(isValidTransition('waiting_external', 'failed')).toBe(true);
+      });
+
+      it('should allow waiting_external -> cancelled', () => {
+        expect(isValidTransition('waiting_external', 'cancelled')).toBe(true);
+      });
+
+      it('should reject waiting_external -> pending', () => {
+        expect(isValidTransition('waiting_external', 'pending')).toBe(false);
+      });
+
+      it('should reject waiting_external -> awaiting_approval', () => {
+        expect(isValidTransition('waiting_external', 'awaiting_approval')).toBe(false);
+      });
     });
 
     describe('from terminal states', () => {
@@ -98,6 +159,14 @@ describe('Run State Machine', () => {
 
       it('should allow cancelled -> cancelled (no-op)', () => {
         expect(isValidTransition('cancelled', 'cancelled')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> awaiting_approval (no-op) (C3)', () => {
+        expect(isValidTransition('awaiting_approval', 'awaiting_approval')).toBe(true);
+      });
+
+      it('should allow waiting_external -> waiting_external (no-op) (C3)', () => {
+        expect(isValidTransition('waiting_external', 'waiting_external')).toBe(true);
       });
     });
   });
@@ -181,7 +250,27 @@ describe('Run State Machine', () => {
       expect(nextStates).toContain('completed');
       expect(nextStates).toContain('failed');
       expect(nextStates).toContain('cancelled');
-      expect(nextStates).toHaveLength(3);
+      expect(nextStates).toContain('awaiting_approval');
+      expect(nextStates).toContain('waiting_external');
+      expect(nextStates).toHaveLength(5);
+    });
+
+    it('should return correct next states for awaiting_approval (C3)', () => {
+      const nextStates = getNextValidStates('awaiting_approval');
+      expect(nextStates).toContain('running');
+      expect(nextStates).toContain('completed');
+      expect(nextStates).toContain('failed');
+      expect(nextStates).toContain('cancelled');
+      expect(nextStates).toHaveLength(4);
+    });
+
+    it('should return correct next states for waiting_external (C3)', () => {
+      const nextStates = getNextValidStates('waiting_external');
+      expect(nextStates).toContain('running');
+      expect(nextStates).toContain('completed');
+      expect(nextStates).toContain('failed');
+      expect(nextStates).toContain('cancelled');
+      expect(nextStates).toHaveLength(4);
     });
 
     it('should return empty array for terminal states', () => {
@@ -219,6 +308,13 @@ describe('Run State Machine', () => {
       expect(isTerminalState('running')).toBe(false);
     });
 
+    it('should identify awaiting_approval as non-terminal (C3)', () => {
+      expect(isTerminalState('awaiting_approval')).toBe(false);
+    });
+
+    it('should identify waiting_external as non-terminal (C3)', () => {
+      expect(isTerminalState('waiting_external')).toBe(false);
+    });
   });
 
   describe('getStateMachineDescription', () => {
@@ -232,6 +328,8 @@ describe('Run State Machine', () => {
       const description = getStateMachineDescription();
       expect(description).toContain('pending');
       expect(description).toContain('running');
+      expect(description).toContain('awaiting_approval');
+      expect(description).toContain('waiting_external');
       expect(description).toContain('completed');
       expect(description).toContain('failed');
       expect(description).toContain('cancelled');
@@ -376,6 +474,80 @@ describe('Run State Machine', () => {
 
       // Failed is terminal
       expect(isTerminalState('failed')).toBe(true);
+    });
+
+    it('should support approval gate: pending -> running -> awaiting_approval -> running -> completed (C3)', () => {
+      // Start in pending
+      validateTransition('pending', 'running');
+
+      // Hit approval gate
+      validateTransition('running', 'awaiting_approval');
+
+      // awaiting_approval is not terminal
+      expect(isTerminalState('awaiting_approval')).toBe(false);
+
+      // Approval granted, resume running
+      validateTransition('awaiting_approval', 'running');
+
+      // Complete successfully
+      validateTransition('running', 'completed');
+      expect(isTerminalState('completed')).toBe(true);
+    });
+
+    it('should support approval rejection: pending -> running -> awaiting_approval -> failed (C3)', () => {
+      // Start in pending
+      validateTransition('pending', 'running');
+
+      // Hit approval gate
+      validateTransition('running', 'awaiting_approval');
+
+      // Approval rejected
+      validateTransition('awaiting_approval', 'failed');
+      expect(isTerminalState('failed')).toBe(true);
+    });
+
+    it('should support external wait: pending -> running -> waiting_external -> running -> completed (C3)', () => {
+      // Start in pending
+      validateTransition('pending', 'running');
+
+      // Waiting for external event (e.g., webhook, CI status)
+      validateTransition('running', 'waiting_external');
+
+      // waiting_external is not terminal
+      expect(isTerminalState('waiting_external')).toBe(false);
+
+      // External event received, resume running
+      validateTransition('waiting_external', 'running');
+
+      // Complete successfully
+      validateTransition('running', 'completed');
+      expect(isTerminalState('completed')).toBe(true);
+    });
+
+    it('should support external wait timeout: pending -> running -> waiting_external -> failed (C3)', () => {
+      // Start in pending
+      validateTransition('pending', 'running');
+
+      // Waiting for external event
+      validateTransition('running', 'waiting_external');
+
+      // Timeout waiting for external event
+      validateTransition('waiting_external', 'failed');
+      expect(isTerminalState('failed')).toBe(true);
+    });
+
+    it('should support cancellation from awaiting_approval (C3)', () => {
+      validateTransition('pending', 'running');
+      validateTransition('running', 'awaiting_approval');
+      validateTransition('awaiting_approval', 'cancelled');
+      expect(isTerminalState('cancelled')).toBe(true);
+    });
+
+    it('should support cancellation from waiting_external (C3)', () => {
+      validateTransition('pending', 'running');
+      validateTransition('running', 'waiting_external');
+      validateTransition('waiting_external', 'cancelled');
+      expect(isTerminalState('cancelled')).toBe(true);
     });
 
     it('should reject restart from terminal state', () => {
