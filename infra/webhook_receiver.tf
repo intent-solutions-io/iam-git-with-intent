@@ -40,6 +40,14 @@ resource "google_project_iam_member" "webhook_receiver_pubsub_publisher" {
   member  = "serviceAccount:${google_service_account.webhook_receiver[0].email}"
 }
 
+# Pub/Sub Viewer - check topic existence for readiness probe
+resource "google_project_iam_member" "webhook_receiver_pubsub_viewer" {
+  count   = var.webhook_receiver_image != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/pubsub.viewer"
+  member  = "serviceAccount:${google_service_account.webhook_receiver[0].email}"
+}
+
 # Logging - write structured logs
 resource "google_project_iam_member" "webhook_receiver_logging" {
   count   = var.webhook_receiver_image != "" ? 1 : 0
