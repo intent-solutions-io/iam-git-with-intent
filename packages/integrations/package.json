@@ -26,6 +26,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@google-cloud/bigquery": "^7.0.0",
     "@gwi/core": "*",
     "octokit": "^4.0.0"
   },
