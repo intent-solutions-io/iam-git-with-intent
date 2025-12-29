@@ -32,10 +32,12 @@ RUN npm ci --ignore-scripts
 
 # Copy source files
 COPY packages/core ./packages/core
+COPY packages/engine ./packages/engine
 COPY apps/github-webhook ./apps/github-webhook
 
-# Build core first, then webhook
+# Build dependencies first, then webhook
 RUN npm run build --workspace=@gwi/core
+RUN npm run build --workspace=@gwi/engine
 RUN npm run build --workspace=@gwi/github-webhook
 
 # Production stage
@@ -50,6 +52,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Copy built files
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/core/package.json ./packages/core/
+COPY --from=builder /app/packages/engine/dist ./packages/engine/dist
+COPY --from=builder /app/packages/engine/package.json ./packages/engine/
 COPY --from=builder /app/apps/github-webhook/dist ./apps/github-webhook/dist
 COPY --from=builder /app/apps/github-webhook/package.json ./apps/github-webhook/
 COPY --from=builder /app/node_modules ./node_modules
