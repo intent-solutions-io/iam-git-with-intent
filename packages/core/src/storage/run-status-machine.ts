@@ -86,7 +86,15 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
  * (paused but not finished)
  */
 export function isRunInProgress(status: RunStatus): boolean {
-  return !isTerminalRunStatus(status);
+  switch (status) {
+    case 'pending':
+    case 'running':
+    case 'awaiting_approval':
+    case 'waiting_external':
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
