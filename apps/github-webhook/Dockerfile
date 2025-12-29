@@ -30,13 +30,17 @@ COPY apps/worker/package.json ./apps/worker/
 # Full npm ci is needed because firebase-admin and better-sqlite3 are root dependencies
 RUN npm ci --ignore-scripts
 
-# Copy source files
+# Copy source files (engine depends on agents and integrations)
 COPY packages/core ./packages/core
+COPY packages/agents ./packages/agents
+COPY packages/integrations ./packages/integrations
 COPY packages/engine ./packages/engine
 COPY apps/github-webhook ./apps/github-webhook
 
-# Build dependencies first, then webhook
+# Build all dependencies in order, then webhook
 RUN npm run build --workspace=@gwi/core
+RUN npm run build --workspace=@gwi/agents
+RUN npm run build --workspace=@gwi/integrations
 RUN npm run build --workspace=@gwi/engine
 RUN npm run build --workspace=@gwi/github-webhook
 
@@ -49,9 +53,13 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 webhook
 
-# Copy built files
+# Copy built files (all packages needed by engine)
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/core/package.json ./packages/core/
+COPY --from=builder /app/packages/agents/dist ./packages/agents/dist
+COPY --from=builder /app/packages/agents/package.json ./packages/agents/
+COPY --from=builder /app/packages/integrations/dist ./packages/integrations/dist
+COPY --from=builder /app/packages/integrations/package.json ./packages/integrations/
 COPY --from=builder /app/packages/engine/dist ./packages/engine/dist
 COPY --from=builder /app/packages/engine/package.json ./packages/engine/
 COPY --from=builder /app/apps/github-webhook/dist ./apps/github-webhook/dist
