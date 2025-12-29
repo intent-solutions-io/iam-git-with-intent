@@ -63,8 +63,8 @@ labels = {
 # Epic H1: Cloud Run Service Topology
 # =============================================================================
 
-# VPC Networking (enabled for production security)
-enable_vpc_connector        = true
+# VPC Networking (disabled for initial deployment - enable after core services deployed)
+enable_vpc_connector        = false
 vpc_connector_cidr          = "10.8.0.0/28"
 vpc_connector_machine_type  = "e2-micro"
 vpc_connector_min_instances = 2
