@@ -1,0 +1,79 @@
+# PR Triage Workflow
+#
+# Simple workflow that analyzes a PR for complexity
+# and requires manual approval before proceeding.
+
+id: triage-workflow
+version: 1.0.0
+name: PR Triage
+description: Analyze PR complexity and require approval
+
+steps:
+  - id: triage
+    name: Analyze PR Complexity
+    type: agent
+    agent: triage-agent
+    timeout: 30000
+    retries:
+      maxAttempts: 3
+      baseDelayMs: 1000
+      backoffMultiplier: 2
+      maxDelayMs: 10000
+      jitter: true
+    onFailure: abort
+
+  - id: approval
+    name: Human Approval
+    type: approval
+    dependsOn:
+      - triage
+    timeout: 86400000 # 24 hours
+    onFailure: abort
+
+  - id: notify
+    name: Send Notification
+    type: agent
+    agent: notification-agent
+    dependsOn:
+      - approval
+    timeout: 5000
+    onFailure: continue
+
+triggers:
+  - type: webhook
+    name: PR Opened
+    enabled: true
+    config:
+      event: pull_request.opened
+      repository: "*"
+
+  - type: webhook
+    name: PR Synchronized
+    enabled: true
+    config:
+      event: pull_request.synchronize
+      repository: "*"
+
+  - type: manual
+    name: Manual Triage
+    enabled: true
+    config:
+      requireReason: true
+
+defaults:
+  stepTimeout: 60000
+  onFailure: abort
+  retries:
+    maxAttempts: 2
+    baseDelayMs: 500
+    backoffMultiplier: 2
+
+tags:
+  - triage
+  - pr-analysis
+  - approval-required
+
+metadata:
+  owner: platform-team
+  sla: 1h
+  priority: high

@@ -1,0 +1,208 @@
+# Autopilot Workflow
+#
+# Complete end-to-end workflow with parallel steps,
+# conditionals, and multi-stage approval gates.
+
+id: autopilot-workflow
+version: 1.0.0
+name: Autopilot PR Processing
+description: Full automated PR analysis, resolution, review, and merge
+
+steps:
+  # Stage 1: Triage
+  - id: triage
+    name: Triage PR
+    type: agent
+    agent: triage-agent
+    timeout: 30000
+    onFailure: abort
+
+  # Stage 2: Conditional path based on complexity
+  - id: check-complexity
+    name: Check Complexity Score
+    type: conditional
+    condition: "triage.score < 5"
+    dependsOn:
+      - triage
+    timeout: 1000
+    onFailure: continue
+
+  # Stage 3: Parallel analysis for complex PRs
+  - id: parallel-analysis
+    name: Parallel Analysis
+    type: parallel_group
+    dependsOn:
+      - check-complexity
+    parallelSteps:
+      - security-scan
+      - performance-check
+      - code-review
+    timeout: 180000
+    onFailure: abort
+
+  - id: security-scan
+    name: Security Analysis
+    type: agent
+    agent: security-scanner
+    timeout: 60000
+    retries:
+      maxAttempts: 2
+      baseDelayMs: 5000
+    onFailure: abort
+
+  - id: performance-check
+    name: Performance Analysis
+    type: agent
+    agent: performance-analyzer
+    timeout: 90000
+    onFailure: continue
+
+  - id: code-review
+    name: Automated Code Review
+    type: agent
+    agent: reviewer-agent
+    timeout: 120000
+    onFailure: abort
+
+  # Stage 4: Resolve conflicts if needed
+  - id: detect-conflicts
+    name: Detect Conflicts
+    type: agent
+    agent: conflict-detector
+    dependsOn:
+      - parallel-analysis
+    timeout: 10000
+    onFailure: continue
+
+  - id: resolve-conflicts
+    name: Resolve Conflicts
+    type: agent
+    agent: resolver-agent
+    dependsOn:
+      - detect-conflicts
+    timeout: 120000
+    retries:
+      maxAttempts: 3
+      baseDelayMs: 2000
+      backoffMultiplier: 2
+    onFailure: abort
+
+  # Stage 5: Testing
+  - id: run-tests
+    name: Run Test Suite
+    type: agent
+    agent: test-runner
+    dependsOn:
+      - resolve-conflicts
+    timeout: 600000 # 10 minutes
+    retries:
+      maxAttempts: 2
+      baseDelayMs: 10000
+    onFailure: abort
+
+  - id: run-integration-tests
+    name: Integration Tests
+    type: agent
+    agent: integration-tester
+    dependsOn:
+      - run-tests
+    timeout: 900000 # 15 minutes
+    onFailure: continue
+
+  # Stage 6: First approval gate
+  - id: technical-approval
+    name: Technical Review Approval
+    type: approval
+    dependsOn:
+      - run-integration-tests
+    timeout: 86400000 # 24 hours
+    onFailure: abort
+
+  # Stage 7: Generate documentation
+  - id: generate-docs
+    name: Generate Documentation
+    type: agent
+    agent: doc-generator
+    dependsOn:
+      - technical-approval
+    timeout: 60000
+    onFailure: continue
+
+  # Stage 8: Final approval gate
+  - id: final-approval
+    name: Final Merge Approval
+    type: approval
+    dependsOn:
+      - generate-docs
+    timeout: 172800000 # 48 hours
+    onFailure: abort
+
+  # Stage 9: Merge
+  - id: merge
+    name: Merge PR
+    type: agent
+    agent: merge-agent
+    dependsOn:
+      - final-approval
+    timeout: 30000
+    retries:
+      maxAttempts: 3
+      baseDelayMs: 5000
+      backoffMultiplier: 2
+    onFailure: abort
+
+  # Stage 10: Post-merge notifications
+  - id: notify-success
+    name: Send Success Notification
+    type: agent
+    agent: notification-agent
+    dependsOn:
+      - merge
+    timeout: 10000
+    onFailure: continue
+
+triggers:
+  - type: webhook
+    name: PR Ready for Review
+    enabled: true
+    config:
+      event: pull_request.ready_for_review
+      draft: false
+
+  - type: manual
+    name: Manual Autopilot Start
+    enabled: true
+    config:
+      requireApprover: true
+
+  - type: schedule
+    name: Nightly Processing
+    enabled: false
+    config:
+      cron: "0 2 * * *"
+      timezone: UTC
+      batchSize: 10
+
+defaults:
+  stepTimeout: 120000
+  onFailure: abort
+  retries:
+    maxAttempts: 2
+    baseDelayMs: 1000
+    backoffMultiplier: 2
+    maxDelayMs: 30000
+    jitter: true
+
+tags:
+  - autopilot
+  - end-to-end
+  - automated-merge
+  - multi-stage
+
+metadata:
+  owner: platform-team
+  complexity: very-high
+  estimatedDuration: 30m
+  sla: 2h
+  requiresApproval: true
+  approvalStages: 2

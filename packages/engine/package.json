@@ -13,6 +13,10 @@
     "./hooks": {
       "import": "./dist/hooks/index.js",
       "types": "./dist/hooks/index.d.ts"
+    },
+    "./workflow": {
+      "import": "./dist/workflow/index.js",
+      "types": "./dist/workflow/index.d.ts"
     }
   },
   "scripts": {
@@ -25,7 +29,9 @@
   "dependencies": {
     "@gwi/core": "*",
     "@gwi/agents": "*",
-    "@gwi/integrations": "*"
+    "@gwi/integrations": "*",
+    "yaml": "^2.3.4",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "typescript": "^5.3.0",

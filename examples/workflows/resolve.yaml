@@ -1,0 +1,100 @@
+# Conflict Resolution Workflow
+#
+# Multi-step workflow that resolves merge conflicts,
+# generates a patch, runs tests, and requires approval.
+
+id: resolve-workflow
+version: 1.0.0
+name: Conflict Resolution
+description: Resolve merge conflicts and validate changes
+
+steps:
+  - id: detect-conflicts
+    name: Detect Merge Conflicts
+    type: agent
+    agent: conflict-detector
+    timeout: 10000
+    onFailure: abort
+
+  - id: analyze
+    name: Analyze Conflicts
+    type: agent
+    agent: resolver-agent
+    dependsOn:
+      - detect-conflicts
+    timeout: 60000
+    retries:
+      maxAttempts: 3
+      baseDelayMs: 2000
+      backoffMultiplier: 2
+      maxDelayMs: 20000
+    onFailure: abort
+
+  - id: generate-patch
+    name: Generate Resolution Patch
+    type: agent
+    agent: patch-generator
+    dependsOn:
+      - analyze
+    timeout: 120000
+    onFailure: abort
+
+  - id: run-tests
+    name: Run Test Suite
+    type: agent
+    agent: test-runner
+    dependsOn:
+      - generate-patch
+    timeout: 300000 # 5 minutes
+    retries:
+      maxAttempts: 1
+      baseDelayMs: 0
+    onFailure: abort
+
+  - id: approval
+    name: Review and Approve
+    type: approval
+    dependsOn:
+      - run-tests
+    timeout: 172800000 # 48 hours
+    onFailure: abort
+
+  - id: apply-patch
+    name: Apply Resolution
+    type: agent
+    agent: patch-applicator
+    dependsOn:
+      - approval
+    timeout: 30000
+    retries:
+      maxAttempts: 2
+      baseDelayMs: 1000
+    onFailure: abort
+
+triggers:
+  - type: webhook
+    name: Merge Conflict Detected
+    enabled: true
+    config:
+      event: pull_request.conflict
+      autoResolve: false
+
+  - type: manual
+    name: Manual Resolution
+    enabled: true
+    config:
+      requirePrUrl: true
+
+defaults:
+  stepTimeout: 60000
+  onFailure: abort
+
+tags:
+  - conflict-resolution
+  - merge
+  - automated-resolution
+
+metadata:
+  owner: platform-team
+  complexity: high
+  estimatedDuration: 10m
