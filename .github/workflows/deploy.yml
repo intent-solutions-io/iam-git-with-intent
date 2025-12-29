@@ -84,6 +84,7 @@ jobs:
       gateway_image: ${{ steps.images.outputs.gateway }}
       webhook_image: ${{ steps.images.outputs.webhook }}
       worker_image: ${{ steps.images.outputs.worker }}
+      webhook_receiver_image: ${{ steps.images.outputs.webhook_receiver }}
 
     steps:
       - name: Checkout code
@@ -173,6 +174,21 @@ jobs:
           docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
           docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
 
+      - name: Build and push Webhook Receiver image
+        run: |
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker/webhook-receiver"
+
+          docker build -f apps/webhook-receiver/Dockerfile \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }} \
+            --build-arg VERSION=${{ needs.setup.outputs.version }} \
+            .
+
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
+
       - name: Set image outputs
         id: images
         run: |
@@ -183,6 +199,7 @@ jobs:
           echo "gateway=${REGISTRY}/gateway:${TAG}" >> $GITHUB_OUTPUT
           echo "webhook=${REGISTRY}/github-webhook:${TAG}" >> $GITHUB_OUTPUT
           echo "worker=${REGISTRY}/worker:${TAG}" >> $GITHUB_OUTPUT
+          echo "webhook_receiver=${REGISTRY}/webhook-receiver:${TAG}" >> $GITHUB_OUTPUT
 
   # =============================================================================
   # Deploy to Environment
@@ -229,6 +246,7 @@ jobs:
               -var="a2a_gateway_image=${{ needs.build-images.outputs.gateway_image }}" \
               -var="github_webhook_image=${{ needs.build-images.outputs.webhook_image }}" \
               -var="gwi_worker_image=${{ needs.build-images.outputs.worker_image }}" \
+              -var="webhook_receiver_image=${{ needs.build-images.outputs.webhook_receiver_image }}" \
               -out=tfplan
           else
             tofu plan \
@@ -238,6 +256,7 @@ jobs:
               -var="a2a_gateway_image=${{ needs.build-images.outputs.gateway_image }}" \
               -var="github_webhook_image=${{ needs.build-images.outputs.webhook_image }}" \
               -var="gwi_worker_image=${{ needs.build-images.outputs.worker_image }}" \
+              -var="webhook_receiver_image=${{ needs.build-images.outputs.webhook_receiver_image }}" \
               -out=tfplan
           fi
 

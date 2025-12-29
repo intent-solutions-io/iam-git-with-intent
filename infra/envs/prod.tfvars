@@ -20,6 +20,9 @@ gwi_api_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/api:lates
 # Worker Service Image (for scheduler and background jobs)
 gwi_worker_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/worker:latest"
 
+# Epic B: Multi-Source Webhook Receiver Image
+webhook_receiver_image = "us-central1-docker.pkg.dev/git-with-intent/gwi-docker/webhook-receiver:latest"
+
 # Gateway Scaling (higher for production)
 gateway_max_instances = 20
 gwi_api_max_instances = 10
@@ -111,6 +114,16 @@ service_topology = {
     min_instances     = 1 # Always-on for production
     max_instances     = 20
     cpu_throttling    = false # Keep CPU active for background jobs
+    startup_cpu_boost = true
+  }
+  webhook_receiver = {
+    cpu               = "1000m"
+    memory            = "512Mi"
+    concurrency       = 100 # High concurrency for webhook handling
+    timeout_seconds   = 10  # Fast timeout for webhook responses
+    min_instances     = 1   # Always-on for production
+    max_instances     = 50  # Scale quickly for webhook bursts
+    cpu_throttling    = true
     startup_cpu_boost = true
   }
 }
