@@ -77,14 +77,16 @@ resource "google_cloud_run_service" "a2a_gateway" {
         }
 
         # Service URLs for inter-service communication
+        # Note: Using predictable naming pattern to avoid circular dependencies
+        # Services discover URLs at runtime via GCP_PROJECT_ID and REGION
         env {
-          name  = "API_SERVICE_URL"
-          value = var.gwi_api_image != "" ? google_cloud_run_service.gwi_api[0].status[0].url : ""
+          name  = "API_SERVICE_NAME"
+          value = "${var.app_name}-api-${var.environment}"
         }
 
         env {
-          name  = "WORKER_SERVICE_URL"
-          value = var.gwi_worker_image != "" ? google_cloud_run_service.gwi_worker[0].status[0].url : ""
+          name  = "WORKER_SERVICE_NAME"
+          value = "${var.app_name}-worker-${var.environment}"
         }
 
         # Note: PORT is set automatically by Cloud Run
@@ -214,19 +216,21 @@ resource "google_cloud_run_service" "github_webhook" {
         }
 
         # Service URLs for inter-service communication
+        # Note: Using service names to avoid circular dependencies
+        # Services resolve URLs at runtime via Cloud Run service discovery
         env {
-          name  = "API_SERVICE_URL"
-          value = var.gwi_api_image != "" ? google_cloud_run_service.gwi_api[0].status[0].url : ""
+          name  = "API_SERVICE_NAME"
+          value = "${var.app_name}-api-${var.environment}"
         }
 
         env {
-          name  = "GATEWAY_SERVICE_URL"
-          value = google_cloud_run_service.a2a_gateway.status[0].url
+          name  = "GATEWAY_SERVICE_NAME"
+          value = "${var.app_name}-a2a-gateway-${var.environment}"
         }
 
         env {
-          name  = "WORKER_SERVICE_URL"
-          value = var.gwi_worker_image != "" ? google_cloud_run_service.gwi_worker[0].status[0].url : ""
+          name  = "WORKER_SERVICE_NAME"
+          value = "${var.app_name}-worker-${var.environment}"
         }
 
         # Note: PORT is set automatically by Cloud Run
@@ -378,14 +382,15 @@ resource "google_cloud_run_service" "gwi_api" {
         }
 
         # Service URLs for inter-service communication
+        # Note: Using service names to avoid circular dependencies
         env {
-          name  = "GATEWAY_SERVICE_URL"
-          value = google_cloud_run_service.a2a_gateway.status[0].url
+          name  = "GATEWAY_SERVICE_NAME"
+          value = "${var.app_name}-a2a-gateway-${var.environment}"
         }
 
         env {
-          name  = "WORKER_SERVICE_URL"
-          value = var.gwi_worker_image != "" ? google_cloud_run_service.gwi_worker[0].status[0].url : ""
+          name  = "WORKER_SERVICE_NAME"
+          value = "${var.app_name}-worker-${var.environment}"
         }
 
         # Note: PORT is set automatically by Cloud Run
@@ -587,14 +592,15 @@ resource "google_cloud_run_service" "gwi_worker" {
         }
 
         # Service URLs for inter-service communication
+        # Note: Using service names to avoid circular dependencies
         env {
-          name  = "API_SERVICE_URL"
-          value = var.gwi_api_image != "" ? google_cloud_run_service.gwi_api[0].status[0].url : ""
+          name  = "API_SERVICE_NAME"
+          value = "${var.app_name}-api-${var.environment}"
         }
 
         env {
-          name  = "GATEWAY_SERVICE_URL"
-          value = google_cloud_run_service.a2a_gateway.status[0].url
+          name  = "GATEWAY_SERVICE_NAME"
+          value = "${var.app_name}-a2a-gateway-${var.environment}"
         }
 
         # Note: PORT is set automatically by Cloud Run
