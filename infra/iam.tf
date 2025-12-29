@@ -182,7 +182,8 @@ resource "google_service_account_iam_member" "github_actions_wif" {
 locals {
   # Secret access map: secret_id -> list of service accounts
   # This defines granular least-privilege access to secrets
-  secret_access_map = {
+  # Only used when enable_secret_bindings = true
+  secret_access_map = var.enable_secret_bindings ? {
     # GitHub App Private Key - needed by webhook handler and gateway for GitHub API
     "gwi-github-app-private-key" = [
       google_service_account.a2a_gateway.email,
@@ -192,7 +193,7 @@ locals {
     "gwi-github-webhook-secret" = [
       google_service_account.github_webhook.email,
     ]
-  }
+  } : {}
 
   # Flatten for for_each iteration
   secret_bindings = flatten([
@@ -206,7 +207,7 @@ locals {
   ])
 }
 
-# Per-secret IAM bindings for gateway/webhook
+# Per-secret IAM bindings for gateway/webhook (conditional)
 # These are always-on services that need access to GitHub credentials
 resource "google_secret_manager_secret_iam_member" "service_secret_access" {
   for_each = { for b in local.secret_bindings : b.key => b }
@@ -222,9 +223,9 @@ resource "google_secret_manager_secret_iam_member" "service_secret_access" {
   }
 }
 
-# API service secret access (conditional on API being deployed)
+# API service secret access (conditional on API + Stripe being enabled)
 resource "google_secret_manager_secret_iam_member" "api_stripe_key" {
-  count = var.gwi_api_image != "" ? 1 : 0
+  count = var.gwi_api_image != "" && var.enable_stripe ? 1 : 0
 
   project   = var.project_id
   secret_id = "gwi-stripe-secret-key"
@@ -237,7 +238,7 @@ resource "google_secret_manager_secret_iam_member" "api_stripe_key" {
 }
 
 resource "google_secret_manager_secret_iam_member" "api_stripe_webhook" {
-  count = var.gwi_api_image != "" ? 1 : 0
+  count = var.gwi_api_image != "" && var.enable_stripe ? 1 : 0
 
   project   = var.project_id
   secret_id = "gwi-stripe-webhook-secret"
@@ -249,9 +250,9 @@ resource "google_secret_manager_secret_iam_member" "api_stripe_webhook" {
   }
 }
 
-# Worker service secret access (conditional on Worker being deployed)
+# Worker service secret access (conditional on Worker + secrets being enabled)
 resource "google_secret_manager_secret_iam_member" "worker_github_key" {
-  count = var.gwi_worker_image != "" ? 1 : 0
+  count = var.gwi_worker_image != "" && var.enable_secret_bindings ? 1 : 0
 
   project   = var.project_id
   secret_id = "gwi-github-app-private-key"
@@ -264,7 +265,7 @@ resource "google_secret_manager_secret_iam_member" "worker_github_key" {
 }
 
 resource "google_secret_manager_secret_iam_member" "worker_anthropic_key" {
-  count = var.gwi_worker_image != "" ? 1 : 0
+  count = var.gwi_worker_image != "" && var.enable_secret_bindings ? 1 : 0
 
   project   = var.project_id
   secret_id = "gwi-anthropic-api-key"
@@ -277,7 +278,7 @@ resource "google_secret_manager_secret_iam_member" "worker_anthropic_key" {
 }
 
 resource "google_secret_manager_secret_iam_member" "worker_google_ai_key" {
-  count = var.gwi_worker_image != "" ? 1 : 0
+  count = var.gwi_worker_image != "" && var.enable_secret_bindings ? 1 : 0
 
   project   = var.project_id
   secret_id = "gwi-google-ai-api-key"
@@ -290,13 +291,16 @@ resource "google_secret_manager_secret_iam_member" "worker_google_ai_key" {
 }
 
 # =============================================================================
-# Agent Engine Secret Access (AI API Keys)
+# Agent Engine Secret Access (AI API Keys) - Conditional
 # =============================================================================
 # Agent Engine service account needs access to AI provider API keys
-# for Claude (Anthropic) and Gemini (Google AI) models
+# for Claude (Anthropic) and Gemini (Google AI) models.
+# When enable_secret_bindings = false, use Vertex AI via WIF instead.
 
 # Anthropic API Key - for Claude models (Coder, Reviewer agents)
 resource "google_secret_manager_secret_iam_member" "agent_engine_anthropic_key" {
+  count = var.enable_secret_bindings ? 1 : 0
+
   project   = var.project_id
   secret_id = "gwi-anthropic-api-key"
   role      = "roles/secretmanager.secretAccessor"
@@ -309,6 +313,8 @@ resource "google_secret_manager_secret_iam_member" "agent_engine_anthropic_key" 
 
 # Google AI API Key - for Gemini models (Orchestrator, Triage agents)
 resource "google_secret_manager_secret_iam_member" "agent_engine_google_ai_key" {
+  count = var.enable_secret_bindings ? 1 : 0
+
   project   = var.project_id
   secret_id = "gwi-google-ai-api-key"
   role      = "roles/secretmanager.secretAccessor"
@@ -321,6 +327,8 @@ resource "google_secret_manager_secret_iam_member" "agent_engine_google_ai_key" 
 
 # GitHub App Private Key - for GitHub API access from agents
 resource "google_secret_manager_secret_iam_member" "agent_engine_github_key" {
+  count = var.enable_secret_bindings ? 1 : 0
+
   project   = var.project_id
   secret_id = "gwi-github-app-private-key"
   role      = "roles/secretmanager.secretAccessor"

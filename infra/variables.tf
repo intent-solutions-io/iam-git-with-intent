@@ -339,3 +339,19 @@ variable "webhook_topic_prefix" {
   type        = string
   default     = "gwi"
 }
+
+# ============================================================================
+# Secret Management (Optional - use Vertex AI WIF instead of API keys)
+# ============================================================================
+
+variable "enable_secret_bindings" {
+  description = "Enable Secret Manager IAM bindings. Set to false to use Vertex AI via WIF instead of API keys."
+  type        = bool
+  default     = false
+}
+
+variable "enable_stripe" {
+  description = "Enable Stripe billing integration secrets"
+  type        = bool
+  default     = false
+}
