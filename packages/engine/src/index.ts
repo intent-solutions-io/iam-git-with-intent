@@ -30,3 +30,6 @@ export * from './workflow/index.js';
 
 // Re-export state module (C2: Persistent step state)
 export * from './state/index.js';
+
+// Re-export approval module (C4: Approval gates)
+export * from './approval/index.js';
