@@ -4,18 +4,75 @@
  * C2: Firestore implementation of StepStateStore for production use.
  * Provides persistent step state for Cloud Run resilience.
  *
+ * ## Required Firestore Indexes
+ *
+ * Create these composite indexes in the Firebase Console or via
+ * firestore.indexes.json for optimal query performance:
+ *
+ * ```json
+ * {
+ *   "indexes": [
+ *     {
+ *       "collectionGroup": "stepStates",
+ *       "queryScope": "COLLECTION",
+ *       "fields": [
+ *         { "fieldPath": "runId", "order": "ASCENDING" },
+ *         { "fieldPath": "stepId", "order": "ASCENDING" }
+ *       ]
+ *     },
+ *     {
+ *       "collectionGroup": "stepStates",
+ *       "queryScope": "COLLECTION",
+ *       "fields": [
+ *         { "fieldPath": "tenantId", "order": "ASCENDING" },
+ *         { "fieldPath": "status", "order": "ASCENDING" }
+ *       ]
+ *     },
+ *     {
+ *       "collectionGroup": "stepStates",
+ *       "queryScope": "COLLECTION",
+ *       "fields": [
+ *         { "fieldPath": "status", "order": "ASCENDING" },
+ *         { "fieldPath": "retry.nextRetryAt", "order": "ASCENDING" }
+ *       ]
+ *     },
+ *     {
+ *       "collectionGroup": "stepStates",
+ *       "queryScope": "COLLECTION",
+ *       "fields": [
+ *         { "fieldPath": "status", "order": "ASCENDING" },
+ *         { "fieldPath": "externalWait.eventType", "order": "ASCENDING" }
+ *       ]
+ *     },
+ *     {
+ *       "collectionGroup": "stepStates",
+ *       "queryScope": "COLLECTION",
+ *       "fields": [
+ *         { "fieldPath": "tenantId", "order": "ASCENDING" },
+ *         { "fieldPath": "status", "order": "ASCENDING" },
+ *         { "fieldPath": "approval.required", "order": "ASCENDING" }
+ *       ]
+ *     }
+ *   ]
+ * }
+ * ```
+ *
+ * Without these indexes, queries will fail with "requires an index" errors
+ * in production.
+ *
  * @module @gwi/engine/state/firestore-step-state
  */
 
 import { randomUUID } from 'crypto';
 import type { StepStateStore } from './step-state-store.js';
-import type {
-  StepState,
-  StepStateCreate,
-  StepStateUpdate,
-  StepStateFilter,
-  StepStateSort,
-  StepStatePagination,
+import {
+  StepState as StepStateSchema,
+  type StepState,
+  type StepStateCreate,
+  type StepStateUpdate,
+  type StepStateFilter,
+  type StepStateSort,
+  type StepStatePagination,
 } from './types.js';
 
 // =============================================================================
@@ -27,6 +84,30 @@ import type {
  */
 export interface FirestoreClient {
   collection(path: string): CollectionRef;
+  runTransaction<T>(
+    updateFunction: (transaction: FirestoreTransaction) => Promise<T>
+  ): Promise<T>;
+  batch(): FirestoreBatch;
+}
+
+/**
+ * Batch write interface for efficient bulk operations
+ */
+export interface FirestoreBatch {
+  set(docRef: DocumentRef, data: Record<string, unknown>): FirestoreBatch;
+  update(docRef: DocumentRef, data: Record<string, unknown>): FirestoreBatch;
+  delete(docRef: DocumentRef): FirestoreBatch;
+  commit(): Promise<void>;
+}
+
+/**
+ * Transaction interface for atomic read-modify-write operations
+ */
+export interface FirestoreTransaction {
+  get(docRef: DocumentRef): Promise<DocumentSnapshot>;
+  set(docRef: DocumentRef, data: Record<string, unknown>): FirestoreTransaction;
+  update(docRef: DocumentRef, data: Record<string, unknown>): FirestoreTransaction;
+  delete(docRef: DocumentRef): FirestoreTransaction;
 }
 
 interface CollectionRef {
@@ -200,13 +281,58 @@ export class FirestoreStepStateStore implements StepStateStore {
   // ===========================================================================
 
   async createMany(data: StepStateCreate[]): Promise<StepState[]> {
-    // For simplicity, create one at a time
-    // In production, use batched writes
-    const results: StepState[] = [];
+    if (data.length === 0) return [];
+
+    const now = new Date().toISOString();
+    const states: StepState[] = [];
+
+    // Prepare all states first
     for (const item of data) {
-      results.push(await this.create(item));
+      const id = randomUUID();
+      const state: StepState = {
+        id,
+        runId: item.runId,
+        workflowInstanceId: item.workflowInstanceId,
+        stepId: item.stepId,
+        stepType: item.stepType,
+        tenantId: item.tenantId,
+        status: item.status || 'pending',
+        resultCode: item.resultCode,
+        input: item.input,
+        output: item.output,
+        error: item.error,
+        errorStack: item.errorStack,
+        retry: item.retry,
+        approval: item.approval,
+        externalWait: item.externalWait,
+        createdAt: now,
+        startedAt: item.startedAt,
+        completedAt: item.completedAt,
+        updatedAt: now,
+        durationMs: item.durationMs,
+        tokenUsage: item.tokenUsage,
+        model: item.model,
+        correlationId: item.correlationId,
+        metadata: item.metadata,
+      };
+      states.push(state);
     }
-    return results;
+
+    // Firestore batch limit is 500 operations
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < states.length; i += BATCH_SIZE) {
+      const batch = this.db.batch();
+      const chunk = states.slice(i, i + BATCH_SIZE);
+
+      for (const state of chunk) {
+        const docRef = this.db.collection(this.collection).doc(state.id);
+        batch.set(docRef, this.toFirestore(state));
+      }
+
+      await batch.commit();
+    }
+
+    return states;
   }
 
   async getByRun(runId: string): Promise<StepState[]> {
@@ -229,9 +355,22 @@ export class FirestoreStepStateStore implements StepStateStore {
 
   async deleteByRun(runId: string): Promise<number> {
     const states = await this.getByRun(runId);
-    for (const state of states) {
-      await this.delete(state.id);
+    if (states.length === 0) return 0;
+
+    // Use batch delete for efficiency
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < states.length; i += BATCH_SIZE) {
+      const batch = this.db.batch();
+      const chunk = states.slice(i, i + BATCH_SIZE);
+
+      for (const state of chunk) {
+        const docRef = this.db.collection(this.collection).doc(state.id);
+        batch.delete(docRef);
+      }
+
+      await batch.commit();
     }
+
     return states.length;
   }
 
@@ -379,39 +518,89 @@ export class FirestoreStepStateStore implements StepStateStore {
   }
 
   async recordApproval(id: string, userId: string, reason?: string): Promise<StepState> {
-    const state = await this.get(id);
-    if (!state) throw new Error(`Step state not found: ${id}`);
+    // Use transaction to prevent race conditions on approval state
+    return this.db.runTransaction(async (transaction) => {
+      const docRef = this.db.collection(this.collection).doc(id);
+      const doc = await transaction.get(docRef);
 
-    return this.update(id, {
-      status: 'running',
-      resultCode: undefined,
-      approval: {
-        ...state.approval,
-        required: state.approval?.required ?? true,
-        status: 'approved',
-        userId,
-        reason,
-        timestamp: new Date().toISOString(),
-      },
+      if (!doc.exists) {
+        throw new Error(`Step state not found: ${id}`);
+      }
+
+      const state = this.fromFirestore(doc.id, doc.data()!);
+
+      // Verify step is in blocked state awaiting approval
+      if (state.status !== 'blocked') {
+        throw new Error(
+          `Cannot approve step ${id}: expected status 'blocked', got '${state.status}'`
+        );
+      }
+
+      if (state.approval?.status === 'approved') {
+        throw new Error(`Step ${id} has already been approved`);
+      }
+
+      const updated: StepState = {
+        ...state,
+        status: 'running',
+        resultCode: undefined,
+        approval: {
+          ...state.approval,
+          required: state.approval?.required ?? true,
+          status: 'approved',
+          userId,
+          reason,
+          timestamp: new Date().toISOString(),
+        },
+        updatedAt: new Date().toISOString(),
+      };
+
+      transaction.update(docRef, this.toFirestore(updated));
+      return updated;
     });
   }
 
   async recordRejection(id: string, userId: string, reason?: string): Promise<StepState> {
-    const state = await this.get(id);
-    if (!state) throw new Error(`Step state not found: ${id}`);
+    // Use transaction to prevent race conditions on rejection state
+    return this.db.runTransaction(async (transaction) => {
+      const docRef = this.db.collection(this.collection).doc(id);
+      const doc = await transaction.get(docRef);
 
-    return this.update(id, {
-      status: 'failed',
-      resultCode: 'fatal',
-      error: reason || 'Approval rejected',
-      approval: {
-        ...state.approval,
-        required: state.approval?.required ?? true,
-        status: 'rejected',
-        userId,
-        reason,
-        timestamp: new Date().toISOString(),
-      },
+      if (!doc.exists) {
+        throw new Error(`Step state not found: ${id}`);
+      }
+
+      const state = this.fromFirestore(doc.id, doc.data()!);
+
+      // Verify step is in blocked state awaiting approval
+      if (state.status !== 'blocked') {
+        throw new Error(
+          `Cannot reject step ${id}: expected status 'blocked', got '${state.status}'`
+        );
+      }
+
+      if (state.approval?.status === 'rejected') {
+        throw new Error(`Step ${id} has already been rejected`);
+      }
+
+      const updated: StepState = {
+        ...state,
+        status: 'failed',
+        resultCode: 'fatal',
+        error: reason || 'Approval rejected',
+        approval: {
+          ...state.approval,
+          required: state.approval?.required ?? true,
+          status: 'rejected',
+          userId,
+          reason,
+          timestamp: new Date().toISOString(),
+        },
+        updatedAt: new Date().toISOString(),
+      };
+
+      transaction.update(docRef, this.toFirestore(updated));
+      return updated;
     });
   }
 
@@ -575,32 +764,48 @@ export class FirestoreStepStateStore implements StepStateStore {
   }
 
   private fromFirestore(id: string, data: Record<string, unknown>): StepState {
-    return {
+    // Validate with Zod to ensure data integrity from Firestore
+    const rawState = {
       id,
-      runId: data.runId as string,
-      workflowInstanceId: data.workflowInstanceId as string | undefined,
-      stepId: data.stepId as string,
-      stepType: data.stepType as string,
-      tenantId: data.tenantId as string,
-      status: data.status as StepState['status'],
-      resultCode: data.resultCode as StepState['resultCode'],
+      runId: data.runId,
+      workflowInstanceId: data.workflowInstanceId,
+      stepId: data.stepId,
+      stepType: data.stepType,
+      tenantId: data.tenantId,
+      status: data.status,
+      resultCode: data.resultCode,
       input: data.input,
       output: data.output,
-      error: data.error as string | undefined,
-      errorStack: data.errorStack as string | undefined,
-      retry: data.retry as StepState['retry'],
-      approval: data.approval as StepState['approval'],
-      externalWait: data.externalWait as StepState['externalWait'],
-      createdAt: data.createdAt as string,
-      startedAt: data.startedAt as string | undefined,
-      completedAt: data.completedAt as string | undefined,
-      updatedAt: data.updatedAt as string,
-      durationMs: data.durationMs as number | undefined,
-      tokenUsage: data.tokenUsage as StepState['tokenUsage'],
-      model: data.model as string | undefined,
-      correlationId: data.correlationId as string | undefined,
-      metadata: data.metadata as Record<string, unknown> | undefined,
+      error: data.error,
+      errorStack: data.errorStack,
+      retry: data.retry,
+      approval: data.approval,
+      externalWait: data.externalWait,
+      createdAt: data.createdAt,
+      startedAt: data.startedAt,
+      completedAt: data.completedAt,
+      updatedAt: data.updatedAt,
+      durationMs: data.durationMs,
+      tokenUsage: data.tokenUsage,
+      model: data.model,
+      correlationId: data.correlationId,
+      metadata: data.metadata,
     };
+
+    const result = StepStateSchema.safeParse(rawState);
+    if (!result.success) {
+      // Log validation errors for debugging but return best-effort parse
+      // to avoid breaking production on schema evolution
+      console.error(
+        `[FirestoreStepStateStore] Validation warning for step state ${id}:`,
+        result.error.issues
+      );
+      // Fall back to unsafe cast for backwards compatibility
+      // but this indicates data corruption or schema mismatch
+      return rawState as StepState;
+    }
+
+    return result.data;
   }
 }
 

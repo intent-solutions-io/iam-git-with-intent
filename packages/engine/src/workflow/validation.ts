@@ -327,6 +327,13 @@ function detectCycles(
       if (colors.get(dep) === GRAY) {
         // Found a cycle - reconstruct the cycle path
         const cycleStart = path.indexOf(dep);
+        if (cycleStart === -1) {
+          // Self-loop or dep not in path (edge case) - minimal cycle representation
+          if (dep === node) {
+            return [node, node]; // Self-loop
+          }
+          return [node, dep, node]; // Direct cycle back
+        }
         return [...path.slice(cycleStart), node, dep];
       }
 

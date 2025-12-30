@@ -136,7 +136,8 @@ export function buildGraph(workflow: WorkflowDefinition): WorkflowGraph {
     }
   }
 
-  // BFS to set depths
+  // BFS to set depths (longest path from roots)
+  // Only re-add to queue if depth actually increased (optimization)
   const queue = [...roots];
   let maxDepth = 0;
 
@@ -150,8 +151,9 @@ export function buildGraph(workflow: WorkflowDefinition): WorkflowGraph {
       if (newDepth > depNode.depth) {
         depNode.depth = newDepth;
         maxDepth = Math.max(maxDepth, newDepth);
+        // Only re-add if depth changed - prevents duplicate processing
+        queue.push(depId);
       }
-      queue.push(depId);
     }
   }
 
