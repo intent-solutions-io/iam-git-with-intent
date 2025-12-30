@@ -22,13 +22,37 @@ describe('Run Status State Machine', () => {
     });
 
     it('should define transitions from running', () => {
-      expect(RUN_STATUS_TRANSITIONS.running).toEqual(['completed', 'failed', 'cancelled']);
+      expect(RUN_STATUS_TRANSITIONS.running).toEqual([
+        'completed',
+        'failed',
+        'cancelled',
+        'awaiting_approval',
+        'waiting_external',
+      ]);
     });
 
     it('should have no transitions from terminal states', () => {
       expect(RUN_STATUS_TRANSITIONS.completed).toEqual([]);
       expect(RUN_STATUS_TRANSITIONS.failed).toEqual([]);
       expect(RUN_STATUS_TRANSITIONS.cancelled).toEqual([]);
+    });
+
+    it('should define transitions from awaiting_approval (C3)', () => {
+      expect(RUN_STATUS_TRANSITIONS.awaiting_approval).toEqual([
+        'running',
+        'completed',
+        'failed',
+        'cancelled',
+      ]);
+    });
+
+    it('should define transitions from waiting_external (C3)', () => {
+      expect(RUN_STATUS_TRANSITIONS.waiting_external).toEqual([
+        'running',
+        'completed',
+        'failed',
+        'cancelled',
+      ]);
     });
   });
 
@@ -40,6 +64,11 @@ describe('Run Status State Machine', () => {
       expect(isValidRunStatusTransition('running', 'completed')).toBe(true);
       expect(isValidRunStatusTransition('running', 'failed')).toBe(true);
       expect(isValidRunStatusTransition('running', 'cancelled')).toBe(true);
+      // C3 approval/wait state transitions
+      expect(isValidRunStatusTransition('running', 'awaiting_approval')).toBe(true);
+      expect(isValidRunStatusTransition('running', 'waiting_external')).toBe(true);
+      expect(isValidRunStatusTransition('awaiting_approval', 'running')).toBe(true);
+      expect(isValidRunStatusTransition('waiting_external', 'running')).toBe(true);
     });
 
     it('should return false for invalid transitions', () => {
