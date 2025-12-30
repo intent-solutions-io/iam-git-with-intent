@@ -325,15 +325,15 @@ function detectCycles(
       }
 
       if (colors.get(dep) === GRAY) {
-        // Found a cycle - reconstruct the cycle path
+        // Found a back edge (cycle)
+        // The path contains ancestors of 'node', and 'node' is currently being processed
         const cycleStart = path.indexOf(dep);
         if (cycleStart === -1) {
-          // Self-loop or dep not in path (edge case) - minimal cycle representation
-          if (dep === node) {
-            return [node, node]; // Self-loop
-          }
-          return [node, dep, node]; // Direct cycle back
+          // dep not in path means we're at the start of the cycle detection
+          // The full cycle is: path + current node + back edge to dep
+          return [...path, node, dep];
         }
+        // Standard case: extract the cycle portion from path
         return [...path.slice(cycleStart), node, dep];
       }
 

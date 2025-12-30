@@ -319,20 +319,37 @@ export class FirestoreStepStateStore implements StepStateStore {
     }
 
     // Firestore batch limit is 500 operations
+    // NOTE: This is not atomic across all batches. If a batch fails,
+    // previous batches remain committed. Caller should handle partial success.
     const BATCH_SIZE = 500;
-    for (let i = 0; i < states.length; i += BATCH_SIZE) {
-      const batch = this.db.batch();
-      const chunk = states.slice(i, i + BATCH_SIZE);
+    let committedCount = 0;
 
-      for (const state of chunk) {
-        const docRef = this.db.collection(this.collection).doc(state.id);
-        batch.set(docRef, this.toFirestore(state));
+    try {
+      for (let i = 0; i < states.length; i += BATCH_SIZE) {
+        const batch = this.db.batch();
+        const chunk = states.slice(i, i + BATCH_SIZE);
+
+        for (const state of chunk) {
+          const docRef = this.db.collection(this.collection).doc(state.id);
+          batch.set(docRef, this.toFirestore(state));
+        }
+
+        await batch.commit();
+        committedCount += chunk.length;
       }
 
-      await batch.commit();
+      return states;
+    } catch (error) {
+      // Log partial success info for debugging
+      console.error(
+        `[FirestoreStepStateStore] Batch write failed after ${committedCount}/${states.length} records:`,
+        error
+      );
+      // Re-throw with additional context
+      const err = error instanceof Error ? error : new Error(String(error));
+      err.message = `Batch write failed after ${committedCount}/${states.length} records: ${err.message}`;
+      throw err;
     }
-
-    return states;
   }
 
   async getByRun(runId: string): Promise<StepState[]> {
@@ -358,20 +375,34 @@ export class FirestoreStepStateStore implements StepStateStore {
     if (states.length === 0) return 0;
 
     // Use batch delete for efficiency
+    // NOTE: Not atomic across batches - partial deletes possible on failure
     const BATCH_SIZE = 500;
-    for (let i = 0; i < states.length; i += BATCH_SIZE) {
-      const batch = this.db.batch();
-      const chunk = states.slice(i, i + BATCH_SIZE);
+    let deletedCount = 0;
 
-      for (const state of chunk) {
-        const docRef = this.db.collection(this.collection).doc(state.id);
-        batch.delete(docRef);
+    try {
+      for (let i = 0; i < states.length; i += BATCH_SIZE) {
+        const batch = this.db.batch();
+        const chunk = states.slice(i, i + BATCH_SIZE);
+
+        for (const state of chunk) {
+          const docRef = this.db.collection(this.collection).doc(state.id);
+          batch.delete(docRef);
+        }
+
+        await batch.commit();
+        deletedCount += chunk.length;
       }
 
-      await batch.commit();
+      return deletedCount;
+    } catch (error) {
+      console.error(
+        `[FirestoreStepStateStore] Batch delete failed after ${deletedCount}/${states.length} records:`,
+        error
+      );
+      const err = error instanceof Error ? error : new Error(String(error));
+      err.message = `Batch delete failed after ${deletedCount}/${states.length} records: ${err.message}`;
+      throw err;
     }
-
-    return states.length;
   }
 
   // ===========================================================================
@@ -529,15 +560,23 @@ export class FirestoreStepStateStore implements StepStateStore {
 
       const state = this.fromFirestore(doc.id, doc.data()!);
 
+      // Handle idempotency - if already approved by same user, return existing state
+      if (state.approval?.status === 'approved') {
+        if (state.approval.userId === userId) {
+          // Idempotent: same user re-approving, return existing state
+          return state;
+        }
+        // Different user trying to approve - error
+        throw new Error(
+          `Step ${id} was already approved by ${state.approval.userId}`
+        );
+      }
+
       // Verify step is in blocked state awaiting approval
       if (state.status !== 'blocked') {
         throw new Error(
           `Cannot approve step ${id}: expected status 'blocked', got '${state.status}'`
         );
-      }
-
-      if (state.approval?.status === 'approved') {
-        throw new Error(`Step ${id} has already been approved`);
       }
 
       const updated: StepState = {
@@ -572,15 +611,23 @@ export class FirestoreStepStateStore implements StepStateStore {
 
       const state = this.fromFirestore(doc.id, doc.data()!);
 
+      // Handle idempotency - if already rejected by same user, return existing state
+      if (state.approval?.status === 'rejected') {
+        if (state.approval.userId === userId) {
+          // Idempotent: same user re-rejecting, return existing state
+          return state;
+        }
+        // Different user trying to reject - error
+        throw new Error(
+          `Step ${id} was already rejected by ${state.approval.userId}`
+        );
+      }
+
       // Verify step is in blocked state awaiting approval
       if (state.status !== 'blocked') {
         throw new Error(
           `Cannot reject step ${id}: expected status 'blocked', got '${state.status}'`
         );
-      }
-
-      if (state.approval?.status === 'rejected') {
-        throw new Error(`Step ${id} has already been rejected`);
       }
 
       const updated: StepState = {
@@ -794,15 +841,14 @@ export class FirestoreStepStateStore implements StepStateStore {
 
     const result = StepStateSchema.safeParse(rawState);
     if (!result.success) {
-      // Log validation errors for debugging but return best-effort parse
-      // to avoid breaking production on schema evolution
-      console.error(
-        `[FirestoreStepStateStore] Validation warning for step state ${id}:`,
-        result.error.issues
+      // Fail fast on validation errors - data corruption or schema mismatch
+      // should be caught immediately, not silently propagated
+      const issues = result.error.issues
+        .map(i => `${i.path.join('.')}: ${i.message}`)
+        .join('; ');
+      throw new Error(
+        `[FirestoreStepStateStore] Data validation failed for step state ${id}: ${issues}`
       );
-      // Fall back to unsafe cast for backwards compatibility
-      // but this indicates data corruption or schema mismatch
-      return rawState as StepState;
     }
 
     return result.data;
