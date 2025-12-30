@@ -1,30 +1,48 @@
 /**
- * Run State Machine (A2.1)
+ * Run State Machine (A2.1, C3)
  *
  * Validates state transitions for run status changes.
  * Enforces terminal state rules and provides audit context.
  *
  * State Machine Diagram:
  * ```
- *                    ┌─────────┐
- *                    │ pending │ (initial state)
- *                    └────┬────┘
+ *                         ┌─────────┐
+ *                         │ pending │ (initial state)
+ *                         └────┬────┘
+ *                              │
+ *           ┌──────────────────┼──────────────────┐
+ *           │                  │                  │
+ *           v                  v                  v
+ *      ┌─────────┐        ┌─────────┐        ┌────────┐
+ *      │cancelled│        │ running │        │ failed │
+ *      └─────────┘        └────┬────┘        └────────┘
+ *       (terminal)             │              (terminal)
+ *                    ┌─────────┼─────────┐
+ *                    │         │         │
+ *                    v         v         v
+ *           ┌────────────────┐ │  ┌─────────────────┐
+ *           │awaiting_approval│ │  │waiting_external │
+ *           └───────┬────────┘ │  └────────┬────────┘
+ *                   │          │           │
+ *                   └─────┬────┴───────────┘
  *                         │
- *          ┌──────────────┼──────────────┐
- *          │              │              │
- *          v              v              v
- *     ┌─────────┐    ┌─────────┐   ┌────────┐
- *     │cancelled│    │ running │   │ failed │
- *     └─────────┘    └────┬────┘   └────────┘
- *      (terminal)         │         (terminal)
  *                    ┌────┼────┐
  *                    │    │    │
  *                    v    v    v
- *             ┌──────────┐ ┌─────────┐
- *             │completed │ │cancelled│
- *             └──────────┘ └─────────┘
- *              (terminal)   (terminal)
+ *             ┌──────────┐ ┌─────────┐ ┌────────┐
+ *             │completed │ │cancelled│ │ failed │
+ *             └──────────┘ └─────────┘ └────────┘
+ *              (terminal)   (terminal)  (terminal)
  * ```
+ *
+ * States:
+ * - pending: Initial state, run created but not started
+ * - running: Actively executing steps
+ * - awaiting_approval: Paused at approval gate, waiting for user approval (C3)
+ * - waiting_external: Paused waiting for external event/webhook (C3)
+ * - completed: All steps finished successfully
+ * - failed: Run failed due to error
+ * - cancelled: Run was cancelled by user/system
  *
  * Terminal states: completed, failed, cancelled
  * - Once a run reaches a terminal state, no transitions are allowed
@@ -42,10 +60,17 @@ import type { RunStatus } from '@gwi/core';
  * Valid state transitions
  *
  * Maps each RunStatus to the states it can transition to.
+ *
+ * C3 additions:
+ * - awaiting_approval: Entered from running when hitting an approval gate
+ * - waiting_external: Entered from running when waiting for external event
+ * Both can transition to running (resume), completed, failed, or cancelled
  */
 const STATE_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
   pending: ['running', 'cancelled', 'failed'],
-  running: ['completed', 'failed', 'cancelled'],
+  running: ['completed', 'failed', 'cancelled', 'awaiting_approval', 'waiting_external'],
+  awaiting_approval: ['running', 'completed', 'failed', 'cancelled'], // resume, approve, reject, cancel
+  waiting_external: ['running', 'completed', 'failed', 'cancelled'],  // resume, complete, fail, cancel
   completed: [], // terminal
   failed: [],    // terminal
   cancelled: [], // terminal

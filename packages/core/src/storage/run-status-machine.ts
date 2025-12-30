@@ -8,6 +8,14 @@
  *   pending → running → completed
  *                    ↘ failed
  *                    ↘ cancelled
+ *                    ↘ awaiting_approval (C3)
+ *                    ↘ waiting_external (C3)
+ *   awaiting_approval → running (approved)
+ *                     ↘ failed (rejected)
+ *                     ↘ cancelled
+ *   waiting_external → running (event received)
+ *                    ↘ failed (timeout)
+ *                    ↘ cancelled
  *   pending → failed (immediate failure)
  *   pending → cancelled (cancelled before start)
  *
@@ -21,7 +29,9 @@ import type { RunStatus } from './interfaces.js';
  */
 export const RUN_STATUS_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
   pending: ['running', 'failed', 'cancelled'],
-  running: ['completed', 'failed', 'cancelled'],
+  running: ['completed', 'failed', 'cancelled', 'awaiting_approval', 'waiting_external'],
+  awaiting_approval: ['running', 'completed', 'failed', 'cancelled'], // C3: approval gate
+  waiting_external: ['running', 'completed', 'failed', 'cancelled'],  // C3: external wait
   completed: [], // Terminal state
   failed: [],    // Terminal state
   cancelled: [], // Terminal state
@@ -77,7 +87,12 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
  * Check if a status indicates the run is in progress
  */
 export function isRunInProgress(status: RunStatus): boolean {
-  return status === 'pending' || status === 'running';
+  return (
+    status === 'pending' ||
+    status === 'running' ||
+    status === 'awaiting_approval' ||
+    status === 'waiting_external'
+  );
 }
 
 /**
