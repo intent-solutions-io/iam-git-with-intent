@@ -197,7 +197,7 @@ export const FivetranSyncOptionsSchema = z.object({
 export const FIVETRAN_CONNECTOR_METADATA = {
   name: 'fivetran',
   version: '1.0.0',
-  recordTypes: ['connector', 'destination', 'group', 'user', 'sync_status'],
+  recordTypes: ['connector', 'destination', 'group', 'user'],
   authMethods: ['bearer'] as const, // Basic auth via Authorization header (functionally equivalent)
   supportsIncremental: true,
   supportsWebhooks: true,

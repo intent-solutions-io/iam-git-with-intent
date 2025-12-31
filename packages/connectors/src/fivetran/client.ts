@@ -70,7 +70,15 @@ export class FivetranClient {
     // Handle rate limiting (429)
     if (status === 429) {
       const retryAfter = error.response.headers['retry-after'];
-      const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60000;
+      // Handle both seconds and HTTP-date formats per RFC 7231
+      const waitMs = (() => {
+        if (!retryAfter) return 60000;
+        const seconds = parseInt(retryAfter, 10);
+        if (!Number.isNaN(seconds)) return seconds * 1000;
+        const date = new Date(retryAfter).getTime();
+        if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+        return 60000; // Fallback for invalid header value
+      })();
 
       throw new ConnectorError(
         `Rate limit exceeded. Retry after ${waitMs}ms`,

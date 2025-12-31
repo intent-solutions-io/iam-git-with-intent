@@ -401,7 +401,7 @@ export class FivetranConnector extends BaseConnector implements IConnector {
     while (true) {
       const result = await this.client.listGroups({ cursor, limit: 100 });
 
-      for (const group of result.items) {
+      for (const group of result.items ?? []) {
         yield {
           id: `fivetran:group:${group.id}`,
           type: 'group',
@@ -454,7 +454,7 @@ export class FivetranConnector extends BaseConnector implements IConnector {
       while (true) {
         const result = await this.client.listConnectors(groupId, { cursor, limit: 100 });
 
-        for (const connector of result.items) {
+        for (const connector of result.items ?? []) {
           // Filter by connector IDs if specified
           if (options.connectorIds && !options.connectorIds.includes(connector.id)) {
             continue;
@@ -515,8 +515,8 @@ export class FivetranConnector extends BaseConnector implements IConnector {
           id: `fivetran:destination:${destination.id}`,
           type: 'destination',
           source: this.name,
-          createdAt: new Date().toISOString(), // Not available in API
-          updatedAt: new Date().toISOString(),
+          createdAt: '1970-01-01T00:00:00.000Z', // Not available in API
+          updatedAt: '1970-01-01T00:00:00.000Z', // Not available in API
           data: destination
         };
 
@@ -548,7 +548,7 @@ export class FivetranConnector extends BaseConnector implements IConnector {
     while (true) {
       const result = await this.client.listUsers({ cursor, limit: 100 });
 
-      for (const user of result.items) {
+      for (const user of result.items ?? []) {
         yield {
           id: `fivetran:user:${user.id}`,
           type: 'user',

@@ -8,6 +8,7 @@ import type {
   FivetranUser,
   FivetranConnectorConfig
 } from '../types.js';
+import type { ConnectorRecord } from '../../interfaces/types.js';
 import { ConnectorError, AuthenticationError } from '../../errors/index.js';
 
 // Mock the FivetranClient
@@ -235,7 +236,7 @@ describe('FivetranConnector', () => {
         nextCursor: undefined
       });
 
-      const records: any[] = [];
+      const records: ConnectorRecord[] = [];
       for await (const record of connector.sync({ types: ['group'] })) {
         records.push(record);
       }
@@ -257,7 +258,7 @@ describe('FivetranConnector', () => {
         nextCursor: undefined
       });
 
-      const records: any[] = [];
+      const records: ConnectorRecord[] = [];
       for await (const record of connector.sync({ types: ['connector'] })) {
         records.push(record);
       }
@@ -276,7 +277,7 @@ describe('FivetranConnector', () => {
       });
       mockClient.getDestination.mockResolvedValue(mockDestination);
 
-      const records: any[] = [];
+      const records: ConnectorRecord[] = [];
       for await (const record of connector.sync({ types: ['destination'] })) {
         records.push(record);
       }
@@ -293,7 +294,7 @@ describe('FivetranConnector', () => {
         nextCursor: undefined
       });
 
-      const records: any[] = [];
+      const records: ConnectorRecord[] = [];
       for await (const record of connector.sync({ types: ['user'] })) {
         records.push(record);
       }
@@ -315,7 +316,7 @@ describe('FivetranConnector', () => {
           nextCursor: undefined
         });
 
-      const records: any[] = [];
+      const records: ConnectorRecord[] = [];
       for await (const record of connector.sync({ types: ['group'] })) {
         records.push(record);
       }
@@ -330,7 +331,7 @@ describe('FivetranConnector', () => {
         nextCursor: undefined
       });
 
-      const records: any[] = [];
+      const records: ConnectorRecord[] = [];
       for await (const record of connector.sync({ types: ['group'], limit: 1 })) {
         records.push(record);
       }
