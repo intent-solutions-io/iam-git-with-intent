@@ -182,14 +182,15 @@ export function getReadySteps(
       continue; // Skip if already started or completed
     }
 
-    // Check if all dependencies are completed
+    // Check if all dependencies are resolved (completed, failed, or skipped)
     const dependencies = plan.dependencyGraph.get(stepId) ?? new Set();
-    const allDepsCompleted = Array.from(dependencies).every((depId) => {
+    const allDepsResolved = Array.from(dependencies).every((depId) => {
       const depExecution = executions.get(depId);
-      return depExecution?.status === 'completed';
+      const status = depExecution?.status;
+      return status === 'completed' || status === 'failed' || status === 'skipped';
     });
 
-    if (allDepsCompleted) {
+    if (allDepsResolved) {
       ready.push(stepId);
     }
   }
