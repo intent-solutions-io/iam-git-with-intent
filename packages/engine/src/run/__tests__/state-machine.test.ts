@@ -52,6 +52,14 @@ describe('Run State Machine', () => {
         expect(isValidTransition('running', 'cancelled')).toBe(true);
       });
 
+      it('should allow running -> awaiting_approval (C3)', () => {
+        expect(isValidTransition('running', 'awaiting_approval')).toBe(true);
+      });
+
+      it('should allow running -> waiting_external (C3)', () => {
+        expect(isValidTransition('running', 'waiting_external')).toBe(true);
+      });
+
       it('should reject running -> pending', () => {
         expect(isValidTransition('running', 'pending')).toBe(false);
       });
@@ -114,6 +122,50 @@ describe('Run State Machine', () => {
 
       it('should reject waiting_external -> awaiting_approval', () => {
         expect(isValidTransition('waiting_external', 'awaiting_approval')).toBe(false);
+      });
+    });
+
+    describe('from awaiting_approval (C3) - flexible transitions', () => {
+      it('should allow awaiting_approval -> running (approved)', () => {
+        expect(isValidTransition('awaiting_approval', 'running')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> cancelled (rejected/timeout)', () => {
+        expect(isValidTransition('awaiting_approval', 'cancelled')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> completed (auto-approve)', () => {
+        expect(isValidTransition('awaiting_approval', 'completed')).toBe(true);
+      });
+
+      it('should allow awaiting_approval -> failed (reject)', () => {
+        expect(isValidTransition('awaiting_approval', 'failed')).toBe(true);
+      });
+
+      it('should reject awaiting_approval -> pending', () => {
+        expect(isValidTransition('awaiting_approval', 'pending')).toBe(false);
+      });
+    });
+
+    describe('from waiting_external (C3) - flexible transitions', () => {
+      it('should allow waiting_external -> running (event received)', () => {
+        expect(isValidTransition('waiting_external', 'running')).toBe(true);
+      });
+
+      it('should allow waiting_external -> failed (timeout)', () => {
+        expect(isValidTransition('waiting_external', 'failed')).toBe(true);
+      });
+
+      it('should allow waiting_external -> completed', () => {
+        expect(isValidTransition('waiting_external', 'completed')).toBe(true);
+      });
+
+      it('should allow waiting_external -> cancelled', () => {
+        expect(isValidTransition('waiting_external', 'cancelled')).toBe(true);
+      });
+
+      it('should reject waiting_external -> pending', () => {
+        expect(isValidTransition('waiting_external', 'pending')).toBe(false);
       });
     });
 
@@ -245,7 +297,7 @@ describe('Run State Machine', () => {
       expect(nextStates).toHaveLength(3);
     });
 
-    it('should return correct next states for running', () => {
+    it('should return correct next states for running (C3)', () => {
       const nextStates = getNextValidStates('running');
       expect(nextStates).toContain('completed');
       expect(nextStates).toContain('failed');
@@ -605,6 +657,205 @@ describe('Run State Machine', () => {
         expect(err.message).toContain('debug-user');
         expect(err.message).toContain('system');
       }
+    });
+  });
+
+  describe('C3: Approval Workflows', () => {
+    it('should support approval workflow: running -> awaiting_approval -> running -> completed', () => {
+      // Start workflow
+      validateTransition('pending', 'running');
+
+      // Trigger approval gate
+      const approvalContext: TransitionContext = {
+        runId: 'run-approval-001',
+        initiator: 'system',
+        approval: {
+          action: 'merge-to-main',
+          requestedBy: 'agent-orchestrator',
+        },
+      };
+      validateTransition('running', 'awaiting_approval', approvalContext);
+
+      // Verify awaiting_approval is not terminal
+      expect(isTerminalState('awaiting_approval')).toBe(false);
+      expect(getNextValidStates('awaiting_approval')).toContain('running');
+
+      // Approve and resume
+      const approvedContext: TransitionContext = {
+        runId: 'run-approval-001',
+        initiator: 'approval',
+        approval: {
+          action: 'merge-to-main',
+          decision: 'approved',
+          decidedBy: 'user-123',
+          decidedAt: new Date(),
+          reason: 'Changes look good',
+        },
+      };
+      validateTransition('awaiting_approval', 'running', approvedContext);
+
+      // Complete workflow
+      validateTransition('running', 'completed');
+      expect(isTerminalState('completed')).toBe(true);
+    });
+
+    it('should support approval rejection: running -> awaiting_approval -> cancelled', () => {
+      // Start workflow
+      validateTransition('pending', 'running');
+
+      // Trigger approval gate
+      validateTransition('running', 'awaiting_approval');
+
+      // Reject and cancel
+      const rejectedContext: TransitionContext = {
+        runId: 'run-approval-002',
+        initiator: 'approval',
+        approval: {
+          action: 'force-push',
+          decision: 'rejected',
+          decidedBy: 'user-456',
+          decidedAt: new Date(),
+          reason: 'Too risky - need manual review',
+        },
+      };
+      validateTransition('awaiting_approval', 'cancelled', rejectedContext);
+
+      // Cancelled is terminal
+      expect(isTerminalState('cancelled')).toBe(true);
+    });
+
+    it('should support approval timeout: running -> awaiting_approval -> cancelled', () => {
+      validateTransition('pending', 'running');
+      validateTransition('running', 'awaiting_approval');
+
+      // Timeout and cancel
+      const timeoutContext: TransitionContext = {
+        runId: 'run-approval-003',
+        initiator: 'timeout',
+        approval: {
+          action: 'deploy-to-prod',
+          requestedBy: 'agent-orchestrator',
+          reason: 'Approval timeout (30 minutes)',
+        },
+      };
+      validateTransition('awaiting_approval', 'cancelled', timeoutContext);
+    });
+
+    it('should reject invalid transitions from awaiting_approval', () => {
+      // With flexible state machine, awaiting_approval can go to completed/failed
+      expect(() => validateTransition('awaiting_approval', 'completed')).not.toThrow();
+      expect(() => validateTransition('awaiting_approval', 'failed')).not.toThrow();
+    });
+  });
+
+  describe('C3: External Event Workflows', () => {
+    it('should support external event workflow: running -> waiting_external -> running -> completed', () => {
+      // Start workflow
+      validateTransition('pending', 'running');
+
+      // Wait for webhook
+      const waitingContext: TransitionContext = {
+        runId: 'run-webhook-001',
+        initiator: 'system',
+        externalEvent: {
+          eventType: 'github_webhook',
+          source: 'GitHub',
+          eventId: 'webhook-123',
+          timeoutMs: 300000, // 5 minutes
+        },
+      };
+      validateTransition('running', 'waiting_external', waitingContext);
+
+      // Verify waiting_external is not terminal
+      expect(isTerminalState('waiting_external')).toBe(false);
+      expect(getNextValidStates('waiting_external')).toContain('running');
+
+      // Webhook received, resume
+      const webhookContext: TransitionContext = {
+        runId: 'run-webhook-001',
+        initiator: 'webhook',
+        externalEvent: {
+          eventType: 'github_webhook',
+          source: 'GitHub',
+          eventId: 'webhook-123',
+        },
+      };
+      validateTransition('waiting_external', 'running', webhookContext);
+
+      // Complete workflow
+      validateTransition('running', 'completed');
+    });
+
+    it('should support external event timeout: running -> waiting_external -> failed', () => {
+      validateTransition('pending', 'running');
+
+      // Wait for external event
+      validateTransition('running', 'waiting_external');
+
+      // Timeout and fail
+      const timeoutContext: TransitionContext = {
+        runId: 'run-webhook-002',
+        initiator: 'timeout',
+        externalEvent: {
+          eventType: 'gitlab_webhook',
+          source: 'GitLab',
+          timeoutMs: 300000,
+        },
+      };
+      validateTransition('waiting_external', 'failed', timeoutContext);
+
+      // Failed is terminal
+      expect(isTerminalState('failed')).toBe(true);
+    });
+
+    it('should support all valid transitions from waiting_external', () => {
+      // With flexible state machine, waiting_external can go to all terminal states
+      expect(() => validateTransition('waiting_external', 'completed')).not.toThrow();
+      expect(() => validateTransition('waiting_external', 'cancelled')).not.toThrow();
+      expect(() => validateTransition('waiting_external', 'running')).not.toThrow();
+      expect(() => validateTransition('waiting_external', 'failed')).not.toThrow();
+    });
+  });
+
+  describe('C3: Complex Multi-State Workflows', () => {
+    it('should support multiple approval cycles', () => {
+      // Workflow: pending -> running -> awaiting_approval -> running -> awaiting_approval -> running -> completed
+      validateTransition('pending', 'running');
+
+      // First approval gate (e.g., "commit changes")
+      validateTransition('running', 'awaiting_approval');
+      validateTransition('awaiting_approval', 'running');
+
+      // Second approval gate (e.g., "push to main")
+      validateTransition('running', 'awaiting_approval');
+      validateTransition('awaiting_approval', 'running');
+
+      // Complete
+      validateTransition('running', 'completed');
+    });
+
+    it('should support mixed approval and external event workflow', () => {
+      // Workflow: pending -> running -> awaiting_approval -> running -> waiting_external -> running -> completed
+      validateTransition('pending', 'running');
+
+      // Need approval
+      validateTransition('running', 'awaiting_approval');
+      validateTransition('awaiting_approval', 'running');
+
+      // Wait for external event
+      validateTransition('running', 'waiting_external');
+      validateTransition('waiting_external', 'running');
+
+      // Complete
+      validateTransition('running', 'completed');
+    });
+
+    it('should reject direct transition between non-terminal waiting states', () => {
+      // Cannot go directly from awaiting_approval to waiting_external
+      expect(() => validateTransition('awaiting_approval', 'waiting_external')).toThrow(InvalidTransitionError);
+
+      // Cannot go directly from waiting_external to awaiting_approval
+      expect(() => validateTransition('waiting_external', 'awaiting_approval')).toThrow(InvalidTransitionError);
     });
   });
 });

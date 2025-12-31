@@ -18,8 +18,22 @@ export type EngineRunType = 'TRIAGE' | 'PLAN' | 'RESOLVE' | 'REVIEW' | 'AUTOPILO
 
 /**
  * Run status
+ *
+ * State machine flow:
+ * - started → running | cancelled | failed
+ * - running → completed | failed | cancelled | awaiting_approval | waiting_external
+ * - awaiting_approval → running | cancelled
+ * - waiting_external → running | failed
+ * - completed, failed, cancelled → (terminal)
  */
-export type EngineRunStatus = 'started' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type EngineRunStatus =
+  | 'started'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'awaiting_approval'  // Paused for human approval
+  | 'waiting_external';  // Paused for external event (webhook, timeout)
 
 /**
  * Trigger source for a run
