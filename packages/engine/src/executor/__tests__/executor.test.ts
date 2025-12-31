@@ -237,6 +237,87 @@ describe('DependencyResolver', () => {
       expect(evaluateCondition('stepOutputs.step1.status === "success"', context)).toBe(true);
       expect(evaluateCondition('stepOutputs.step1.status === "failed"', context)).toBe(false);
     });
+
+    it('should evaluate numeric comparisons', () => {
+      const context = {
+        stepOutputs: new Map([['step1', { count: 10, score: 5.5 }]]),
+      };
+
+      expect(evaluateCondition('stepOutputs.step1.count > 5', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.count < 5', context)).toBe(false);
+      expect(evaluateCondition('stepOutputs.step1.count >= 10', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.count <= 10', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.score === 5.5', context)).toBe(true);
+    });
+
+    it('should evaluate boolean values', () => {
+      const context = {
+        stepOutputs: new Map([['step1', { success: true, enabled: false }]]),
+      };
+
+      expect(evaluateCondition('stepOutputs.step1.success === true', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.enabled === false', context)).toBe(true);
+      expect(evaluateCondition('!stepOutputs.step1.enabled', context)).toBe(true);
+    });
+
+    it('should evaluate logical AND/OR', () => {
+      const context = {
+        stepOutputs: new Map([['step1', { a: 1, b: 2 }]]),
+      };
+
+      expect(evaluateCondition('stepOutputs.step1.a === 1 && stepOutputs.step1.b === 2', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.a === 1 && stepOutputs.step1.b === 3', context)).toBe(false);
+      expect(evaluateCondition('stepOutputs.step1.a === 0 || stepOutputs.step1.b === 2', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.a === 0 || stepOutputs.step1.b === 3', context)).toBe(false);
+    });
+
+    it('should evaluate parentheses for grouping', () => {
+      const context = {
+        stepOutputs: new Map([['step1', { a: 1, b: 2, c: 3 }]]),
+      };
+
+      expect(evaluateCondition('(stepOutputs.step1.a === 1) && (stepOutputs.step1.b === 2)', context)).toBe(true);
+      expect(evaluateCondition('(stepOutputs.step1.a === 0 || stepOutputs.step1.b === 2) && stepOutputs.step1.c === 3', context)).toBe(true);
+    });
+
+    it('should handle null and undefined', () => {
+      const context = {
+        stepOutputs: new Map([['step1', { value: null }]]),
+      };
+
+      expect(evaluateCondition('stepOutputs.step1.value === null', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.step1.missing === undefined', context)).toBe(true);
+      expect(evaluateCondition('stepOutputs.nonexistent === undefined', context)).toBe(true);
+    });
+
+    it('should handle single-quoted strings', () => {
+      const context = {
+        stepOutputs: new Map([['step1', { status: 'success' }]]),
+      };
+
+      expect(evaluateCondition("stepOutputs.step1.status === 'success'", context)).toBe(true);
+    });
+
+    it('should safely reject malicious expressions', () => {
+      const context = { stepOutputs: new Map() };
+
+      // These should all return false (fail to evaluate) without executing dangerous code
+      expect(evaluateCondition('process.exit(1)', context)).toBe(false);
+      expect(evaluateCondition('require("child_process")', context)).toBe(false);
+      expect(evaluateCondition('eval("1+1")', context)).toBe(false);
+      expect(evaluateCondition('constructor.constructor("return this")()', context)).toBe(false);
+      expect(evaluateCondition('this.__proto__', context)).toBe(false);
+      expect(evaluateCondition('(() => { throw new Error() })()', context)).toBe(false);
+    });
+
+    it('should handle invalid expressions gracefully', () => {
+      const context = { stepOutputs: new Map() };
+
+      // Invalid syntax should return false, not throw
+      expect(evaluateCondition('invalid syntax @@@ ???', context)).toBe(false);
+      expect(evaluateCondition('', context)).toBe(false);
+      expect(evaluateCondition('   ', context)).toBe(false);
+    });
   });
 
   describe('getAncestors', () => {

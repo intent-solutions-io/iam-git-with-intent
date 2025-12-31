@@ -237,12 +237,195 @@ export function shouldSkipStep(
 }
 
 /**
+ * Safe expression evaluator - no eval() or new Function()
+ *
+ * Supports:
+ * - Property access: stepOutputs.stepId.field
+ * - Comparisons: ===, !==, ==, !=, >, <, >=, <=
+ * - Logical: &&, ||, !
+ * - Literals: strings, numbers, booleans, null, undefined
+ * - Parentheses for grouping
+ */
+class SafeExpressionEvaluator {
+  private pos = 0;
+  private expr = '';
+  private context: Record<string, unknown> = {};
+
+  evaluate(expression: string, context: Record<string, unknown>): unknown {
+    this.expr = expression.trim();
+    this.pos = 0;
+    this.context = context;
+    const result = this.parseOr();
+    this.skipWhitespace();
+    if (this.pos < this.expr.length) {
+      throw new Error(`Unexpected character at position ${this.pos}: ${this.expr[this.pos]}`);
+    }
+    return result;
+  }
+
+  private skipWhitespace(): void {
+    while (this.pos < this.expr.length && /\s/.test(this.expr[this.pos])) {
+      this.pos++;
+    }
+  }
+
+  private parseOr(): unknown {
+    let left = this.parseAnd();
+    this.skipWhitespace();
+    while (this.expr.slice(this.pos, this.pos + 2) === '||') {
+      this.pos += 2;
+      const right = this.parseAnd();
+      left = Boolean(left) || Boolean(right);
+    }
+    return left;
+  }
+
+  private parseAnd(): unknown {
+    let left = this.parseComparison();
+    this.skipWhitespace();
+    while (this.expr.slice(this.pos, this.pos + 2) === '&&') {
+      this.pos += 2;
+      const right = this.parseComparison();
+      left = Boolean(left) && Boolean(right);
+    }
+    return left;
+  }
+
+  private parseComparison(): unknown {
+    let left = this.parseUnary();
+    this.skipWhitespace();
+
+    const ops = ['===', '!==', '==', '!=', '>=', '<=', '>', '<'];
+    for (const op of ops) {
+      if (this.expr.slice(this.pos, this.pos + op.length) === op) {
+        this.pos += op.length;
+        const right = this.parseUnary();
+        switch (op) {
+          case '===': return left === right;
+          case '!==': return left !== right;
+          case '==': return left == right;
+          case '!=': return left != right;
+          case '>=': return (left as number) >= (right as number);
+          case '<=': return (left as number) <= (right as number);
+          case '>': return (left as number) > (right as number);
+          case '<': return (left as number) < (right as number);
+        }
+      }
+    }
+    return left;
+  }
+
+  private parseUnary(): unknown {
+    this.skipWhitespace();
+    if (this.expr[this.pos] === '!') {
+      this.pos++;
+      return !this.parseUnary();
+    }
+    return this.parsePrimary();
+  }
+
+  private parsePrimary(): unknown {
+    this.skipWhitespace();
+
+    // Parentheses
+    if (this.expr[this.pos] === '(') {
+      this.pos++;
+      const result = this.parseOr();
+      this.skipWhitespace();
+      if (this.expr[this.pos] !== ')') {
+        throw new Error('Missing closing parenthesis');
+      }
+      this.pos++;
+      return result;
+    }
+
+    // String literal (single or double quotes)
+    if (this.expr[this.pos] === '"' || this.expr[this.pos] === "'") {
+      const quote = this.expr[this.pos];
+      this.pos++;
+      let str = '';
+      while (this.pos < this.expr.length && this.expr[this.pos] !== quote) {
+        if (this.expr[this.pos] === '\\' && this.pos + 1 < this.expr.length) {
+          this.pos++;
+          str += this.expr[this.pos];
+        } else {
+          str += this.expr[this.pos];
+        }
+        this.pos++;
+      }
+      if (this.expr[this.pos] !== quote) {
+        throw new Error('Unterminated string literal');
+      }
+      this.pos++;
+      return str;
+    }
+
+    // Number
+    if (/[\d.-]/.test(this.expr[this.pos])) {
+      let numStr = '';
+      if (this.expr[this.pos] === '-') {
+        numStr += '-';
+        this.pos++;
+      }
+      while (this.pos < this.expr.length && /[\d.]/.test(this.expr[this.pos])) {
+        numStr += this.expr[this.pos];
+        this.pos++;
+      }
+      return parseFloat(numStr);
+    }
+
+    // Identifier (true, false, null, undefined, or property access)
+    if (/[a-zA-Z_$]/.test(this.expr[this.pos])) {
+      let ident = '';
+      while (this.pos < this.expr.length && /[a-zA-Z0-9_$]/.test(this.expr[this.pos])) {
+        ident += this.expr[this.pos];
+        this.pos++;
+      }
+
+      // Keywords
+      if (ident === 'true') return true;
+      if (ident === 'false') return false;
+      if (ident === 'null') return null;
+      if (ident === 'undefined') return undefined;
+
+      // Property access chain
+      let value: unknown = this.context[ident];
+      this.skipWhitespace();
+      while (this.expr[this.pos] === '.') {
+        this.pos++;
+        this.skipWhitespace();
+        let prop = '';
+        while (this.pos < this.expr.length && /[a-zA-Z0-9_$]/.test(this.expr[this.pos])) {
+          prop += this.expr[this.pos];
+          this.pos++;
+        }
+        if (!prop) {
+          throw new Error('Expected property name after .');
+        }
+        if (value !== null && value !== undefined && typeof value === 'object') {
+          value = (value as Record<string, unknown>)[prop];
+        } else {
+          value = undefined;
+        }
+        this.skipWhitespace();
+      }
+      return value;
+    }
+
+    throw new Error(`Unexpected character at position ${this.pos}: ${this.expr[this.pos]}`);
+  }
+}
+
+// Singleton evaluator instance
+const safeEvaluator = new SafeExpressionEvaluator();
+
+/**
  * Evaluate conditional execution predicate
  *
- * Simple predicate evaluation for conditional steps.
- * Supports basic comparisons on previous step outputs.
+ * Safe predicate evaluation for conditional steps.
+ * Supports basic comparisons on previous step outputs without using eval().
  *
- * @param condition - Condition string
+ * @param condition - Condition string (e.g., "stepOutputs.step1.success === true")
  * @param context - Execution context with step outputs
  * @returns True if condition is met
  */
@@ -254,17 +437,14 @@ export function evaluateCondition(
     return true; // No condition = always execute
   }
 
-  // Simple condition evaluation (could be extended with a proper expression parser)
-  // For now, just support basic patterns like: "stepId.field === 'value'"
   try {
-    // Create a safe evaluation context
+    // Create evaluation context
     const stepOutputs = Object.fromEntries(context.stepOutputs);
-    const evalContext = { stepOutputs };
+    const evalContext: Record<string, unknown> = { stepOutputs };
 
-    // Very simple eval - in production, use a safe expression evaluator
-    // This is just for MVP demonstration
-    const func = new Function('context', `with(context) { return ${condition}; }`);
-    return func(evalContext) === true;
+    // Use safe expression evaluator (no eval/new Function)
+    const result = safeEvaluator.evaluate(condition, evalContext);
+    return result === true;
   } catch (error) {
     // If condition evaluation fails, default to false (don't execute)
     console.warn(`Failed to evaluate condition "${condition}":`, error);
