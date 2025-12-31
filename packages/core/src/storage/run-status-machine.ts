@@ -84,21 +84,18 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
  *
  * Enhanced in C3: awaiting_approval and waiting_external are also considered in-progress
  * (paused but not finished)
+ *
+ * Derived from isTerminalRunStatus for maintainability - if new non-terminal states
+ * are added, they will automatically be considered "in progress".
  */
 export function isRunInProgress(status: RunStatus): boolean {
-  switch (status) {
-    case 'pending':
-    case 'running':
-    case 'awaiting_approval':
-    case 'waiting_external':
-      return true;
-    default:
-      return false;
-  }
+  return !isTerminalRunStatus(status);
 }
 
 /**
  * Check if a status indicates the run has finished (success or failure)
+ *
+ * Equivalent to isTerminalRunStatus - provided for semantic clarity.
  */
 export function isRunFinished(status: RunStatus): boolean {
   return isTerminalRunStatus(status);
