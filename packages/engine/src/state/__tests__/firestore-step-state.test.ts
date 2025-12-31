@@ -114,7 +114,7 @@ describe.skipIf(!isFirestoreEmulatorConfigured())('FirestoreStepStateStore', () 
       ).rejects.toThrow('Optimistic lock failed');
     });
 
-    it('should use FieldValue.increment for atomic version bumps', async () => {
+    it('should handle concurrent status updates atomically using transactions', async () => {
       await store.initializeStep('run-1', 'step-1');
 
       // Multiple concurrent status updates (no version check)
@@ -242,10 +242,11 @@ if (isFirestoreEmulatorConfigured()) {
       return new FirestoreStepStateStore();
     },
     async (store) => {
-      // Cleanup: delete all test data
+      // Cleanup: delete all test data by runId (batch delete is more efficient)
       const allSteps = await store.listSteps({});
-      for (const step of allSteps) {
-        await store.deleteStep(step.runId, step.stepId);
+      const runIds = [...new Set(allSteps.map((step) => step.runId))];
+      for (const runId of runIds) {
+        await store.deleteRunSteps(runId);
       }
     }
   );

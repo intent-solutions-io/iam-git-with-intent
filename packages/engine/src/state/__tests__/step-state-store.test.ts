@@ -13,6 +13,53 @@ import { OptimisticLockError } from '../step-state-store.js';
 import { MemoryStepStateStore } from '../memory-step-state.js';
 import type { StepInput, StepOutput } from '../../step-contract/types.js';
 
+// =============================================================================
+// Test Data Helpers
+// =============================================================================
+
+/**
+ * Create a valid StepInput for testing
+ */
+function createTestStepInput(overrides: Partial<StepInput> = {}): StepInput {
+  return {
+    runId: '550e8400-e29b-41d4-a716-446655440000',
+    stepId: 'step-1',
+    tenantId: 'tenant-1',
+    repo: {
+      owner: 'test',
+      name: 'repo',
+      fullName: 'test/repo',
+      defaultBranch: 'main',
+    },
+    stepType: 'triage',
+    riskMode: 'comment_only',
+    capabilitiesMode: 'comment-only',
+    queuedAt: new Date().toISOString(),
+    attemptNumber: 0,
+    maxAttempts: 3,
+    ...overrides,
+  };
+}
+
+/**
+ * Create a valid StepOutput for testing
+ */
+function createTestStepOutput(overrides: Partial<StepOutput> = {}): StepOutput {
+  return {
+    runId: '550e8400-e29b-41d4-a716-446655440000',
+    stepId: 'step-1',
+    resultCode: 'ok',
+    summary: 'Test completed successfully',
+    timing: {
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      durationMs: 100,
+    },
+    requiresApproval: false,
+    ...overrides,
+  };
+}
+
 /**
  * Run contract tests against a store implementation
  */
@@ -50,13 +97,13 @@ export function testStepStateStore(
       });
 
       it('should store step input if provided', async () => {
-        const input: Partial<StepInput> = {
-          runId: 'run-1',
+        const input = createTestStepInput({
+          runId: '550e8400-e29b-41d4-a716-446655440001',
           stepId: 'step-1',
           tenantId: 'tenant-1',
-        };
+        });
 
-        const step = await store.initializeStep('run-1', 'step-1', input as StepInput);
+        const step = await store.initializeStep('run-1', 'step-1', input);
 
         expect(step.input).toEqual(input);
       });
@@ -113,16 +160,15 @@ export function testStepStateStore(
       it('should update multiple fields atomically', async () => {
         await store.initializeStep('run-1', 'step-1');
 
-        const output: Partial<StepOutput> = {
-          runId: 'run-1',
+        const output = createTestStepOutput({
+          runId: '550e8400-e29b-41d4-a716-446655440001',
           stepId: 'step-1',
-          resultCode: 'ok',
           summary: 'Success',
-        };
+        });
 
         const updated = await store.updateStepState('run-1', 'step-1', 1, {
           status: 'completed',
-          output: output as StepOutput,
+          output,
           completedAt: new Date(),
         });
 
@@ -204,17 +250,16 @@ export function testStepStateStore(
         await store.initializeStep('run-1', 'step-1');
         await store.markStepStarted('run-1', 'step-1');
 
-        const output: Partial<StepOutput> = {
-          runId: 'run-1',
+        const output = createTestStepOutput({
+          runId: '550e8400-e29b-41d4-a716-446655440001',
           stepId: 'step-1',
-          resultCode: 'ok',
           summary: 'Task completed successfully',
-        };
+        });
 
         const completed = await store.markStepCompleted(
           'run-1',
           'step-1',
-          output as StepOutput
+          output
         );
 
         expect(completed.status).toBe('completed');
@@ -318,12 +363,11 @@ export function testStepStateStore(
       it('should exclude completed steps', async () => {
         await store.initializeStep('run-1', 'step-1');
         await store.markStepStarted('run-1', 'step-1');
-        await store.markStepCompleted('run-1', 'step-1', {
-          runId: 'run-1',
+        await store.markStepCompleted('run-1', 'step-1', createTestStepOutput({
+          runId: '550e8400-e29b-41d4-a716-446655440001',
           stepId: 'step-1',
-          resultCode: 'ok',
           summary: 'Done',
-        } as StepOutput);
+        }));
 
         const pending = await store.getNextPendingSteps('run-1');
 
