@@ -237,7 +237,7 @@ describe('FivetranConnector', () => {
       });
 
       const records: ConnectorRecord[] = [];
-      for await (const record of connector.sync({ types: ['group'] })) {
+      for await (const record of connector.sync({ recordTypes: ['group'] })) {
         records.push(record);
       }
 
@@ -259,7 +259,7 @@ describe('FivetranConnector', () => {
       });
 
       const records: ConnectorRecord[] = [];
-      for await (const record of connector.sync({ types: ['connector'] })) {
+      for await (const record of connector.sync({ recordTypes: ['connector'] })) {
         records.push(record);
       }
 
@@ -278,7 +278,7 @@ describe('FivetranConnector', () => {
       mockClient.getDestination.mockResolvedValue(mockDestination);
 
       const records: ConnectorRecord[] = [];
-      for await (const record of connector.sync({ types: ['destination'] })) {
+      for await (const record of connector.sync({ recordTypes: ['destination'] })) {
         records.push(record);
       }
 
@@ -295,7 +295,7 @@ describe('FivetranConnector', () => {
       });
 
       const records: ConnectorRecord[] = [];
-      for await (const record of connector.sync({ types: ['user'] })) {
+      for await (const record of connector.sync({ recordTypes: ['user'] })) {
         records.push(record);
       }
 
@@ -317,7 +317,7 @@ describe('FivetranConnector', () => {
         });
 
       const records: ConnectorRecord[] = [];
-      for await (const record of connector.sync({ types: ['group'] })) {
+      for await (const record of connector.sync({ recordTypes: ['group'] })) {
         records.push(record);
       }
 
@@ -332,7 +332,7 @@ describe('FivetranConnector', () => {
       });
 
       const records: ConnectorRecord[] = [];
-      for await (const record of connector.sync({ types: ['group'], limit: 1 })) {
+      for await (const record of connector.sync({ recordTypes: ['group'], limit: 1 })) {
         records.push(record);
       }
 
