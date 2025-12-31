@@ -52,6 +52,16 @@ export interface ApprovalStore {
   incrementEscalation(requestId: string): Promise<void>;
 
   /**
+   * Update approvers list (for escalation)
+   */
+  updateApprovers(requestId: string, approvers: string[]): Promise<void>;
+
+  /**
+   * Update expiration time (for escalation)
+   */
+  updateExpiresAt(requestId: string, expiresAt: Date): Promise<void>;
+
+  /**
    * Set resolved timestamp
    */
   setResolved(requestId: string, resolvedAt: Date): Promise<void>;
@@ -137,6 +147,22 @@ export class InMemoryApprovalStore implements ApprovalStore {
       throw new Error(`Approval request not found: ${requestId}`);
     }
     request.escalationCount++;
+  }
+
+  async updateApprovers(requestId: string, approvers: string[]): Promise<void> {
+    const request = this.requests.get(requestId);
+    if (!request) {
+      throw new Error(`Approval request not found: ${requestId}`);
+    }
+    request.approvers = approvers;
+  }
+
+  async updateExpiresAt(requestId: string, expiresAt: Date): Promise<void> {
+    const request = this.requests.get(requestId);
+    if (!request) {
+      throw new Error(`Approval request not found: ${requestId}`);
+    }
+    request.expiresAt = expiresAt;
   }
 
   async setResolved(requestId: string, resolvedAt: Date): Promise<void> {

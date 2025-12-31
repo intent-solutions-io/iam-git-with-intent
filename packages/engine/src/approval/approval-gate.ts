@@ -191,7 +191,8 @@ export class ApprovalGate {
         const escalationResult = await performEscalation(this.request, this.store);
         if (escalationResult.escalated) {
           this.request = escalationResult.request;
-          await this.notifyApprovers('escalated');
+          // Notify the escalation targets (not just original approvers)
+          await this.notifyApprovers('escalated', escalationResult.notifyUsers);
 
           // If auto-rejected, return immediately
           if (escalationResult.action === 'auto_reject') {
@@ -219,6 +220,12 @@ export class ApprovalGate {
       throw new Error('No approval request created');
     }
 
+    // Only allow decisions on pending or escalated requests
+    if (!['pending', 'escalated'].includes(this.request.status)) {
+      console.warn(`Cannot approve request with status "${this.request.status}". Ignoring.`);
+      return;
+    }
+
     const decision: ApprovalDecision = {
       approved: true,
       decidedBy,
@@ -227,6 +234,12 @@ export class ApprovalGate {
     };
 
     await this.store.addDecision(this.request.id, decision);
+
+    // Refresh request to get updated decisions
+    const updated = await this.store.getRequest(this.request.id);
+    if (updated) {
+      this.request = updated;
+    }
 
     // Check if approval policy is satisfied
     if (await this.isPolicySatisfied()) {
@@ -242,6 +255,12 @@ export class ApprovalGate {
   async reject(decidedBy: string, reason?: string): Promise<void> {
     if (!this.request) {
       throw new Error('No approval request created');
+    }
+
+    // Only allow decisions on pending or escalated requests
+    if (!['pending', 'escalated'].includes(this.request.status)) {
+      console.warn(`Cannot reject request with status "${this.request.status}". Ignoring.`);
+      return;
     }
 
     const decision: ApprovalDecision = {
@@ -355,9 +374,12 @@ export class ApprovalGate {
 
   /**
    * Send notifications to approvers
+   * @param action - The action triggering the notification
+   * @param recipients - Optional list of recipients (defaults to request.approvers)
    */
   private async notifyApprovers(
-    action: 'created' | 'escalated' | 'timeout' | 'approved' | 'rejected'
+    action: 'created' | 'escalated' | 'timeout' | 'approved' | 'rejected',
+    recipients?: string[]
   ): Promise<void> {
     if (!this.request) {
       return;
@@ -365,6 +387,9 @@ export class ApprovalGate {
 
     const notifier = getNotifier();
     const message = createApprovalRequestNotification(this.request, action);
+
+    // Use provided recipients or default to request.approvers
+    message.recipients = recipients || this.request.approvers;
 
     await notifier.sendToAll(this.request.notificationChannels, message);
   }

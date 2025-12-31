@@ -208,26 +208,27 @@ async function handleEscalate(
     return await handleAutoReject(request, store, 'No escalation approvers configured');
   }
 
+  // Calculate new expiration time
+  const timeoutMs = request.escalationPolicy?.timeoutMs || 3600000; // 1 hour default
+  const newExpiresAt = new Date(Date.now() + timeoutMs);
+
+  // Combine original approvers with new escalation approvers
+  const combinedApprovers = [...new Set([...request.approvers, ...nextApprovers])];
+
+  // Persist all changes to the store
   await store.updateStatus(request.id, 'escalated');
   await store.incrementEscalation(request.id);
+  await store.updateApprovers(request.id, combinedApprovers);
+  await store.updateExpiresAt(request.id, newExpiresAt);
 
-  // Update approvers list (in a real implementation, this would update the request)
-  // For now, we just mark as escalated
+  // Retrieve the updated request with all persisted changes
   const updatedRequest = await store.getRequest(request.id);
   if (!updatedRequest) {
     throw new Error(`Failed to retrieve updated request: ${request.id}`);
   }
 
-  // In a real implementation, we'd update the approvers list here
-  // For now, we'll just track who to notify
-  const notifyUsers = [...request.approvers, ...nextApprovers];
-
-  // Calculate new expiration time
-  const timeoutMs = request.escalationPolicy?.timeoutMs || 3600000; // 1 hour default
-  const newExpiresAt = new Date(Date.now() + timeoutMs);
-
-  // In a real implementation, we'd update expiresAt in the store
-  updatedRequest.expiresAt = newExpiresAt;
+  // Notify all approvers (original + new escalation targets)
+  const notifyUsers = combinedApprovers;
 
   return {
     escalated: true,
