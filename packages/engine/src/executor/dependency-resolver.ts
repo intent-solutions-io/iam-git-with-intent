@@ -433,7 +433,7 @@ export function evaluateCondition(
   condition: string | undefined,
   context: { stepOutputs: Map<string, unknown> }
 ): boolean {
-  if (!condition) {
+  if (!condition || !condition.trim()) {
     return true; // No condition = always execute
   }
 

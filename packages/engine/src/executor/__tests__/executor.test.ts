@@ -315,8 +315,10 @@ describe('DependencyResolver', () => {
 
       // Invalid syntax should return false, not throw
       expect(evaluateCondition('invalid syntax @@@ ???', context)).toBe(false);
-      expect(evaluateCondition('', context)).toBe(false);
-      expect(evaluateCondition('   ', context)).toBe(false);
+
+      // Empty/whitespace conditions are treated as "no condition" = always true
+      expect(evaluateCondition('', context)).toBe(true);
+      expect(evaluateCondition('   ', context)).toBe(true);
     });
   });
 
