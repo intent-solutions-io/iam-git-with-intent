@@ -11,7 +11,6 @@
  */
 export type StepExecutionStatus =
   | 'pending'    // Not yet started
-  | 'ready'      // Dependencies met, ready to run
   | 'running'    // Currently executing
   | 'completed'  // Successfully finished
   | 'failed'     // Failed with error

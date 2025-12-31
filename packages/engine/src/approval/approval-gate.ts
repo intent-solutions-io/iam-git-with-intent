@@ -144,44 +144,19 @@ export class ApprovalGate {
       }
       this.request = updated;
 
-      // Check if resolved
-      if (this.request.status === 'approved') {
-        return {
-          approved: true,
-          request: this.request,
-          reason: 'Approval granted',
-          timedOut: false,
-          escalated: false,
-        };
-      }
+      // Check if resolved - use status map for maintainability
+      const resolvedStatusMap: Record<string, Omit<ApprovalGateResult, 'request'>> = {
+        approved: { approved: true, reason: 'Approval granted', timedOut: false, escalated: false },
+        rejected: { approved: false, reason: 'Approval rejected', timedOut: false, escalated: false },
+        timeout: { approved: false, reason: 'Approval timed out', timedOut: true, escalated: false },
+        cancelled: { approved: false, reason: 'Approval cancelled', timedOut: false, escalated: false },
+      };
 
-      if (this.request.status === 'rejected') {
+      const resultProps = resolvedStatusMap[this.request.status];
+      if (resultProps) {
         return {
-          approved: false,
           request: this.request,
-          reason: 'Approval rejected',
-          timedOut: false,
-          escalated: false,
-        };
-      }
-
-      if (this.request.status === 'timeout') {
-        return {
-          approved: false,
-          request: this.request,
-          reason: 'Approval timed out',
-          timedOut: true,
-          escalated: false,
-        };
-      }
-
-      if (this.request.status === 'cancelled') {
-        return {
-          approved: false,
-          request: this.request,
-          reason: 'Approval cancelled',
-          timedOut: false,
-          escalated: false,
+          ...resultProps,
         };
       }
 

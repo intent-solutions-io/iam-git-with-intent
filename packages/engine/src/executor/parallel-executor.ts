@@ -317,20 +317,38 @@ export class ParallelExecutor {
 
   /**
    * Get final workflow output
+   *
+   * Returns outputs from all terminal steps (steps with no dependents).
+   * If there's only one terminal step, returns its output directly.
+   * If multiple, returns an object keyed by step ID for predictable results.
    */
   private getFinalOutput(
     plan: ExecutionPlan,
     executions: Map<string, StepExecution>
   ): unknown {
-    // Find the last completed step (no dependents)
+    // Find all terminal steps (no dependents) that completed
+    const finalOutputs: Record<string, unknown> = {};
+
     for (const stepId of plan.stepDefinitions.keys()) {
       const dependents = plan.dependentGraph.get(stepId) ?? new Set();
       if (dependents.size === 0) {
         const execution = executions.get(stepId);
         if (execution?.status === 'completed') {
-          return execution.output;
+          finalOutputs[stepId] = execution.output;
         }
       }
+    }
+
+    const stepIds = Object.keys(finalOutputs);
+
+    // Single terminal step: return output directly for backwards compatibility
+    if (stepIds.length === 1) {
+      return finalOutputs[stepIds[0]];
+    }
+
+    // Multiple terminal steps: return keyed object for predictability
+    if (stepIds.length > 1) {
+      return finalOutputs;
     }
 
     return undefined;

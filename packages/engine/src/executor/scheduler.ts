@@ -89,12 +89,8 @@ export class Scheduler {
       executableSteps.push({ stepId, definition });
     }
 
-    // Sort by priority (higher first)
-    executableSteps.sort((a, b) => {
-      const priorityA = a.definition.priority ?? 0;
-      const priorityB = b.definition.priority ?? 0;
-      return priorityB - priorityA;
-    });
+    // Note: readySteps from getReadySteps() is already sorted by priority,
+    // and we iterate in order, so executableSteps preserves priority order.
 
     // Take up to availableSlots steps
     const batch = executableSteps.slice(0, availableSlots).map((s) => s.stepId);
@@ -175,7 +171,6 @@ export class Scheduler {
           stats.skipped++;
           break;
         case 'pending':
-        case 'ready':
           stats.pending++;
           break;
       }
