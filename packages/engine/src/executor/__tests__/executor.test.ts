@@ -4,7 +4,7 @@
  * Tests for parallel workflow execution with DAG scheduling.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   resolveExecutionPlan,
   CyclicDependencyError,
@@ -19,10 +19,8 @@ import { Scheduler } from '../scheduler.js';
 import { ParallelExecutor, type StepExecutorFn } from '../parallel-executor.js';
 import type {
   WorkflowDefinition,
-  StepDefinition,
   StepExecution,
   ExecutionContext,
-  ExecutorConfig,
 } from '../types.js';
 
 describe('DependencyResolver', () => {

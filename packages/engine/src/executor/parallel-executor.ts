@@ -37,7 +37,6 @@ export type StepExecutorFn = (
  */
 export class ParallelExecutor {
   private readonly config: ExecutorConfig;
-  private readonly scheduler: Scheduler | null = null;
 
   constructor(config: Partial<ExecutorConfig> = {}) {
     this.config = { ...DEFAULT_EXECUTOR_CONFIG, ...config };

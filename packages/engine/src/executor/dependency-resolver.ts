@@ -11,7 +11,6 @@ import type {
   StepDefinition,
   ExecutionPlan,
   StepExecution,
-  StepExecutionStatus,
 } from './types.js';
 
 /**
