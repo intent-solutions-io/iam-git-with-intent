@@ -8,7 +8,6 @@
 
 import type {
   ApprovalRequest,
-  EscalationPolicy,
   EscalationAction,
 } from './types.js';
 import type { ApprovalStore } from './approval-store.js';
