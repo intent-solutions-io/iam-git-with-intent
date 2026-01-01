@@ -81,11 +81,12 @@ describe('Cost Management', () => {
     });
 
     it('should accumulate multiple usage records', () => {
-      service.recordUsage('tenant-1', ResourceTypes.API_CALL, 50, 'requests');
+      // Use billing period from recorded usage to avoid UTC vs local time mismatch
+      const firstRecord = service.recordUsage('tenant-1', ResourceTypes.API_CALL, 50, 'requests');
       service.recordUsage('tenant-1', ResourceTypes.API_CALL, 75, 'requests');
       service.recordUsage('tenant-1', ResourceTypes.STORAGE, 10, 'GB');
 
-      const billingPeriod = new Date().toISOString().slice(0, 7);
+      const billingPeriod = firstRecord.billingPeriod;
       const apiUsage = service.getUsage('tenant-1', billingPeriod, ResourceTypes.API_CALL);
       const storageUsage = service.getUsage('tenant-1', billingPeriod, ResourceTypes.STORAGE);
 
@@ -102,11 +103,12 @@ describe('Cost Management', () => {
 
   describe('Usage Summary', () => {
     it('should generate usage summary for a tenant', () => {
-      service.recordUsage('tenant-1', ResourceTypes.API_CALL, 100, 'requests');
+      // Use billing period from recorded usage to avoid UTC vs local time mismatch
+      const firstRecord = service.recordUsage('tenant-1', ResourceTypes.API_CALL, 100, 'requests');
       service.recordUsage('tenant-1', ResourceTypes.API_CALL, 50, 'requests');
       service.recordUsage('tenant-1', ResourceTypes.STORAGE, 5, 'GB');
 
-      const billingPeriod = new Date().toISOString().slice(0, 7);
+      const billingPeriod = firstRecord.billingPeriod;
       const summary = service.getCostUsageSummary('tenant-1', billingPeriod);
 
       expect(summary.tenantId).toBe('tenant-1');
