@@ -140,6 +140,17 @@ export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
     windowMs: 15 * 60 * 1000, // 30 per 15 minutes
     message: 'Install rate limit exceeded.',
   },
+
+  // ==========================================================================
+  // Phase 35: Automation rate limits
+  // ==========================================================================
+
+  // Issue-to-code automation runs - daily limit per repo
+  'automation:run': {
+    maxRequests: 10, // Default, can be overridden per-repo
+    windowMs: 24 * 60 * 60 * 1000, // 24 hours
+    message: 'Automation rate limit exceeded. Maximum daily runs reached for this repository.',
+  },
 };
 
 // =============================================================================
@@ -585,4 +596,144 @@ export function methodBasedRateLimit(options: {
       next();
     }
   };
+}
+
+// =============================================================================
+// Automation Rate Limiter (Phase 35)
+// =============================================================================
+
+/**
+ * Automation rate limit check result
+ */
+export interface AutomationRateLimitResult {
+  /** Whether the automation run is allowed */
+  allowed: boolean;
+  /** Current runs today */
+  current: number;
+  /** Maximum allowed runs per day */
+  limit: number;
+  /** Hours until reset */
+  resetInHours: number;
+  /** Error message if rate limited */
+  message?: string;
+}
+
+/**
+ * Automation Rate Limiter
+ *
+ * Provides repo-specific daily rate limiting for issue-to-code automation.
+ * Uses the configured maxAutoRunsPerDay from repo settings.
+ *
+ * Usage:
+ * ```typescript
+ * const limiter = new AutomationRateLimiter();
+ * const result = await limiter.checkLimit(tenantId, repoFullName, maxRunsPerDay);
+ * if (!result.allowed) {
+ *   // Reject automation run
+ * }
+ * ```
+ */
+export class AutomationRateLimiter {
+  private rateLimiter: RateLimiter;
+
+  constructor(store?: RateLimitStore) {
+    this.rateLimiter = new RateLimiter(store);
+  }
+
+  /**
+   * Check if an automation run is allowed for a repo
+   *
+   * @param tenantId - Tenant ID
+   * @param repoFullName - Repository full name (owner/repo)
+   * @param maxRunsPerDay - Maximum runs per day from repo settings (default: 10)
+   * @returns Rate limit check result
+   */
+  async checkLimit(
+    tenantId: string,
+    repoFullName: string,
+    maxRunsPerDay: number = 10
+  ): Promise<AutomationRateLimitResult> {
+    // Create a unique key for tenant+repo
+    const action = `automation:run:${repoFullName}`;
+
+    // Create config with repo-specific limit
+    const config: RateLimitConfig = {
+      maxRequests: maxRunsPerDay,
+      windowMs: 24 * 60 * 60 * 1000, // 24 hours
+      message: `Automation rate limit exceeded. Maximum ${maxRunsPerDay} runs per day for ${repoFullName}.`,
+    };
+
+    // Add config to rate limiter
+    this.rateLimiter.setConfig(action, config);
+
+    // Check the limit
+    const result = await this.rateLimiter.check(tenantId, action);
+
+    return {
+      allowed: result.allowed,
+      current: result.current,
+      limit: result.limit,
+      resetInHours: Math.ceil(result.resetInMs / (60 * 60 * 1000)),
+      message: result.message,
+    };
+  }
+
+  /**
+   * Get current automation run status without consuming
+   *
+   * @param tenantId - Tenant ID
+   * @param repoFullName - Repository full name (owner/repo)
+   * @param maxRunsPerDay - Maximum runs per day from repo settings
+   */
+  async getStatus(
+    tenantId: string,
+    repoFullName: string,
+    maxRunsPerDay: number = 10
+  ): Promise<AutomationRateLimitResult> {
+    const action = `automation:run:${repoFullName}`;
+
+    // Ensure config exists for this action
+    const config: RateLimitConfig = {
+      maxRequests: maxRunsPerDay,
+      windowMs: 24 * 60 * 60 * 1000,
+    };
+    this.rateLimiter.setConfig(action, config);
+
+    const result = await this.rateLimiter.status(tenantId, action);
+
+    return {
+      allowed: result.remaining > 0,
+      current: result.current,
+      limit: maxRunsPerDay,
+      resetInHours: Math.ceil(result.resetInMs / (60 * 60 * 1000)),
+    };
+  }
+
+  /**
+   * Reset rate limit for a repo (admin use)
+   */
+  async reset(tenantId: string, repoFullName: string): Promise<void> {
+    const action = `automation:run:${repoFullName}`;
+    await this.rateLimiter.reset(tenantId, action);
+  }
+}
+
+// Global automation rate limiter instance
+let globalAutomationRateLimiter: AutomationRateLimiter | null = null;
+
+/**
+ * Get or create the global automation rate limiter instance
+ */
+export function getAutomationRateLimiter(store?: RateLimitStore): AutomationRateLimiter {
+  if (!globalAutomationRateLimiter) {
+    globalAutomationRateLimiter = new AutomationRateLimiter(store);
+  }
+  return globalAutomationRateLimiter;
+}
+
+/**
+ * Reset the global automation rate limiter (for testing)
+ */
+export function resetAutomationRateLimiter(): void {
+  globalAutomationRateLimiter = null;
 }

@@ -26,6 +26,8 @@ import {
   type WebhookVerificationResult,
   enqueueJob,
   createWorkflowJob,
+  type AutomationTriggers,
+  getAutomationRateLimiter,
 } from '@gwi/core';
 import {
   getIdempotencyService,
@@ -501,6 +503,9 @@ async function handlePullRequestEvent(
 
 /**
  * Handle issue_comment events (for /gwi commands)
+ *
+ * Supports both built-in commands and customizable comment commands
+ * from automation triggers config.
  */
 async function handleIssueCommentEvent(
   payload: Record<string, unknown>,
@@ -514,12 +519,11 @@ async function handleIssueCommentEvent(
   }
 
   const comment = payload.comment as Record<string, unknown>;
-  const body = comment.body as string;
-
-  // Check for /gwi commands
-  if (!body.startsWith('/gwi ')) {
-    return { status: 'skipped', skipped: true, reason: 'Not a /gwi command' };
-  }
+  const body = (comment.body as string).trim();
+  const issue = payload.issue as Record<string, unknown>;
+  const isPR = 'pull_request' in issue;
+  const labels = (issue.labels as Array<Record<string, unknown>>) || [];
+  const labelNames = labels.map(l => l.name as string);
 
   // Check tenant context
   if (!tenantCtx) {
@@ -548,12 +552,158 @@ async function handleIssueCommentEvent(
     };
   }
 
-  const command = body.slice(5).trim().split(' ')[0];
-  const issue = payload.issue as Record<string, unknown>;
-  const isPR = 'pull_request' in issue;
+  // Get automation triggers for custom comment commands
+  const automationTriggers = tenantCtx.repo?.settings?.automationTriggers;
+
+  // Check for custom comment commands from automation config (for issues only)
+  if (!isPR && automationTriggers?.commentCommands?.length) {
+    const matchedCommand = automationTriggers.commentCommands.find(cmd =>
+      body.toLowerCase().startsWith(cmd.toLowerCase())
+    );
+
+    if (matchedCommand) {
+      // Trigger issue-to-code via custom command
+      console.log(JSON.stringify({
+        type: 'comment_command_matched',
+        tenantId: tenantCtx.tenant.id,
+        repoId: tenantCtx.repo?.id,
+        issueNumber: issue.number,
+        command: matchedCommand,
+      }));
+
+      // Check rate limit before triggering automation
+      const rateLimiter = getAutomationRateLimiter();
+      const maxRunsPerDay = automationTriggers?.maxAutoRunsPerDay ?? 10;
+      const repoFullName = tenantCtx.repo?.githubFullName ?? 'unknown';
+
+      const rateLimitResult = await rateLimiter.checkLimit(
+        tenantCtx.tenant.id,
+        repoFullName,
+        maxRunsPerDay
+      );
+
+      if (!rateLimitResult.allowed) {
+        console.log(JSON.stringify({
+          type: 'automation_rate_limited',
+          tenantId: tenantCtx.tenant.id,
+          repoId: tenantCtx.repo?.id,
+          repoFullName,
+          issueNumber: issue.number,
+          source: 'comment_command',
+          current: rateLimitResult.current,
+          limit: rateLimitResult.limit,
+          resetInHours: rateLimitResult.resetInHours,
+        }));
+
+        return {
+          status: 'rate_limited',
+          skipped: true,
+          reason: rateLimitResult.message ?? `Rate limit exceeded: ${rateLimitResult.current}/${rateLimitResult.limit} runs today`,
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
+
+      const run = await tenantLinker.createRun(
+        tenantCtx,
+        'autopilot',
+        webhookCtx,
+        { number: issue.number as number, url: issue.html_url as string }
+      );
+
+      const workflowId = await triggerWorkflow('autopilot', {
+        tenantId: tenantCtx.tenant.id,
+        repoId: tenantCtx.repo?.id,
+        runId: run.id,
+        issue: {
+          number: issue.number,
+          title: issue.title,
+          body: issue.body,
+          url: issue.html_url,
+          labels: labelNames,
+          author: (issue.user as Record<string, unknown>)?.login,
+          createdAt: issue.created_at,
+        },
+        triggerReason: `comment:${matchedCommand}`,
+        triggerType: 'comment',
+        triggerValue: matchedCommand,
+        automationConfig: {
+          approvalMode: automationTriggers.approvalMode,
+          smartThreshold: automationTriggers.smartThreshold ?? 4,
+        },
+        delivery,
+        repoFullName: webhookCtx.repository?.fullName,
+        installationId: webhookCtx.installationId,
+        triggeredBy: (comment.user as Record<string, unknown>)?.login,
+      });
+
+      return {
+        status: 'triggered',
+        workflowId,
+        tenantId: tenantCtx.tenant.id,
+      };
+    }
+  }
+
+  // Check for built-in /gwi commands
+  if (!body.startsWith('/gwi ')) {
+    return { status: 'skipped', skipped: true, reason: 'Not a /gwi command' };
+  }
+
+  const command = body.slice(5).trim().split(' ')[0].toLowerCase();
 
   // Handle commands
   switch (command) {
+    // Built-in generate/code command for issue-to-code
+    case 'generate':
+    case 'code': {
+      if (isPR) {
+        return {
+          status: 'skipped',
+          skipped: true,
+          reason: 'Generate only works on issues, not PRs',
+          tenantId: tenantCtx.tenant.id,
+        };
+      }
+
+      const generateRun = await tenantLinker.createRun(
+        tenantCtx,
+        'autopilot',
+        webhookCtx,
+        { number: issue.number as number, url: issue.html_url as string }
+      );
+
+      const generateWorkflowId = await triggerWorkflow('autopilot', {
+        tenantId: tenantCtx.tenant.id,
+        repoId: tenantCtx.repo?.id,
+        runId: generateRun.id,
+        issue: {
+          number: issue.number,
+          title: issue.title,
+          body: issue.body,
+          url: issue.html_url,
+          labels: labelNames,
+          author: (issue.user as Record<string, unknown>)?.login,
+          createdAt: issue.created_at,
+        },
+        triggerReason: `comment:/gwi ${command}`,
+        triggerType: 'comment',
+        triggerValue: `/gwi ${command}`,
+        automationConfig: automationTriggers ? {
+          approvalMode: automationTriggers.approvalMode,
+          smartThreshold: automationTriggers.smartThreshold ?? 4,
+        } : undefined,
+        delivery,
+        repoFullName: webhookCtx.repository?.fullName,
+        installationId: webhookCtx.installationId,
+        triggeredBy: (comment.user as Record<string, unknown>)?.login,
+      });
+
+      return {
+        status: 'triggered',
+        workflowId: generateWorkflowId,
+        tenantId: tenantCtx.tenant.id,
+      };
+    }
     case 'resolve':
       if (!isPR) {
         return {
@@ -666,12 +816,105 @@ async function handleIssueCommentEvent(
   }
 }
 
+// =============================================================================
+// Automation Trigger Checking
+// =============================================================================
+
+/**
+ * Result of checking trigger conditions
+ */
+interface TriggerResult {
+  matched: boolean;
+  reason: string;
+  triggerType?: 'label' | 'title' | 'body' | 'default';
+  triggerValue?: string;
+}
+
+/**
+ * Default trigger labels (fallback when no automation triggers configured)
+ */
+const DEFAULT_TRIGGER_LABELS = ['gwi-auto-code', 'gwi:autopilot', 'gwi:auto'];
+
+/**
+ * Check if an issue matches the configured automation trigger conditions
+ *
+ * Checks in order: labels, title keywords, body keywords, exclude patterns
+ */
+function checkTriggerConditions(
+  issue: { title: string; body: string | null; labels: string[] },
+  triggers: AutomationTriggers | undefined
+): TriggerResult {
+  // If no triggers configured, use default labels
+  if (!triggers) {
+    const matched = issue.labels.find(l => DEFAULT_TRIGGER_LABELS.includes(l));
+    if (matched) {
+      return { matched: true, reason: `default-label:${matched}`, triggerType: 'default', triggerValue: matched };
+    }
+    return { matched: false, reason: 'no-automation-config' };
+  }
+
+  // Check if automation is disabled
+  if (triggers.enabled === false) {
+    return { matched: false, reason: 'automation-disabled' };
+  }
+
+  // Check exclude patterns first (before any positive matches)
+  if (triggers.excludePatterns?.length) {
+    const excluded = triggers.excludePatterns.some(pattern => {
+      try {
+        const regex = new RegExp(pattern, 'i');
+        return regex.test(issue.title) || regex.test(issue.body || '');
+      } catch {
+        // Invalid regex pattern, skip it
+        console.warn(`Invalid exclude pattern: ${pattern}`);
+        return false;
+      }
+    });
+    if (excluded) {
+      return { matched: false, reason: 'excluded-by-pattern' };
+    }
+  }
+
+  // Check labels
+  if (triggers.labels?.length) {
+    const matched = triggers.labels.find(t =>
+      issue.labels.some(l => l.toLowerCase() === t.toLowerCase())
+    );
+    if (matched) {
+      return { matched: true, reason: `label:${matched}`, triggerType: 'label', triggerValue: matched };
+    }
+  }
+
+  // Check title keywords
+  if (triggers.titleKeywords?.length) {
+    const matched = triggers.titleKeywords.find(kw =>
+      issue.title.toLowerCase().includes(kw.toLowerCase())
+    );
+    if (matched) {
+      return { matched: true, reason: `title:${matched}`, triggerType: 'title', triggerValue: matched };
+    }
+  }
+
+  // Check body keywords
+  if (triggers.bodyKeywords?.length) {
+    const matched = triggers.bodyKeywords.find(kw =>
+      issue.body?.toLowerCase().includes(kw.toLowerCase())
+    );
+    if (matched) {
+      return { matched: true, reason: `body:${matched}`, triggerType: 'body', triggerValue: matched };
+    }
+  }
+
+  return { matched: false, reason: 'no-trigger-match' };
+}
+
 /**
  * Handle issues events
  *
  * Phase 34: Enhanced autopilot support
- * - Supports both 'gwi-auto-code' and 'gwi:autopilot' labels
- * - Handles opened and labeled actions
+ * Phase X: Config-based automation triggers from RepoSettings
+ * - Supports customizable labels, keywords, and exclude patterns
+ * - Uses approval mode from automation triggers config
  */
 async function handleIssueEvent(
   payload: Record<string, unknown>,
@@ -686,17 +929,7 @@ async function handleIssueEvent(
 
   const issue = payload.issue as Record<string, unknown>;
   const labels = (issue.labels as Array<Record<string, unknown>>) || [];
-
-  // Phase 34: Support multiple trigger labels
-  const triggerLabels = ['gwi-auto-code', 'gwi:autopilot', 'gwi:auto'];
-  const hasAutopilotLabel = labels.some(l => triggerLabels.includes(l.name as string));
-  if (!hasAutopilotLabel) {
-    return { status: 'skipped', skipped: true, reason: 'Missing autopilot trigger label' };
-  }
-
-  // Phase 34: Extract the specific label for workflow context
-  const matchedLabel = labels.find(l => triggerLabels.includes(l.name as string));
-  const triggerLabel = matchedLabel?.name as string;
+  const labelNames = labels.map(l => l.name as string);
 
   // Check tenant context
   if (!tenantCtx) {
@@ -725,6 +958,70 @@ async function handleIssueEvent(
     };
   }
 
+  // Get automation triggers from repo settings
+  const automationTriggers = tenantCtx.repo?.settings?.automationTriggers;
+
+  // Check if issue matches trigger conditions
+  const triggerResult = checkTriggerConditions(
+    {
+      title: issue.title as string,
+      body: issue.body as string | null,
+      labels: labelNames,
+    },
+    automationTriggers
+  );
+
+  if (!triggerResult.matched) {
+    return {
+      status: 'skipped',
+      skipped: true,
+      reason: triggerResult.reason,
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
+  // Log the trigger match
+  console.log(JSON.stringify({
+    type: 'issue_trigger_matched',
+    tenantId: tenantCtx.tenant.id,
+    repoId: tenantCtx.repo?.id,
+    issueNumber: issue.number,
+    triggerReason: triggerResult.reason,
+    triggerType: triggerResult.triggerType,
+    triggerValue: triggerResult.triggerValue,
+  }));
+
+  // Check rate limit before triggering automation
+  const rateLimiter = getAutomationRateLimiter();
+  const maxRunsPerDay = automationTriggers?.maxAutoRunsPerDay ?? 10;
+  const repoFullName = tenantCtx.repo?.githubFullName ?? 'unknown';
+
+  const rateLimitResult = await rateLimiter.checkLimit(
+    tenantCtx.tenant.id,
+    repoFullName,
+    maxRunsPerDay
+  );
+
+  if (!rateLimitResult.allowed) {
+    console.log(JSON.stringify({
+      type: 'automation_rate_limited',
+      tenantId: tenantCtx.tenant.id,
+      repoId: tenantCtx.repo?.id,
+      repoFullName,
+      issueNumber: issue.number,
+      current: rateLimitResult.current,
+      limit: rateLimitResult.limit,
+      resetInHours: rateLimitResult.resetInHours,
+    }));
+
+    return {
+      status: 'rate_limited',
+      skipped: true,
+      reason: rateLimitResult.message ?? `Rate limit exceeded: ${rateLimitResult.current}/${rateLimitResult.limit} runs today`,
+      tenantId: tenantCtx.tenant.id,
+    };
+  }
+
   // Create autopilot run
   const run = await tenantLinker.createRun(
     tenantCtx,
@@ -733,7 +1030,7 @@ async function handleIssueEvent(
     { number: issue.number as number, url: issue.html_url as string }
   );
 
-  // Phase 34: Trigger autopilot workflow with enhanced context
+  // Trigger autopilot workflow with automation config
   const workflowId = await triggerWorkflow('autopilot', {
     tenantId: tenantCtx.tenant.id,
     repoId: tenantCtx.repo?.id,
@@ -743,11 +1040,19 @@ async function handleIssueEvent(
       title: issue.title,
       body: issue.body,
       url: issue.html_url,
-      labels: labels.map(l => l.name),
+      labels: labelNames,
       author: (issue.user as Record<string, unknown>)?.login,
       createdAt: issue.created_at,
     },
-    triggerLabel,
+    // Pass trigger info for audit trail
+    triggerReason: triggerResult.reason,
+    triggerType: triggerResult.triggerType,
+    triggerValue: triggerResult.triggerValue,
+    // Pass approval mode for workflow logic
+    automationConfig: automationTriggers ? {
+      approvalMode: automationTriggers.approvalMode,
+      smartThreshold: automationTriggers.smartThreshold ?? 4,
+    } : undefined,
     delivery,
     repoFullName: webhookCtx.repository?.fullName,
     installationId: webhookCtx.installationId,
