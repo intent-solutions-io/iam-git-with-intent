@@ -430,7 +430,17 @@ export class GitHubConnector extends BaseConnector implements IConnector {
     const files: GitHubFileChange[] = [];
 
     // Use pagination to get all files
-    for await (const response of this.octokit.paginate.iterator(
+    for await (const response of this.octokit.paginate.iterator<{
+      sha: string;
+      filename: string;
+      status: string;
+      additions: number;
+      deletions: number;
+      changes: number;
+      patch?: string;
+      previous_filename?: string;
+      contents_url: string;
+    }>(
       this.octokit.rest.pulls.listFiles,
       {
         owner,
@@ -574,7 +584,26 @@ export class GitHubConnector extends BaseConnector implements IConnector {
     const since = options.since;
 
     // Use pagination to get all PRs
-    for await (const response of this.octokit.paginate.iterator(
+    for await (const response of this.octokit.paginate.iterator<{
+      id: number;
+      node_id: string;
+      number: number;
+      state: string;
+      title: string;
+      body: string | null;
+      html_url: string;
+      user: { login: string; id: number } | null;
+      created_at: string;
+      updated_at: string;
+      merged_at: string | null;
+      head: { ref: string; sha: string; repo: { full_name: string } | null };
+      base: { ref: string; sha: string; repo: { full_name: string } | null };
+      labels: Array<{ name: string }>;
+      draft: boolean;
+      additions: number;
+      deletions: number;
+      changed_files: number;
+    }>(
       this.octokit.rest.pulls.list,
       {
         owner,
@@ -632,7 +661,24 @@ export class GitHubConnector extends BaseConnector implements IConnector {
     const state = options.state ?? 'open';
     const since = options.since;
 
-    for await (const response of this.octokit.paginate.iterator(
+    for await (const response of this.octokit.paginate.iterator<{
+      id: number;
+      node_id: string;
+      number: number;
+      state: string;
+      title: string;
+      body: string | null;
+      html_url: string;
+      user: { login: string; id: number } | null;
+      created_at: string;
+      updated_at: string;
+      closed_at: string | null;
+      labels: Array<{ name: string }>;
+      assignees: Array<{ login: string }>;
+      milestone: { title: string; number: number } | null;
+      comments: number;
+      pull_request?: unknown;
+    }>(
       this.octokit.rest.issues.listForRepo,
       {
         owner,

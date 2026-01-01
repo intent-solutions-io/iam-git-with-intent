@@ -28,6 +28,16 @@ const logger = getLogger('autopilot-handler');
 // =============================================================================
 
 /**
+ * Automation config passed from webhook (approval mode settings)
+ */
+export interface AutomationConfig {
+  /** Approval mode: always (require approval), never (YOLO), smart (complexity-based) */
+  approvalMode: 'always' | 'never' | 'smart';
+  /** Complexity threshold for smart mode (default: 4) */
+  smartThreshold: number;
+}
+
+/**
  * Autopilot job payload from webhook/queue
  */
 export interface AutopilotJobPayload {
@@ -55,6 +65,18 @@ export interface AutopilotJobPayload {
   /** Trigger label that started this autopilot */
   triggerLabel?: string;
 
+  /** Trigger reason from automation triggers */
+  triggerReason?: string;
+
+  /** Trigger type (label, title, body, comment, default) */
+  triggerType?: string;
+
+  /** Trigger value (the matched label/keyword/command) */
+  triggerValue?: string;
+
+  /** Automation config (approval mode settings) */
+  automationConfig?: AutomationConfig;
+
   /** Dry run mode (no actual changes) */
   dryRun?: boolean;
 
@@ -68,6 +90,48 @@ export interface AutopilotJobPayload {
 // =============================================================================
 // Helper Functions
 // =============================================================================
+
+/**
+ * Determine if approval is needed based on automation config and complexity
+ *
+ * @param automationConfig - Automation config from webhook (may be undefined)
+ * @param complexity - Complexity score from triage (1-10)
+ * @returns Whether approval is required before creating PR
+ */
+function determineApprovalNeeded(
+  automationConfig: AutomationConfig | undefined,
+  complexity: number
+): { needed: boolean; reason: string } {
+  // If no automation config, default to requiring approval (safe default)
+  if (!automationConfig) {
+    return { needed: true, reason: 'no-automation-config' };
+  }
+
+  switch (automationConfig.approvalMode) {
+    case 'always':
+      return { needed: true, reason: 'approval-mode-always' };
+
+    case 'never':
+      return { needed: false, reason: 'approval-mode-never' };
+
+    case 'smart': {
+      const threshold = automationConfig.smartThreshold ?? 4;
+      if (complexity >= threshold) {
+        return {
+          needed: true,
+          reason: `smart-mode-complexity-${complexity}-gte-threshold-${threshold}`,
+        };
+      }
+      return {
+        needed: false,
+        reason: `smart-mode-complexity-${complexity}-lt-threshold-${threshold}`,
+      };
+    }
+
+    default:
+      return { needed: true, reason: 'unknown-approval-mode' };
+  }
+}
 
 /**
  * Generate an installation access token for GitHub App
@@ -123,6 +187,8 @@ export async function handleAutopilotExecute(
     repo: payload.repo.fullName,
     runId: job.runId,
     triggerLabel: payload.triggerLabel,
+    triggerReason: payload.triggerReason,
+    automationConfig: payload.automationConfig,
     dryRun: payload.dryRun,
   });
 
@@ -226,12 +292,22 @@ export async function handleAutopilotExecute(
     const prNumber = prPhase.prNumber;
     const prUrl = prPhase.prUrl;
 
+    // Determine approval decision (for audit trail and future pause-before-PR support)
+    // TODO: In future, implement actual pause-and-resume for approval modes
+    const analyzeData = result.phases.analyze?.data as { complexity?: number } | undefined;
+    const complexity = analyzeData?.complexity ?? 5; // Default to medium if not available
+    const approvalDecision = determineApprovalNeeded(payload.automationConfig, complexity);
+
     // Log result
     context.log('info', 'Autopilot execution completed', {
       success: result.success,
       prUrl,
       prNumber,
       totalDurationMs: result.totalDurationMs,
+      approvalMode: payload.automationConfig?.approvalMode ?? 'default',
+      approvalNeeded: approvalDecision.needed,
+      approvalReason: approvalDecision.reason,
+      complexity,
     });
 
     // Update job state

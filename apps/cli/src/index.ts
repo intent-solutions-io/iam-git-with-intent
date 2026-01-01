@@ -53,6 +53,18 @@ import {
   configListCommand,
 } from './commands/config.js';
 import {
+  automationShowCommand,
+  automationLabelsAddCommand,
+  automationLabelsRemoveCommand,
+  automationCommandsAddCommand,
+  automationKeywordsAddCommand,
+  automationApprovalModeCommand,
+  automationSmartThresholdCommand,
+  automationMaxRunsCommand,
+  automationEnableCommand,
+  automationDisableCommand,
+} from './commands/automation.js';
+import {
   runStatusCommand,
   runListCommand,
   runApproveCommand,
@@ -85,6 +97,15 @@ import {
   connectorOutdatedCommand,
   connectorUpdateCommand,
 } from './commands/connector.js';
+import {
+  explainCommand,
+} from './commands/explain.js';
+import {
+  simulateCommand,
+  simulateCompareCommand,
+  simulateWhatIfCommand,
+  simulatePatternCommand,
+} from './commands/simulate.js';
 
 const program = new Command();
 
@@ -383,6 +404,195 @@ configCmd
   });
 
 // =============================================================================
+// Automation Configuration Commands (Phase 35)
+// =============================================================================
+
+const automationCmd = configCmd
+  .command('automation')
+  .description('Manage issue-to-code automation triggers');
+
+automationCmd
+  .command('show')
+  .description('Show current automation configuration')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await automationShowCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Labels subcommand
+const labelsCmd = automationCmd
+  .command('labels')
+  .description('Manage trigger labels');
+
+labelsCmd
+  .command('add <labels...>')
+  .description('Add trigger labels')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (labels, options) => {
+    try {
+      await automationLabelsAddCommand(labels, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+labelsCmd
+  .command('remove <labels...>')
+  .description('Remove trigger labels')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (labels, options) => {
+    try {
+      await automationLabelsRemoveCommand(labels, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Commands (comment commands) subcommand
+const commandsCmd = automationCmd
+  .command('commands')
+  .description('Manage comment commands (e.g., /gwi generate)');
+
+commandsCmd
+  .command('add <commands...>')
+  .description('Add comment commands')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (commands, options) => {
+    try {
+      await automationCommandsAddCommand(commands, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Keywords subcommand
+const keywordsCmd = automationCmd
+  .command('keywords')
+  .description('Manage trigger keywords');
+
+keywordsCmd
+  .command('title <keywords...>')
+  .description('Add title keywords')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (keywords, options) => {
+    try {
+      await automationKeywordsAddCommand('title', keywords, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+keywordsCmd
+  .command('body <keywords...>')
+  .description('Add body keywords')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (keywords, options) => {
+    try {
+      await automationKeywordsAddCommand('body', keywords, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Approval mode commands
+automationCmd
+  .command('approval-mode <mode>')
+  .description('Set approval mode (always, never, smart)')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (mode, options) => {
+    try {
+      await automationApprovalModeCommand(mode, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+automationCmd
+  .command('smart-threshold <threshold>')
+  .description('Set smart mode complexity threshold (1-10)')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (threshold, options) => {
+    try {
+      await automationSmartThresholdCommand(parseInt(threshold, 10), options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+automationCmd
+  .command('max-runs-per-day <count>')
+  .description('Set maximum auto runs per day')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (count, options) => {
+    try {
+      await automationMaxRunsCommand(parseInt(count, 10), options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+automationCmd
+  .command('enable')
+  .description('Enable automation for this repository')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await automationEnableCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+automationCmd
+  .command('disable')
+  .description('Disable automation for this repository')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--repo <name>', 'Repository (owner/repo)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await automationDisableCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
 // Run Commands
 // =============================================================================
 
@@ -427,6 +637,106 @@ runCmd
   .action(async (runId, options) => {
     try {
       await runApproveCommand(runId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Explain Command (Phase 35 - Context Graph)
+// =============================================================================
+
+program
+  .command('explain <run-id> [step-id]')
+  .description('Explain AI decisions - "Why did AI do that?" (Phase 35)')
+  .option('--trace <trace-id>', 'Explain by trace ID instead of run/step')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--level <level>', 'Detail level (brief, standard, detailed, debug)')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (runId, stepId, options) => {
+    try {
+      await explainCommand(runId, stepId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Simulate Command (Phase 35 - Context Graph)
+// =============================================================================
+
+const simulateCmd = program
+  .command('simulate')
+  .description('World model simulation - "What happens if we do X?" (Phase 35)');
+
+simulateCmd
+  .command('action <action>')
+  .description('Simulate a single action and predict outcome')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--complexity <n>', 'Complexity context (1-10)', parseInt)
+  .option('--repo <name>', 'Repository context (owner/repo)')
+  .option('--author <name>', 'Author context')
+  .option('--agent-type <type>', 'Agent type (triage, coder, resolver, reviewer)')
+  .option('--max-precedents <n>', 'Max precedents to consider', parseInt)
+  .option('--min-similarity <n>', 'Min similarity threshold (0-1)', parseFloat)
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (action, options) => {
+    try {
+      await simulateCommand(action, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+simulateCmd
+  .command('compare <actionA> <actionB>')
+  .description('Compare two actions and recommend the better choice')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--complexity <n>', 'Complexity context (1-10)', parseInt)
+  .option('--repo <name>', 'Repository context (owner/repo)')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (actionA, actionB, options) => {
+    try {
+      await simulateCompareCommand(actionA, actionB, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+simulateCmd
+  .command('what-if <actions...>')
+  .description('Analyze multiple scenarios and their likely outcomes')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--complexity <n>', 'Complexity context (1-10)', parseInt)
+  .option('--repo <name>', 'Repository context (owner/repo)')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (actions, options) => {
+    try {
+      await simulateWhatIfCommand(actions, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+simulateCmd
+  .command('pattern <action>')
+  .description('Get historical success pattern for an action type')
+  .option('--tenant <id>', 'Tenant ID')
+  .option('--min-similarity <n>', 'Min similarity threshold (0-1)', parseFloat)
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (action, options) => {
+    try {
+      await simulatePatternCommand(action, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -887,10 +1197,39 @@ Configuration:
   gwi config list               List all keys
   gwi config reset              Reset to defaults
 
+Automation (Phase 35 - Customizable Issue-to-Code Triggers):
+  gwi config automation show                  Show automation config for repo
+  gwi config automation labels add <labels>   Add trigger labels
+  gwi config automation labels remove <labels> Remove trigger labels
+  gwi config automation commands add <cmds>   Add comment commands (e.g., /gwi generate)
+  gwi config automation keywords title <kw>   Add title keywords
+  gwi config automation keywords body <kw>    Add body keywords
+  gwi config automation approval-mode <mode>  Set mode (always, never, smart)
+  gwi config automation smart-threshold <n>   Set complexity threshold for smart mode
+  gwi config automation max-runs-per-day <n>  Set rate limit
+  gwi config automation enable                Enable automation
+  gwi config automation disable               Disable automation
+
+  Approval modes:
+    always  - Require approval for all issue-to-code runs
+    never   - Full YOLO mode, create PR immediately
+    smart   - Auto-approve if complexity < threshold, else require approval
+
 Run Management:
   gwi run list                  List recent runs
   gwi run status <run-id>       Show run status and details
   gwi run approve <run-id>      Approve run for commit/push
+
+Context Graph (Phase 35 - "Why did AI do that?"):
+  gwi explain <run-id>          Explain all decisions in a run
+  gwi explain <run-id> <step>   Explain specific step
+  gwi explain --trace <id>      Explain by trace ID
+
+World Model Simulation (Phase 35 - "What if we do X?"):
+  gwi simulate action "action"  Predict outcome of an action
+  gwi simulate compare A B      Compare two actions
+  gwi simulate what-if A B C    Analyze multiple scenarios
+  gwi simulate pattern "action" Get historical success pattern
 
 Approvals (Phase 25 - Policy-as-Code):
   gwi approval approve <target> Approve with Ed25519 signed approval

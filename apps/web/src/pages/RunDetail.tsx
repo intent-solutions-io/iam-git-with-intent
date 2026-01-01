@@ -82,17 +82,19 @@ export function RunDetail() {
       runRef,
       (snapshot) => {
         if (snapshot.exists()) {
-          const data = snapshot.data();
-          setRun({
-            id: snapshot.id,
-            ...data,
-            createdAt: data.createdAt instanceof Timestamp
-              ? data.createdAt.toDate()
-              : new Date(data.createdAt),
-            completedAt: data.completedAt instanceof Timestamp
-              ? data.completedAt.toDate()
-              : data.completedAt ? new Date(data.completedAt) : undefined,
-          } as Run);
+          const data = snapshot.data() as Record<string, unknown>;
+          if (data) {
+            setRun({
+              id: snapshot.id,
+              ...data,
+              createdAt: data.createdAt instanceof Timestamp
+                ? data.createdAt.toDate()
+                : new Date(data.createdAt as string | number),
+              completedAt: data.completedAt instanceof Timestamp
+                ? data.completedAt.toDate()
+                : data.completedAt ? new Date(data.completedAt as string | number) : undefined,
+            } as Run);
+          }
         } else {
           setRun(null);
         }

@@ -50,12 +50,15 @@ export function Runs() {
     const unsubscribe = onSnapshot(
       runsQuery,
       (snapshot) => {
-        const fetchedRuns = snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate(),
-          completedAt: doc.data().completedAt?.toDate(),
-        })) as Run[];
+        const fetchedRuns = snapshot.docs.map((doc) => {
+          const data = doc.data() as Record<string, unknown>;
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: (data.createdAt as { toDate(): Date } | undefined)?.toDate(),
+            completedAt: (data.completedAt as { toDate(): Date } | undefined)?.toDate(),
+          } as Run;
+        });
 
         setRuns(fetchedRuns);
         setLoading(false);
