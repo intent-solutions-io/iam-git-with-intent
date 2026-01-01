@@ -8,6 +8,7 @@
  * - GWI_HOOK_DEBUG: Enable debug logging for hooks
  * - GWI_HOOK_TIMEOUT_MS: Timeout for hook execution (default: 5000)
  * - GWI_HOOK_PARALLEL: Run hooks in parallel (default: true)
+ * - GWI_DECISION_TRACE_ENABLED: Enable decision trace hook (default: false)
  *
  * @module @gwi/engine/hooks
  */
@@ -15,6 +16,7 @@
 import type { HookConfig, AgentHook } from './types.js';
 import { DEFAULT_HOOK_CONFIG } from './types.js';
 import { AgentHookRunner } from './runner.js';
+import { DecisionTraceHook } from './decision-trace-hook.js';
 
 /**
  * Read hook configuration from environment variables
@@ -33,7 +35,8 @@ export function readHookConfigFromEnv(): HookConfig {
  *
  * This function:
  * 1. Reads configuration from environment
- * 2. Returns a ready-to-use runner
+ * 2. Registers decision trace hook if enabled
+ * 3. Returns a ready-to-use runner
  *
  * Usage:
  * ```typescript
@@ -44,6 +47,17 @@ export function readHookConfigFromEnv(): HookConfig {
 export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
   const config = readHookConfigFromEnv();
   const runner = new AgentHookRunner(config);
+
+  // Register decision trace hook if enabled (Phase 35: Context Graph)
+  if (process.env.GWI_DECISION_TRACE_ENABLED === 'true') {
+    const decisionTraceHook = new DecisionTraceHook();
+    runner.register(decisionTraceHook);
+
+    if (config.debug) {
+      console.log('[Hooks] Decision trace hook registered');
+    }
+  }
+
   return runner;
 }
 

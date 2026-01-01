@@ -52,3 +52,11 @@ export {
   buildDefaultHookRunner,
   buildHookRunner,
 } from './config.js';
+
+// Decision Trace Hook (Phase 35: Context Graph)
+export {
+  DecisionTraceHook,
+  createDecisionTraceHook,
+  getDecisionTraceHook,
+  resetDecisionTraceHook,
+} from './decision-trace-hook.js';

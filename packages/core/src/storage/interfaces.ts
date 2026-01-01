@@ -402,6 +402,60 @@ export interface TenantRepo {
 }
 
 /**
+ * Automation trigger approval modes
+ *
+ * - 'always': Always require approval before creating PR
+ * - 'never': Full YOLO - auto-create PR immediately (no approval)
+ * - 'smart': Auto-approve if complexity < threshold, else require approval
+ */
+export type AutomationApprovalMode = 'always' | 'never' | 'smart';
+
+/**
+ * Automation triggers configuration
+ *
+ * Configures when issue-to-code workflows run automatically.
+ * Supports labels, comment commands, and keywords as triggers.
+ */
+export interface AutomationTriggers {
+  // ============ Trigger Sources ============
+
+  /** Labels that trigger automation (e.g., ['automate', 'gwi', 'ai-fix']) */
+  labels?: string[];
+
+  /** Comment commands that trigger automation (e.g., ['/gwi generate', '/gwi code']) */
+  commentCommands?: string[];
+
+  /** Keywords in issue title that trigger automation (e.g., ['[AUTO]', '[GWI]']) */
+  titleKeywords?: string[];
+
+  /** Keywords in issue body that trigger automation (e.g., ['@gwi', 'auto-implement']) */
+  bodyKeywords?: string[];
+
+  // ============ Approval Mode ============
+
+  /** Approval mode for generated code */
+  approvalMode: AutomationApprovalMode;
+
+  /**
+   * Complexity threshold for 'smart' approval mode.
+   * If complexity >= threshold, require approval. Otherwise auto-approve.
+   * Default: 4
+   */
+  smartThreshold?: number;
+
+  // ============ Safety Limits ============
+
+  /** Maximum automation runs per day per repo (rate limit). Default: 10 */
+  maxAutoRunsPerDay?: number;
+
+  /** Regex patterns to exclude from automation (never auto-trigger) */
+  excludePatterns?: string[];
+
+  /** Whether automation is enabled for this repo */
+  enabled?: boolean;
+}
+
+/**
  * Repository settings (can override tenant defaults)
  */
 export interface RepoSettings {
@@ -410,6 +464,9 @@ export interface RepoSettings {
   autoReview: boolean;
   autoResolve: boolean;
   branchPatterns?: string[];
+
+  /** Issue-to-code automation triggers configuration */
+  automationTriggers?: AutomationTriggers;
 }
 
 /**
