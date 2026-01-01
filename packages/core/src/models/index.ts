@@ -105,7 +105,7 @@ export async function createAnthropicClient(): Promise<ModelClient> {
         stop_sequences: options.stopSequences,
       });
 
-      const textContent = response.content.find((c) => c.type === 'text');
+      const textContent = response.content.find((c: { type: string }) => c.type === 'text');
 
       return {
         content: textContent?.type === 'text' ? textContent.text : '',

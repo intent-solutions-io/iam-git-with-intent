@@ -261,7 +261,7 @@ export class ClaudePlannerProvider implements PlannerProviderInterface {
     });
 
     // Extract text from response
-    const textContent = message.content.find((c) => c.type === 'text');
+    const textContent = message.content.find((c: { type: string }) => c.type === 'text');
     if (!textContent || textContent.type !== 'text') {
       throw new Error('No text response from Claude');
     }
