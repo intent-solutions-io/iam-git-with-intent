@@ -138,3 +138,14 @@ export {
   validatePolicy,
   formatValidationErrors,
 } from './validation.js';
+
+// Schema-based Policy Engine (Epic D)
+export {
+  type SchemaEngineConfig,
+  type PolicyStore as SchemaEnginePolicyStore,
+  SchemaPolicyEngine,
+  createSchemaEngine,
+  getSchemaEngine,
+  resetSchemaEngine,
+  evaluateSchemaPolicy,
+} from './schema-engine.js';
