@@ -108,3 +108,17 @@ export {
   isPolicyDocumentValid,
   getPolicyValidationErrors,
 } from './schema.js';
+
+// Inheritance
+export {
+  type PolicyStore,
+  type ResolvedPolicy,
+  PolicyInheritanceResolver,
+  InMemoryPolicyStore,
+  createInheritanceResolver,
+  SCOPE_HIERARCHY,
+  getScopePriority,
+  isScopeMoreSpecific,
+  getParentScope,
+  validateInheritanceChain,
+} from './inheritance.js';
