@@ -141,7 +141,7 @@ declare module 'firebase/firestore' {
     parent: DocumentReference | null;
   }
 
-  export interface Query<T = DocumentData> {
+  export interface Query<_T = DocumentData> {
     firestore: Firestore;
     type: 'query' | 'collection';
   }
