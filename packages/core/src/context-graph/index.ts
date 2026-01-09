@@ -137,3 +137,21 @@ export {
   getSimulator,
   resetSimulator,
 } from './simulator.js';
+
+// Policy integration - connects policy engine with decision traces
+export {
+  type PolicyDecisionRecord,
+  type PolicyAwareDecisionTrace,
+  type PolicyEvaluationInput,
+  type PolicyEvaluator,
+  type PolicyGateConfig,
+  type PolicyGateResult,
+  PolicyGate,
+  createPolicyDecisionRecord,
+  createPolicyGate,
+  createAllowAllEvaluator,
+  createDenyAllEvaluator,
+  getPolicyDecisionsForRun,
+  getBlockedActionsForRun,
+  explainPolicyBlock,
+} from './policy-integration.js';
