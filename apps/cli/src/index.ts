@@ -106,6 +106,11 @@ import {
   simulateWhatIfCommand,
   simulatePatternCommand,
 } from './commands/simulate.js';
+import {
+  policyTestCommand,
+  policyListCommand,
+  policyValidateCommand,
+} from './commands/policy.js';
 
 const program = new Command();
 
@@ -833,6 +838,64 @@ approvalCmd
   });
 
 // =============================================================================
+// Policy Commands (Epic D - D2.5: Dry-Run Mode)
+// =============================================================================
+
+const policyCmd = program
+  .command('policy')
+  .description('Manage and test policies (Epic D - Policy Engine)');
+
+policyCmd
+  .command('test')
+  .description('Dry-run policy evaluation - test policies without enforcement')
+  .option('-p, --policy <file>', 'Policy file (JSON)')
+  .option('--actor <id>', 'Actor ID (default: cli-user)')
+  .option('--actor-type <type>', 'Actor type: human or agent (default: human)')
+  .option('--action <name>', 'Action name (default: pr.merge)')
+  .option('--resource <type>', 'Resource type (default: pull_request)')
+  .option('-c, --complexity <n>', 'Complexity score (1-10)', parseInt)
+  .option('-b, --branch <name>', 'Branch name')
+  .option('-f, --files <files...>', 'File paths')
+  .option('-l, --labels <labels...>', 'Labels')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (options) => {
+    try {
+      await policyTestCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+policyCmd
+  .command('list')
+  .description('List loaded policies')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await policyListCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+policyCmd
+  .command('validate <policy-file>')
+  .description('Validate a policy file')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (policyFile, options) => {
+    try {
+      await policyValidateCommand(policyFile, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
 // Planner Commands (Phase 26)
 // =============================================================================
 
@@ -1239,6 +1302,16 @@ Approvals (Phase 25 - Policy-as-Code):
   gwi approval check <target>   Check policy evaluation
 
   Target formats: run-<id>, candidate-<id>, pr-<number>, or <uuid>
+
+Policy Testing (Epic D - D2.5: Dry-Run Mode):
+  gwi policy test --policy <file>  Dry-run policy evaluation
+  gwi policy validate <file>       Validate a policy file
+  gwi policy list                  List loaded policies
+
+  Examples:
+    gwi policy test --policy my-policy.json --complexity 8
+    gwi policy test -p policy.json --branch main --labels security
+    gwi policy validate ./policies/require-review.json
 
 LLM Planner (Phase 26 - requires GWI_PLANNER_ENABLED=1):
   gwi planner generate <intent> Generate PatchPlan from intent

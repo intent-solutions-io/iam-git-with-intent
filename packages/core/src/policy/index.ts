@@ -108,7 +108,6 @@ export {
   isPolicyDocumentValid,
   getPolicyValidationErrors,
 } from './schema.js';
-<<<<<<< HEAD
 
 // Inheritance
 export {
@@ -144,6 +143,11 @@ export {
 export {
   type SchemaEngineConfig,
   type PolicyStore as SchemaEnginePolicyStore,
+  // Dry-run types (D2.5)
+  type ConditionEvaluation,
+  type RuleEvaluation,
+  type DryRunResult,
+  // Engine
   SchemaPolicyEngine,
   createSchemaEngine,
   getSchemaEngine,
