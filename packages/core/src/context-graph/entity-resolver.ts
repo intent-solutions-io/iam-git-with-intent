@@ -722,7 +722,7 @@ export class EntityResolver {
     return username
       .toLowerCase()
       .replace(/[@#]/g, '')  // Remove @ and #
-      .replace(/[-_\.]/g, '') // Remove separators
+      .replace(/[-_.]/g, '') // Remove separators
       .replace(/\d+$/g, '');  // Remove trailing numbers
   }
 
