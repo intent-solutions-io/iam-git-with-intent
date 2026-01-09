@@ -108,6 +108,7 @@ export {
   isPolicyDocumentValid,
   getPolicyValidationErrors,
 } from './schema.js';
+<<<<<<< HEAD
 
 // Inheritance
 export {
@@ -149,3 +150,32 @@ export {
   resetSchemaEngine,
   evaluateSchemaPolicy,
 } from './schema-engine.js';
+
+// =============================================================================
+// Epic D: Policy Cache
+// =============================================================================
+
+// Cache types and classes
+export {
+  // Types
+  type PolicyCacheKey,
+  type CompiledRule,
+  type CachedPolicy,
+  type CacheStats,
+  type PolicyCacheConfig,
+  type CacheEventType,
+  type CacheEventListener,
+  type PolicyCompiler,
+  type PolicyLoader,
+  type CachedPolicyEngineConfig,
+  // Classes
+  PolicyCache,
+  CachedPolicyEngine,
+  // Factory functions
+  createPolicyCache,
+  createCachedPolicyEngine,
+  // Singleton
+  getPolicyCache,
+  setPolicyCache,
+  resetPolicyCache,
+} from './cache.js';
