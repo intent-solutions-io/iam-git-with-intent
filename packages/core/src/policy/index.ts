@@ -122,3 +122,19 @@ export {
   getParentScope,
   validateInheritanceChain,
 } from './inheritance.js';
+
+// Validation (prefixed to avoid conflicts with reliability and policy-dsl modules)
+export {
+  type ValidationSeverity as SchemaValidationSeverity,
+  type ValidationError as SchemaValidationError,
+  type ValidationResult as SchemaValidationResult,
+  type ValidationOptions as SchemaValidationOptions,
+  type CustomValidationRule as SchemaCustomValidationRule,
+  ValidationErrorCodes as SchemaValidationErrorCodes,
+  type ValidationErrorCode as SchemaValidationErrorCode,
+  PolicyValidator,
+  createPolicyValidator,
+  isValidPolicy,
+  validatePolicy,
+  formatValidationErrors,
+} from './validation.js';
