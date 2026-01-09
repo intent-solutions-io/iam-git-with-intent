@@ -39,11 +39,11 @@ export interface SimulateOptions {
   minSimilarity?: number;
 }
 
-export interface CompareOptions extends SimulateOptions {}
+export type CompareOptions = SimulateOptions;
 
-export interface WhatIfOptions extends SimulateOptions {}
+export type WhatIfOptions = SimulateOptions;
 
-export interface PatternOptions extends SimulateOptions {}
+export type PatternOptions = SimulateOptions;
 
 // =============================================================================
 // Simulate Command
