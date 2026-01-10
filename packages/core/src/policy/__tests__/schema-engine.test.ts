@@ -620,6 +620,358 @@ describe('evaluateSchemaPolicy()', () => {
 });
 
 // =============================================================================
+// Dry-Run Tests (D2.5)
+// =============================================================================
+
+describe('evaluateDryRun()', () => {
+  let engine: SchemaPolicyEngine;
+
+  beforeEach(() => {
+    engine = new SchemaPolicyEngine();
+  });
+
+  describe('basic dry-run', () => {
+    it('should return dry-run result structure', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{ id: 'r1', name: 'R1', action: { effect: 'allow' } }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+
+      expect(result.dryRun).toBe(true);
+      expect(result.request).toBeDefined();
+      expect(result.wouldAllow).toBe(true);
+      expect(result.wouldEffect).toBe('allow');
+      expect(result.allRules).toBeDefined();
+      expect(result.matchingRules).toBeDefined();
+      expect(result.nonMatchingRules).toBeDefined();
+      expect(result.summary).toBeDefined();
+      expect(result.warnings).toBeDefined();
+    });
+
+    it('should evaluate ALL rules (not stop on first match)', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [
+          { id: 'r1', name: 'R1', priority: 100, action: { effect: 'allow' } },
+          { id: 'r2', name: 'R2', priority: 50, action: { effect: 'deny' } },
+          { id: 'r3', name: 'R3', priority: 10, action: { effect: 'warn' } },
+        ],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+
+      // All 3 rules should be evaluated
+      expect(result.allRules).toHaveLength(3);
+      // All match (no conditions)
+      expect(result.matchingRules).toHaveLength(3);
+      expect(result.nonMatchingRules).toHaveLength(0);
+    });
+
+    it('should use highest priority matching rule for decision', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [
+          { id: 'low', name: 'Low Priority', priority: 10, action: { effect: 'deny' } },
+          { id: 'high', name: 'High Priority', priority: 100, action: { effect: 'allow' } },
+        ],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+
+      expect(result.primaryMatch?.ruleId).toBe('high');
+      expect(result.wouldAllow).toBe(true);
+      expect(result.wouldEffect).toBe('allow');
+    });
+  });
+
+  describe('condition evaluation details', () => {
+    it('should include detailed condition evaluation for each rule', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'complex-rule',
+          name: 'Complex Rule',
+          conditions: [
+            { type: 'complexity', operator: 'gte', threshold: 5 },
+          ],
+          action: { effect: 'require_approval' },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', complexity: 7 },
+      }));
+
+      expect(result.matchingRules).toHaveLength(1);
+      const rule = result.matchingRules[0];
+      expect(rule.conditions).toHaveLength(1);
+      expect(rule.conditions[0].type).toBe('complexity');
+      expect(rule.conditions[0].matched).toBe(true);
+      expect(rule.conditions[0].explanation).toContain('7');
+      expect(rule.conditions[0].actualValue).toBe(7);
+      expect(rule.conditions[0].expectedValue).toBe(5);
+    });
+
+    it('should show non-matching conditions', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'complex-rule',
+          name: 'Complex Rule',
+          conditions: [
+            { type: 'complexity', operator: 'gte', threshold: 5 },
+          ],
+          action: { effect: 'deny' },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', complexity: 3 },
+      }));
+
+      expect(result.nonMatchingRules).toHaveLength(1);
+      const rule = result.nonMatchingRules[0];
+      expect(rule.conditions[0].matched).toBe(false);
+      expect(rule.conditions[0].actualValue).toBe(3);
+    });
+
+    it('should evaluate file_pattern conditions with details', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'ts-rule',
+          name: 'TS Rule',
+          conditions: [{ type: 'file_pattern', patterns: ['**/*.ts', '*.ts'] }],
+          action: { effect: 'allow' },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', files: ['index.ts', 'readme.md'] },
+      }));
+
+      expect(result.matchingRules).toHaveLength(1);
+      expect(result.matchingRules[0].conditions[0].type).toBe('file_pattern');
+    });
+
+    it('should evaluate label conditions with details', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'label-rule',
+          name: 'Label Rule',
+          conditions: [{ type: 'label', labels: ['urgent', 'bug'], matchType: 'any' }],
+          action: { effect: 'allow' },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', labels: ['feature', 'review'] },
+      }));
+
+      expect(result.nonMatchingRules).toHaveLength(1);
+      const cond = result.nonMatchingRules[0].conditions[0];
+      expect(cond.type).toBe('label');
+      expect(cond.matched).toBe(false);
+      expect(cond.actualValue).toEqual(['feature', 'review']);
+    });
+  });
+
+  describe('summary statistics', () => {
+    it('should count policies and rules correctly', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        name: 'Policy 1',
+        rules: [
+          { id: 'p1r1', name: 'P1R1', action: { effect: 'allow' } },
+          { id: 'p1r2', name: 'P1R2', action: { effect: 'deny' } },
+        ],
+      }));
+      engine.loadPolicy(createMinimalPolicy({
+        name: 'Policy 2',
+        rules: [
+          { id: 'p2r1', name: 'P2R1', action: { effect: 'warn' } },
+        ],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+
+      expect(result.summary.totalPolicies).toBe(2);
+      expect(result.summary.totalRules).toBe(3);
+      expect(result.summary.matchingRules).toBe(3);
+      expect(result.summary.evaluationTimeMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should track matching rule count correctly', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [
+          { id: 'r1', name: 'R1', action: { effect: 'allow' } }, // Matches (no conditions)
+          {
+            id: 'r2',
+            name: 'R2',
+            conditions: [{ type: 'complexity', operator: 'gte', threshold: 10 }],
+            action: { effect: 'deny' },
+          }, // Doesn't match
+        ],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', complexity: 5 },
+      }));
+
+      expect(result.summary.totalRules).toBe(2);
+      expect(result.summary.matchingRules).toBe(1);
+    });
+  });
+
+  describe('warnings', () => {
+    it('should warn when no policies are loaded', () => {
+      const emptyEngine = new SchemaPolicyEngine();
+      const result = emptyEngine.evaluateDryRun(createMinimalRequest());
+
+      expect(result.warnings).toContain('No policies loaded - evaluation based on default settings only');
+    });
+
+    it('should warn when no rules match', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'r1',
+          name: 'R1',
+          conditions: [{ type: 'complexity', operator: 'eq', threshold: 10 }],
+          action: { effect: 'allow' },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', complexity: 5 },
+      }));
+
+      expect(result.warnings.some(w => w.includes('No rules matched'))).toBe(true);
+    });
+
+    it('should warn when multiple rules match', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [
+          { id: 'r1', name: 'R1', action: { effect: 'allow' } },
+          { id: 'r2', name: 'R2', action: { effect: 'deny' } },
+        ],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+
+      expect(result.warnings.some(w => w.includes('Multiple rules matched'))).toBe(true);
+    });
+
+    it('should warn about disabled rules', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [
+          { id: 'disabled', name: 'Disabled', enabled: false, action: { effect: 'allow' } },
+          { id: 'enabled', name: 'Enabled', action: { effect: 'deny' } },
+        ],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+
+      expect(result.warnings.some(w => w.includes('disabled'))).toBe(true);
+      expect(result.summary.totalRules).toBe(1); // Only enabled rule counted
+    });
+  });
+
+  describe('wouldApply details', () => {
+    it('should include effect and reason in wouldApply', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'r1',
+          name: 'R1',
+          action: { effect: 'deny', reason: 'Not permitted during maintenance' },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+      const rule = result.matchingRules[0];
+
+      expect(rule.wouldApply.effect).toBe('deny');
+      expect(rule.wouldApply.reason).toBe('Not permitted during maintenance');
+    });
+
+    it('should include approval config in wouldApply', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'r1',
+          name: 'R1',
+          action: {
+            effect: 'require_approval',
+            approval: { minApprovers: 2, requiredRoles: ['senior'] },
+          },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+      const rule = result.matchingRules[0];
+
+      expect(rule.wouldApply.effect).toBe('require_approval');
+      // Schema adds allowSelfApproval: false as default
+      expect(rule.wouldApply.approval).toMatchObject({ minApprovers: 2, requiredRoles: ['senior'] });
+    });
+
+    it('should include notification config in wouldApply', () => {
+      engine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'r1',
+          name: 'R1',
+          action: {
+            effect: 'notify',
+            notification: { channels: ['slack'], severity: 'warning' },
+          },
+        }],
+      }));
+
+      const result = engine.evaluateDryRun(createMinimalRequest());
+      const rule = result.matchingRules[0];
+
+      expect(rule.wouldApply.notification).toEqual({ channels: ['slack'], severity: 'warning' });
+    });
+  });
+
+  describe('decision logic', () => {
+    it('should use default effect when no rules match', () => {
+      const denyEngine = new SchemaPolicyEngine({ defaultEffect: 'deny' });
+      denyEngine.loadPolicy(createMinimalPolicy({
+        rules: [{
+          id: 'r1',
+          name: 'R1',
+          conditions: [{ type: 'complexity', operator: 'eq', threshold: 10 }],
+          action: { effect: 'allow' },
+        }],
+      }));
+
+      const result = denyEngine.evaluateDryRun(createMinimalRequest({
+        resource: { type: 'pr', complexity: 5 },
+      }));
+
+      expect(result.wouldAllow).toBe(false);
+      expect(result.wouldEffect).toBe('deny');
+    });
+
+    it('should determine wouldAllow correctly for each effect', () => {
+      const testCases: Array<{ effect: 'allow' | 'deny' | 'warn' | 'log_only' | 'require_approval' | 'notify'; expected: boolean }> = [
+        { effect: 'allow', expected: true },
+        { effect: 'deny', expected: false },
+        { effect: 'warn', expected: true },
+        { effect: 'log_only', expected: true },
+        { effect: 'require_approval', expected: false },
+        { effect: 'notify', expected: false },
+      ];
+
+      for (const { effect, expected } of testCases) {
+        const testEngine = new SchemaPolicyEngine();
+        testEngine.loadPolicy(createMinimalPolicy({
+          rules: [{ id: 'r1', name: 'R1', action: { effect } }],
+        }));
+
+        const result = testEngine.evaluateDryRun(createMinimalRequest());
+        expect(result.wouldAllow).toBe(expected);
+        expect(result.wouldEffect).toBe(effect);
+      }
+    });
+  });
+});
+
+// =============================================================================
 // Edge Cases
 // =============================================================================
 

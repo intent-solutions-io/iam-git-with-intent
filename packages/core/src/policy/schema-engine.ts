@@ -57,6 +57,84 @@ export interface SchemaEngineConfig {
   validateOnLoad?: boolean;
 }
 
+// =============================================================================
+// Dry-Run Types (D2.5)
+// =============================================================================
+
+/**
+ * Detailed condition evaluation result
+ */
+export interface ConditionEvaluation {
+  /** Condition type */
+  type: PolicyCondition['type'];
+  /** Whether the condition matched */
+  matched: boolean;
+  /** Human-readable explanation */
+  explanation: string;
+  /** The actual value from the request */
+  actualValue?: unknown;
+  /** The expected value from the condition */
+  expectedValue?: unknown;
+}
+
+/**
+ * Detailed rule evaluation result
+ */
+export interface RuleEvaluation {
+  /** Rule ID */
+  ruleId: string;
+  /** Rule name */
+  ruleName: string;
+  /** Policy ID the rule belongs to */
+  policyId: string;
+  /** Rule priority */
+  priority: number;
+  /** Whether all conditions matched */
+  matched: boolean;
+  /** Individual condition evaluations */
+  conditions: ConditionEvaluation[];
+  /** The action that would be taken */
+  wouldApply: {
+    effect: ActionEffect;
+    reason?: string;
+    approval?: unknown;
+    notification?: unknown;
+  };
+}
+
+/**
+ * Dry-run evaluation result
+ */
+export interface DryRunResult {
+  /** Flag indicating this is a dry-run result */
+  dryRun: true;
+  /** The request that was evaluated */
+  request: PolicyEvaluationRequest;
+  /** What the final decision would be */
+  wouldAllow: boolean;
+  /** The effect that would be applied */
+  wouldEffect: ActionEffect;
+  /** Reason for the decision */
+  reason: string;
+  /** The rule that would match (first match) */
+  primaryMatch?: RuleEvaluation;
+  /** All rules that were evaluated */
+  allRules: RuleEvaluation[];
+  /** Rules that matched */
+  matchingRules: RuleEvaluation[];
+  /** Rules that did not match */
+  nonMatchingRules: RuleEvaluation[];
+  /** Summary statistics */
+  summary: {
+    totalPolicies: number;
+    totalRules: number;
+    matchingRules: number;
+    evaluationTimeMs: number;
+  };
+  /** Warnings or suggestions */
+  warnings: string[];
+}
+
 /**
  * Simple inline validator (for when validation.ts isn't available)
  */
@@ -241,6 +319,243 @@ export class SchemaPolicyEngine {
 
     // No rules matched - use default action
     return this.buildDefaultResult(request, startTime, rulesEvaluated, policiesEvaluated);
+  }
+
+  /**
+   * Evaluate a request in dry-run mode
+   *
+   * Unlike evaluate(), this:
+   * - Evaluates ALL rules (doesn't stop on first match)
+   * - Returns detailed condition breakdowns
+   * - Never triggers side effects
+   *
+   * @example
+   * ```typescript
+   * const result = engine.evaluateDryRun({
+   *   actor: { id: 'user-1', type: 'human' },
+   *   action: { name: 'pr.merge' },
+   *   resource: { type: 'pull_request', complexity: 8 },
+   *   context: { source: 'cli', timestamp: new Date() },
+   * });
+   *
+   * console.log(result.wouldAllow); // false
+   * console.log(result.matchingRules); // [{ ruleId: '...', ... }]
+   * ```
+   */
+  evaluateDryRun(request: PolicyEvaluationRequest): DryRunResult {
+    const startTime = Date.now();
+    const allRuleEvaluations: RuleEvaluation[] = [];
+    const matchingRules: RuleEvaluation[] = [];
+    const nonMatchingRules: RuleEvaluation[] = [];
+    const warnings: string[] = [];
+
+    // Collect and evaluate all rules from all policies
+    for (const [policyId, cached] of this.policies) {
+      for (const rule of cached.compiledRules) {
+        if (!rule.enabled) {
+          warnings.push(`Rule "${rule.name}" (${rule.id}) is disabled`);
+          continue;
+        }
+
+        // Evaluate each condition individually for detailed reporting
+        const conditionEvaluations = this.evaluateConditionsDetailed(rule, request, cached.document);
+        const allConditionsMatch = conditionEvaluations.every(c => c.matched);
+
+        const ruleEval: RuleEvaluation = {
+          ruleId: rule.id,
+          ruleName: rule.name,
+          policyId,
+          priority: rule.priority,
+          matched: allConditionsMatch,
+          conditions: conditionEvaluations,
+          wouldApply: {
+            effect: rule.action.effect,
+            reason: rule.action.reason,
+            approval: rule.action.approval,
+            notification: rule.action.notification,
+          },
+        };
+
+        allRuleEvaluations.push(ruleEval);
+
+        if (allConditionsMatch) {
+          matchingRules.push(ruleEval);
+        } else {
+          nonMatchingRules.push(ruleEval);
+        }
+      }
+    }
+
+    // Sort by priority (higher first)
+    allRuleEvaluations.sort((a, b) => b.priority - a.priority);
+    matchingRules.sort((a, b) => b.priority - a.priority);
+
+    // Determine what would happen
+    const primaryMatch = matchingRules[0];
+    const wouldEffect = primaryMatch?.wouldApply.effect ?? this.config.defaultEffect;
+    const wouldAllow = wouldEffect === 'allow' || wouldEffect === 'log_only' || wouldEffect === 'warn';
+
+    // Generate warnings
+    if (matchingRules.length === 0) {
+      warnings.push(`No rules matched - default effect "${this.config.defaultEffect}" would apply`);
+    }
+    if (matchingRules.length > 1) {
+      warnings.push(`Multiple rules matched (${matchingRules.length}) - highest priority rule would apply`);
+    }
+    if (this.policies.size === 0) {
+      warnings.push('No policies loaded - evaluation based on default settings only');
+    }
+
+    return {
+      dryRun: true,
+      request,
+      wouldAllow,
+      wouldEffect,
+      reason: primaryMatch?.wouldApply.reason ?? 'No matching policy rule',
+      primaryMatch,
+      allRules: allRuleEvaluations,
+      matchingRules,
+      nonMatchingRules,
+      summary: {
+        totalPolicies: this.policies.size,
+        totalRules: allRuleEvaluations.length,
+        matchingRules: matchingRules.length,
+        evaluationTimeMs: Date.now() - startTime,
+      },
+      warnings,
+    };
+  }
+
+  /**
+   * Evaluate conditions with detailed results for dry-run
+   */
+  private evaluateConditionsDetailed(
+    rule: CompiledRule,
+    request: PolicyEvaluationRequest,
+    document: PolicyDocument
+  ): ConditionEvaluation[] {
+    // Find the original rule in the document to get condition details
+    const originalRule = document.rules.find(r => r.id === rule.id);
+    if (!originalRule || !originalRule.conditions) {
+      return [];
+    }
+
+    return originalRule.conditions.map((condition, index) => {
+      const matched = rule.conditions[index]?.evaluate(request) ?? false;
+      return this.buildConditionEvaluation(condition, request, matched);
+    });
+  }
+
+  /**
+   * Build detailed condition evaluation result
+   */
+  private buildConditionEvaluation(
+    condition: PolicyCondition,
+    request: PolicyEvaluationRequest,
+    matched: boolean
+  ): ConditionEvaluation {
+    const base = {
+      type: condition.type,
+      matched,
+    };
+
+    switch (condition.type) {
+      case 'complexity': {
+        const actualComplexity = request.resource.complexity ?? 0;
+        return {
+          ...base,
+          explanation: `Complexity ${actualComplexity} ${condition.operator} ${condition.threshold} → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: actualComplexity,
+          expectedValue: condition.threshold,
+        };
+      }
+      case 'file_pattern': {
+        const files = request.resource.files ?? [];
+        const patterns = condition.patterns;
+        return {
+          ...base,
+          explanation: `Patterns ${JSON.stringify(patterns)} matched against ${files.length} files (${condition.matchType}) → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: files,
+          expectedValue: patterns,
+        };
+      }
+      case 'author': {
+        const actualRoles = request.actor.roles ?? [];
+        const criteria: string[] = [];
+        if (condition.authors?.length) criteria.push(`authors: ${JSON.stringify(condition.authors)}`);
+        if (condition.roles?.length) criteria.push(`roles: ${JSON.stringify(condition.roles)}`);
+        if (condition.teams?.length) criteria.push(`teams: ${JSON.stringify(condition.teams)}`);
+        return {
+          ...base,
+          explanation: `Author "${request.actor.id}" (roles: ${JSON.stringify(actualRoles)}) checked against ${criteria.join(', ') || 'no criteria'} → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: { id: request.actor.id, roles: actualRoles },
+          expectedValue: { authors: condition.authors, roles: condition.roles, teams: condition.teams },
+        };
+      }
+      case 'time_window': {
+        const now = new Date();
+        const hour = now.getHours();
+        const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+        const day = dayNames[now.getDay()];
+        return {
+          ...base,
+          explanation: `Current time ${hour}:00 ${day} within allowed windows (${condition.matchType}) → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: { hour, day },
+          expectedValue: { windows: condition.windows, matchType: condition.matchType },
+        };
+      }
+      case 'repository': {
+        const actualRepo = request.resource.repo;
+        const repoName = actualRepo ? `${actualRepo.owner}/${actualRepo.name}` : 'unknown';
+        return {
+          ...base,
+          explanation: `Repository "${repoName}" matches repos/patterns → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: repoName,
+          expectedValue: { repos: condition.repos, patterns: condition.patterns },
+        };
+      }
+      case 'branch': {
+        const actualBranch = request.resource.branch ?? 'unknown';
+        return {
+          ...base,
+          explanation: `Branch "${actualBranch}" matches branches/patterns → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: actualBranch,
+          expectedValue: { branches: condition.branches, patterns: condition.patterns },
+        };
+      }
+      case 'label': {
+        const labels = request.resource.labels ?? [];
+        return {
+          ...base,
+          explanation: `Labels ${JSON.stringify(labels)} matchType=${condition.matchType} ${JSON.stringify(condition.labels)} → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: labels,
+          expectedValue: condition.labels,
+        };
+      }
+      case 'agent': {
+        const actualAgent = request.action.agentType;
+        return {
+          ...base,
+          explanation: `Agent type "${actualAgent}" matches ${JSON.stringify(condition.agents)} → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: actualAgent,
+          expectedValue: condition.agents,
+        };
+      }
+      case 'custom': {
+        const fieldValue = request.attributes?.[condition.field];
+        return {
+          ...base,
+          explanation: `Custom condition "${condition.field}" ${condition.operator} ${JSON.stringify(condition.value)} → ${matched ? 'MATCH' : 'NO MATCH'}`,
+          actualValue: fieldValue,
+          expectedValue: condition.value,
+        };
+      }
+      default:
+        return {
+          ...base,
+          explanation: `Unknown condition type → ${matched ? 'MATCH' : 'NO MATCH'}`,
+        };
+    }
   }
 
   /**
