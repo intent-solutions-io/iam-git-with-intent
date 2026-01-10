@@ -183,3 +183,78 @@ export {
   setPolicyCache,
   resetPolicyCache,
 } from './cache.js';
+
+// =============================================================================
+// Epic D: Immutable Audit Log Schema (D3.1)
+// =============================================================================
+
+// Audit log schema types and validators (prefixed with Immutable to avoid conflicts)
+export {
+  // Cryptographic types
+  HashAlgorithm as ImmutableHashAlgorithm,
+  CryptoHash as ImmutableCryptoHash,
+  SHA256Hash as ImmutableSHA256Hash,
+
+  // Identification
+  AuditLogEntryId as ImmutableAuditLogEntryId,
+  AuditLogId as ImmutableAuditLogId,
+
+  // Actor types
+  AuditActorType as ImmutableAuditActorType,
+  AuditLogActor as ImmutableAuditLogActor,
+
+  // Action types
+  AuditActionCategory as ImmutableAuditActionCategory,
+  AuditLogAction as ImmutableAuditLogAction,
+
+  // Resource types
+  AuditResourceType as ImmutableAuditResourceType,
+  AuditLogResource as ImmutableAuditLogResource,
+
+  // Outcome types
+  AuditOutcomeStatus as ImmutableAuditOutcomeStatus,
+  AuditLogOutcome as ImmutableAuditLogOutcome,
+
+  // Context types
+  AuditLogContext as ImmutableAuditLogContext,
+  ContextHash as ImmutableContextHash,
+
+  // Chain integrity
+  AuditChainLink as ImmutableAuditChainLink,
+
+  // Main entry schema
+  ImmutableAuditLogEntry,
+  CreateAuditLogEntry as CreateImmutableAuditLogEntry,
+
+  // Query types
+  AuditLogQuery as ImmutableAuditLogQuery,
+  AuditLogQueryResult as ImmutableAuditLogQueryResult,
+
+  // Metadata
+  AuditLogMetadata as ImmutableAuditLogMetadata,
+
+  // Factory functions
+  generateAuditLogEntryId,
+  generateAuditLogId,
+  createAuditAction as createImmutableAuditAction,
+  createAuditActor as createImmutableAuditActor,
+  createAuditResource as createImmutableAuditResource,
+  createAuditContext as createImmutableAuditContext,
+  createAuditOutcome as createImmutableAuditOutcome,
+
+  // Validation functions
+  validateAuditLogEntry as validateImmutableAuditLogEntry,
+  safeParseAuditLogEntry as safeParseImmutableAuditLogEntry,
+  validateCreateAuditLogEntry as validateCreateImmutableAuditLogEntry,
+
+  // High-risk detection (prefixed to avoid conflicts with security module)
+  isHighRiskAction as isImmutableHighRiskAction,
+  markHighRiskIfApplicable as markImmutableHighRiskIfApplicable,
+  HIGH_RISK_ACTIONS as IMMUTABLE_HIGH_RISK_ACTIONS,
+
+  // Constants
+  CURRENT_SCHEMA_VERSION as IMMUTABLE_AUDIT_LOG_SCHEMA_VERSION,
+  DEFAULT_HASH_ALGORITHM as IMMUTABLE_DEFAULT_HASH_ALGORITHM,
+  MAX_QUERY_LIMIT as IMMUTABLE_AUDIT_LOG_MAX_QUERY_LIMIT,
+  CONTEXT_HASH_FIELDS as IMMUTABLE_CONTEXT_HASH_FIELDS,
+} from './audit-log-schema.js';
