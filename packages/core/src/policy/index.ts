@@ -338,3 +338,31 @@ export {
   setImmutableAuditLogStore,
   resetImmutableAuditLogStore,
 } from './audit-log-storage.js';
+
+// =============================================================================
+// Epic D: Audit Log Integrity Verification (D3.4)
+// =============================================================================
+
+// Verification service for audit log chain integrity
+export {
+  // Types
+  type IntegrityIssueType,
+  type IssueSeverity,
+  type IntegrityIssue,
+  type ChainHealthStats,
+  type VerificationReport,
+  type VerificationOptions,
+
+  // Service interface and implementation
+  type AuditVerificationService,
+  AuditVerificationServiceImpl,
+
+  // Factory functions
+  createAuditVerificationService,
+
+  // Singleton management
+  initializeAuditVerificationService,
+  getAuditVerificationService,
+  setAuditVerificationService,
+  resetAuditVerificationService,
+} from './audit-verification.js';
