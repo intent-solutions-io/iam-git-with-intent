@@ -111,6 +111,11 @@ import {
   policyListCommand,
   policyValidateCommand,
 } from './commands/policy.js';
+import {
+  auditVerifyCommand,
+  auditHealthCommand,
+  auditIsValidCommand,
+} from './commands/audit.js';
 
 const program = new Command();
 
@@ -896,6 +901,65 @@ policyCmd
   });
 
 // =============================================================================
+// Audit Commands (Epic D - D3.4: Integrity Verification)
+// =============================================================================
+
+const auditCmd = program
+  .command('audit')
+  .description('Audit log management and integrity verification (Epic D)');
+
+auditCmd
+  .command('verify')
+  .description('Verify audit log chain integrity - detect tampering, gaps, and chain breaks')
+  .option('-t, --tenant <id>', 'Tenant ID (default: default)')
+  .option('--start-sequence <n>', 'Start sequence for partial verification', parseInt)
+  .option('--end-sequence <n>', 'End sequence for partial verification', parseInt)
+  .option('--max-entries <n>', 'Maximum entries to verify', parseInt)
+  .option('--verify-timestamps', 'Also verify timestamps are monotonically increasing')
+  .option('--include-details', 'Include entry-level verification details')
+  .option('--stop-on-first-error', 'Stop verification on first issue found')
+  .option('--json', 'Output as JSON')
+  .option('-v, --verbose', 'Show detailed output')
+  .action(async (options) => {
+    try {
+      await auditVerifyCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+auditCmd
+  .command('health')
+  .description('Quick health check of audit log (no full verification)')
+  .option('-t, --tenant <id>', 'Tenant ID (default: default)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await auditHealthCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+auditCmd
+  .command('is-valid')
+  .description('Check if audit log is valid (exits 0 if valid, 1 if invalid, 2 on error)')
+  .option('-t, --tenant <id>', 'Tenant ID (default: default)')
+  .option('-q, --quiet', 'Suppress output (exit code only)')
+  .action(async (options) => {
+    try {
+      await auditIsValidCommand(options);
+    } catch (error) {
+      if (!options.quiet) {
+        console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      }
+      process.exit(2);
+    }
+  });
+
+// =============================================================================
 // Planner Commands (Phase 26)
 // =============================================================================
 
@@ -1312,6 +1376,24 @@ Policy Testing (Epic D - D2.5: Dry-Run Mode):
     gwi policy test --policy my-policy.json --complexity 8
     gwi policy test -p policy.json --branch main --labels security
     gwi policy validate ./policies/require-review.json
+
+Audit Log Verification (Epic D - D3.4: Integrity Verification):
+  gwi audit verify                 Verify audit log chain integrity
+  gwi audit health                 Quick health check
+  gwi audit is-valid               Boolean check (for CI/scripts)
+
+  Examples:
+    gwi audit verify --tenant my-org --verbose
+    gwi audit verify --verify-timestamps --json
+    gwi audit verify --start-sequence 100 --end-sequence 200
+    gwi audit health --tenant my-org
+    gwi audit is-valid --quiet && echo "Chain OK"
+
+  Issue types detected:
+    critical: content_hash_mismatch, chain_link_broken
+    high:     sequence_gap, sequence_duplicate, first_entry_invalid
+    medium:   timestamp_regression
+    low:      algorithm_mismatch
 
 LLM Planner (Phase 26 - requires GWI_PLANNER_ENABLED=1):
   gwi planner generate <intent> Generate PatchPlan from intent
