@@ -309,3 +309,32 @@ export {
   MerkleProofSchema as CryptoMerkleProofSchema,
   BatchCreateResultSchema as CryptoBatchCreateResultSchema,
 } from './crypto-chain.js';
+
+// =============================================================================
+// Epic D: Immutable Audit Log Storage (D3.3)
+// =============================================================================
+
+// Audit log storage interfaces and implementations
+export {
+  // Types
+  type AuditLogQueryOptions,
+  type AuditLogQueryResult as StorageQueryResult,
+  type TenantChainState,
+  type ImmutableAuditLogStore,
+
+  // Implementations
+  InMemoryAuditLogStore,
+  FirestoreAuditLogStore,
+
+  // Constants
+  AUDIT_LOG_COLLECTIONS,
+
+  // Factory functions
+  createInMemoryAuditLogStore,
+  createFirestoreAuditLogStore,
+
+  // Singleton management
+  getImmutableAuditLogStore,
+  setImmutableAuditLogStore,
+  resetImmutableAuditLogStore,
+} from './audit-log-storage.js';
