@@ -16,6 +16,7 @@
  */
 
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
 
 // =============================================================================
 // Cryptographic Types
@@ -78,7 +79,7 @@ export type AuditLogId = z.infer<typeof AuditLogId>;
  */
 export const AuditActorType = z.enum([
   'user',           // Human user
-  'agent',          // AI agent (triage, coder, resolver, reviewer)
+  'agent',          // AI agent (triage, coder, resolver, reviewer, orchestrator)
   'service',        // Service account
   'system',         // Internal system process
   'webhook',        // External webhook
@@ -152,7 +153,7 @@ export const AuditLogAction = z.object({
   /** Specific action type (e.g., 'policy.evaluated', 'git.push.executed') */
   type: z.string().min(1).max(100).regex(
     /^[a-z]+(\.[a-z_]+)+$/,
-    'Action type must be dot-separated lowercase (e.g., policy.rule.evaluated)'
+    'Action type must be dot-separated lowercase, allowing underscores in segments after the first (e.g., policy.rule_evaluated)'
   ),
 
   /** Human-readable action description */
@@ -359,7 +360,7 @@ export const ImmutableAuditLogEntry = z.object({
   id: AuditLogEntryId,
 
   /** Schema version for future migrations */
-  schemaVersion: z.literal('1.0').default('1.0'),
+  schemaVersion: z.literal('1.0'),
 
   // === Timestamp (WHEN) ===
 
@@ -604,7 +605,7 @@ export type AuditLogMetadata = z.infer<typeof AuditLogMetadata>;
  */
 export function generateAuditLogEntryId(sequence: number): AuditLogEntryId {
   const timestamp = Date.now();
-  const random = Math.random().toString(36).slice(2, 8);
+  const random = randomBytes(3).toString('hex');
   return `alog-${timestamp}-${sequence}-${random}` as AuditLogEntryId;
 }
 
@@ -612,7 +613,7 @@ export function generateAuditLogEntryId(sequence: number): AuditLogEntryId {
  * Generate a unique audit log ID
  */
 export function generateAuditLogId(tenantId: string, scope: string): AuditLogId {
-  const random = Math.random().toString(36).slice(2, 10);
+  const random = randomBytes(4).toString('hex');
   return `log-${tenantId.toLowerCase()}-${scope.toLowerCase()}-${random}` as AuditLogId;
 }
 
@@ -723,7 +724,7 @@ export function validateCreateAuditLogEntry(input: unknown): CreateAuditLogEntry
 /**
  * Action types that are considered high-risk
  */
-export const HIGH_RISK_ACTIONS: readonly string[] = [
+export const HIGH_RISK_ACTIONS = [
   'git.push.force',
   'git.branch.delete',
   'git.push.main',

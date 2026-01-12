@@ -529,6 +529,13 @@ describe('ImmutableAuditLogEntry', () => {
     expect(parsed.tags).toEqual([]);
   });
 
+  it('should require schemaVersion', () => {
+    const entry = createValidEntry();
+    delete (entry as Record<string, unknown>).schemaVersion;
+
+    expect(() => ImmutableAuditLogEntry.parse(entry)).toThrow();
+  });
+
   it('should accept compliance frameworks', () => {
     const entry = createValidEntry();
     entry.compliance = ['soc2', 'gdpr', 'hipaa'];
