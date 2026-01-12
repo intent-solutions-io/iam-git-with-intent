@@ -86,13 +86,7 @@ function createTestInput(overrides?: Partial<CreateAuditLogEntry>): CreateAuditL
 
 function createMockEntry(sequence: number, prevHash: SHA256Hash | null): ImmutableAuditLogEntry {
   const builder = new AuditChainBuilder();
-  if (sequence > 0 && prevHash) {
-    builder.initializeFrom(sequence, prevHash);
-  }
-  // Adjust to get correct sequence
-  for (let i = 0; i < sequence; i++) {
-    builder.buildEntry(createTestInput());
-  }
+  builder.initializeFrom(sequence, prevHash);
   return builder.buildEntry(createTestInput());
 }
 

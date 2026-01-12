@@ -568,6 +568,22 @@ export class MerkleTree {
   }
 
   /**
+   * Build Merkle tree from pre-computed leaf nodes
+   *
+   * Used for verification when leaves are computed externally
+   */
+  buildFromLeaves(leaves: MerkleNode[]): void {
+    if (leaves.length === 0) {
+      this.root = null;
+      this.leaves = [];
+      return;
+    }
+
+    this.leaves = leaves;
+    this.root = this.buildTree(this.leaves);
+  }
+
+  /**
    * Build tree recursively
    */
   private buildTree(nodes: MerkleNode[]): MerkleNode {
@@ -793,7 +809,7 @@ export function verifyBatch(
   const tree = new MerkleTree('sha256');
 
   // Recompute content hashes for Merkle tree leaves
-  const recomputedLeaves = entries.map(entry => {
+  const recomputedLeaves: MerkleNode[] = entries.map(entry => {
     const recomputedHash = computeContentHash(entry, 'sha256');
     return {
       hash: recomputedHash,
@@ -804,11 +820,8 @@ export function verifyBatch(
     };
   });
 
-  // Build tree from recomputed hashes
-  if (recomputedLeaves.length > 0) {
-    tree['leaves'] = recomputedLeaves;
-    tree['root'] = tree['buildTree'](recomputedLeaves);
-  }
+  // Build tree from recomputed hashes using public method
+  tree.buildFromLeaves(recomputedLeaves);
 
   const actualRoot = tree.getRootHash();
   const merkleValid = actualRoot === expectedMerkleRoot;
