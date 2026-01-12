@@ -6,12 +6,15 @@
  */
 
 import chalk from 'chalk';
+import { writeFileSync } from 'fs';
 import {
   createAuditVerificationService,
   createInMemoryAuditLogStore,
+  createAuditLogExportService,
   type VerificationReport,
   type IntegrityIssue,
   type IssueSeverity,
+  type AuditLogExportFormat,
 } from '@gwi/core';
 
 export interface AuditVerifyOptions {
@@ -364,4 +367,171 @@ export async function auditIsValidCommand(options: {
     }
     process.exit(2);
   }
+}
+
+// =============================================================================
+// Audit Export Command (D3.5)
+// =============================================================================
+
+export interface AuditExportOptions {
+  tenant?: string;
+  format?: string;
+  start?: string;
+  end?: string;
+  startSequence?: number;
+  endSequence?: number;
+  actor?: string;
+  category?: string;
+  resourceType?: string;
+  highRisk?: boolean;
+  limit?: number;
+  output?: string;
+  includeChain?: boolean;
+  includeMetadata?: boolean;
+  pretty?: boolean;
+  sign?: boolean;
+  keyFile?: string;
+  keyId?: string;
+}
+
+/**
+ * Parse date string into Date object
+ */
+function parseDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid date format: ${value}`);
+  }
+  return date;
+}
+
+/**
+ * Get format label for display
+ */
+function getFormatLabel(format: AuditLogExportFormat): string {
+  switch (format) {
+    case 'json':
+      return 'JSON';
+    case 'json-lines':
+      return 'JSON Lines';
+    case 'csv':
+      return 'CSV';
+    case 'cef':
+      return 'CEF (Common Event Format)';
+    case 'syslog':
+      return 'Syslog (RFC 5424)';
+    default:
+      return format;
+  }
+}
+
+/**
+ * gwi audit export - Export audit logs in various formats
+ */
+export async function auditExportCommand(options: AuditExportOptions): Promise<void> {
+  const tenantId = options.tenant ?? 'default';
+  const format = (options.format ?? 'json') as AuditLogExportFormat;
+
+  // Validate format
+  const validFormats: AuditLogExportFormat[] = ['json', 'json-lines', 'csv', 'cef', 'syslog'];
+  if (!validFormats.includes(format)) {
+    console.error(chalk.red(`  Invalid format: ${format}`));
+    console.error(`  Valid formats: ${validFormats.join(', ')}`);
+    process.exit(1);
+  }
+
+  // Create store and export service
+  const store = createInMemoryAuditLogStore();
+  const service = createAuditLogExportService(store);
+
+  try {
+    // Parse dates
+    const startTime = parseDate(options.start);
+    const endTime = parseDate(options.end);
+
+    // Build export options
+    const exportOptions = {
+      format,
+      tenantId,
+      startTime,
+      endTime,
+      startSequence: options.startSequence,
+      endSequence: options.endSequence,
+      actorId: options.actor,
+      actionCategory: options.category,
+      resourceType: options.resourceType,
+      highRiskOnly: options.highRisk,
+      limit: options.limit,
+      includeChainData: options.includeChain ?? false,
+      includeMetadata: options.includeMetadata ?? true,
+      prettyPrint: options.pretty ?? false,
+      sign: options.sign ?? false,
+      privateKey: options.keyFile ? require('fs').readFileSync(options.keyFile, 'utf8') : undefined,
+      keyId: options.keyId,
+    };
+
+    // Validate signing options
+    if (options.sign && (!options.keyFile || !options.keyId)) {
+      console.error(chalk.red('  Signing requires --key-file and --key-id options'));
+      process.exit(1);
+    }
+
+    // Run export
+    const result = await service.export(exportOptions);
+
+    // Output to file or stdout
+    if (options.output) {
+      // Write to file
+      writeFileSync(options.output, result.content);
+
+      // Write signature separately if present
+      if (result.signature) {
+        const sigFile = options.output + '.sig';
+        writeFileSync(sigFile, JSON.stringify(result.signature, null, 2));
+      }
+
+      // Display success message
+      console.log('');
+      console.log(chalk.bold('  Audit Log Export'));
+      console.log(chalk.dim('  ─────────────────────────────────────────────────────'));
+      console.log('');
+      console.log(`    Format: ${getFormatLabel(format)}`);
+      console.log(`    Tenant: ${tenantId}`);
+      console.log(`    Entries: ${result.metadata.entryCount}`);
+      console.log(`    Output: ${options.output}`);
+      if (result.signature) {
+        console.log(`    Signature: ${options.output}.sig`);
+        console.log(`    Signed by: ${result.signature.keyId}`);
+      }
+      console.log('');
+      console.log(chalk.green('  Export complete'));
+      console.log('');
+    } else {
+      // Output to stdout
+      console.log(result.content);
+    }
+  } catch (error) {
+    console.error(
+      chalk.red('  Error exporting audit log:'),
+      error instanceof Error ? error.message : String(error)
+    );
+    process.exit(1);
+  }
+}
+
+/**
+ * gwi audit formats - List supported export formats
+ */
+export function auditFormatsCommand(): void {
+  console.log('');
+  console.log(chalk.bold('  Supported Export Formats'));
+  console.log(chalk.dim('  ─────────────────────────────────────────────────────'));
+  console.log('');
+  console.log('    json        Full JSON with metadata (default)');
+  console.log('    json-lines  Newline-delimited JSON (NDJSON)');
+  console.log('    csv         Comma-separated values');
+  console.log('    cef         Common Event Format (SIEM)');
+  console.log('    syslog      RFC 5424 syslog format');
+  console.log('');
 }

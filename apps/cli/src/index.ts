@@ -115,6 +115,8 @@ import {
   auditVerifyCommand,
   auditHealthCommand,
   auditIsValidCommand,
+  auditExportCommand,
+  auditFormatsCommand,
 } from './commands/audit.js';
 
 const program = new Command();
@@ -959,6 +961,43 @@ auditCmd
     }
   });
 
+auditCmd
+  .command('export')
+  .description('Export audit logs in various formats (JSON, CSV, SIEM)')
+  .option('-t, --tenant <id>', 'Tenant ID (default: default)')
+  .option('-f, --format <format>', 'Export format: json, json-lines, csv, cef, syslog (default: json)')
+  .option('--start <date>', 'Start date filter (ISO 8601)')
+  .option('--end <date>', 'End date filter (ISO 8601)')
+  .option('--start-sequence <n>', 'Start sequence number', parseInt)
+  .option('--end-sequence <n>', 'End sequence number', parseInt)
+  .option('--actor <id>', 'Filter by actor ID')
+  .option('--category <cat>', 'Filter by action category')
+  .option('--resource-type <type>', 'Filter by resource type')
+  .option('--high-risk', 'Only export high-risk entries')
+  .option('-n, --limit <n>', 'Maximum entries to export', parseInt)
+  .option('-o, --output <file>', 'Output file (default: stdout)')
+  .option('--include-chain', 'Include cryptographic chain data')
+  .option('--no-metadata', 'Exclude export metadata')
+  .option('--pretty', 'Pretty print JSON output')
+  .option('--sign', 'Sign the export for attestation')
+  .option('--key-file <file>', 'Private key file for signing (PEM format)')
+  .option('--key-id <id>', 'Key identifier for signature')
+  .action(async (options) => {
+    try {
+      await auditExportCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+auditCmd
+  .command('formats')
+  .description('List supported export formats')
+  .action(() => {
+    auditFormatsCommand();
+  });
+
 // =============================================================================
 // Planner Commands (Phase 26)
 // =============================================================================
@@ -1377,10 +1416,12 @@ Policy Testing (Epic D - D2.5: Dry-Run Mode):
     gwi policy test -p policy.json --branch main --labels security
     gwi policy validate ./policies/require-review.json
 
-Audit Log Verification (Epic D - D3.4: Integrity Verification):
+Audit Log Verification & Export (Epic D - D3.4/D3.5):
   gwi audit verify                 Verify audit log chain integrity
   gwi audit health                 Quick health check
   gwi audit is-valid               Boolean check (for CI/scripts)
+  gwi audit export                 Export logs (JSON, CSV, SIEM)
+  gwi audit formats                List supported export formats
 
   Examples:
     gwi audit verify --tenant my-org --verbose
@@ -1388,8 +1429,18 @@ Audit Log Verification (Epic D - D3.4: Integrity Verification):
     gwi audit verify --start-sequence 100 --end-sequence 200
     gwi audit health --tenant my-org
     gwi audit is-valid --quiet && echo "Chain OK"
+    gwi audit export --format csv --output audit.csv
+    gwi audit export --format cef --high-risk --output siem.cef
+    gwi audit export --start 2024-01-01 --end 2024-12-31 --pretty
 
-  Issue types detected:
+  Export formats:
+    json        Full JSON with metadata (default)
+    json-lines  Newline-delimited JSON (NDJSON)
+    csv         Comma-separated values
+    cef         Common Event Format (SIEM)
+    syslog      RFC 5424 syslog format
+
+  Issue types detected (verify):
     critical: content_hash_mismatch, chain_link_broken
     high:     sequence_gap, sequence_duplicate, first_entry_invalid
     medium:   timestamp_regression

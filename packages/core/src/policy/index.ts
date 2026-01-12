@@ -366,3 +366,33 @@ export {
   setAuditVerificationService,
   resetAuditVerificationService,
 } from './audit-verification.js';
+
+// =============================================================================
+// Epic D: Audit Log Export (D3.5)
+// =============================================================================
+
+// Export service for audit log data
+export {
+  // Types (ExportFormat renamed to avoid collision with other modules)
+  type ExportFormat as AuditLogExportFormat,
+  type ExportOptions,
+  type ExportMetadata,
+  type ExportSignature,
+  type ExportResult,
+
+  // Service interface and implementation
+  type AuditLogExportService,
+  AuditLogExportServiceImpl,
+
+  // Signature verification
+  verifyExportSignature,
+
+  // Factory functions
+  createAuditLogExportService,
+
+  // Singleton management
+  initializeAuditLogExportService,
+  getAuditLogExportService,
+  setAuditLogExportService,
+  resetAuditLogExportService,
+} from './audit-log-export.js';
