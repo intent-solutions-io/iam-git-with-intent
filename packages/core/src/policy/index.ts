@@ -258,3 +258,54 @@ export {
   MAX_QUERY_LIMIT as IMMUTABLE_AUDIT_LOG_MAX_QUERY_LIMIT,
   CONTEXT_HASH_FIELDS as IMMUTABLE_CONTEXT_HASH_FIELDS,
 } from './audit-log-schema.js';
+
+// =============================================================================
+// Epic D: Cryptographic Chaining (D3.2)
+// =============================================================================
+
+// Hash functions and chain operations (prefixed with CryptoChain to avoid conflicts)
+export {
+  // Hash functions
+  sha256 as cryptoChainSha256,
+  sha384 as cryptoChainSha384,
+  sha512 as cryptoChainSha512,
+  computeHash as computeCryptoHash,
+  toCanonicalJson as cryptoToCanonicalJson,
+  computeContentHash as cryptoComputeContentHash,
+  computeContextHash as cryptoComputeContextHash,
+
+  // Chain state management
+  type ChainState as CryptoChainState,
+  createChainState as createCryptoChainState,
+  buildChainLink as buildCryptoChainLink,
+  advanceChainState as advanceCryptoChainState,
+
+  // Chain builder
+  AuditChainBuilder,
+
+  // Verification types
+  type EntryVerificationResult as CryptoEntryVerificationResult,
+  type ChainVerificationResult as CryptoChainVerificationResult,
+
+  // Verification functions
+  verifyEntryContentHash as verifyCryptoEntryContentHash,
+  verifyChainLink as verifyCryptoChainLink,
+  verifyChain as verifyCryptoChain,
+
+  // Merkle tree
+  type MerkleNode as CryptoMerkleNode,
+  type MerkleProof as CryptoMerkleProof,
+  MerkleTree as CryptoMerkleTree,
+  buildMerkleTree as buildCryptoMerkleTree,
+  verifyMerkleProof as verifyCryptoMerkleProof,
+
+  // Batch operations
+  type BatchCreateResult as CryptoBatchCreateResult,
+  createBatch as createCryptoBatch,
+  verifyBatch as verifyCryptoBatch,
+
+  // Schemas
+  ChainStateSchema as CryptoChainStateSchema,
+  MerkleProofSchema as CryptoMerkleProofSchema,
+  BatchCreateResultSchema as CryptoBatchCreateResultSchema,
+} from './crypto-chain.js';
