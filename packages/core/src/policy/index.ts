@@ -396,3 +396,70 @@ export {
   setAuditLogExportService,
   resetAuditLogExportService,
 } from './audit-log-export.js';
+
+// =============================================================================
+// Epic D: Violation Schema (D5.1)
+// =============================================================================
+
+// Violation types and severity levels
+export {
+  // Core types
+  ViolationType,
+  ViolationSeverity,
+  ViolationStatus,
+  ViolationSource,
+  ViolationId,
+
+  // Actor, resource, action types
+  ViolationActor,
+  ViolationResource,
+  ViolationAction,
+
+  // Type-specific details
+  PolicyDeniedDetails,
+  ApprovalBypassedDetails,
+  LimitExceededDetails,
+  AnomalyDetectedDetails,
+  ViolationDetails,
+
+  // Main violation schema
+  Violation,
+  CreateViolationInput,
+  ViolationQuery,
+
+  // Factory functions
+  generateViolationId,
+  createViolation,
+  createPolicyDeniedViolation,
+  createApprovalBypassedViolation,
+  createLimitExceededViolation,
+  createAnomalyDetectedViolation,
+
+  // Validation functions
+  validateViolation,
+  safeParseViolation,
+  validateCreateViolationInput,
+  validateViolationQuery,
+
+  // Type guards
+  isViolationType,
+  isViolationSeverity,
+  isViolationStatus,
+  isViolation,
+
+  // Utility functions
+  getSeverityWeight,
+  compareBySeverity,
+  getViolationTypeDescription,
+  calculateAggregateSeverity,
+
+  // Constants
+  VIOLATION_TYPE_DESCRIPTIONS,
+  SEVERITY_WEIGHTS,
+  DEFAULT_VIOLATION_SEVERITY,
+  VIOLATION_SCHEMA_VERSION,
+  ALL_VIOLATION_TYPES,
+  ALL_SEVERITY_LEVELS,
+  ALL_VIOLATION_STATUSES,
+  ALL_VIOLATION_SOURCES,
+} from './violation-schema.js';
