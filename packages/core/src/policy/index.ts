@@ -499,3 +499,52 @@ export {
   setViolationDetector,
   resetViolationDetector,
 } from './violation-detector.js';
+
+// =============================================================================
+// Epic D: Alert Channels (D5.3)
+// =============================================================================
+
+// Alert channel types and interfaces
+export {
+  // Types
+  type AlertChannelType,
+  type AlertPriority,
+  type AlertPayload,
+  type AlertResult,
+  type ChannelConfig,
+
+  // Email channel
+  type EmailChannelConfig,
+  EmailChannelConfigSchema,
+  EmailChannel,
+
+  // Slack channel
+  type SlackChannelConfig,
+  SlackChannelConfigSchema,
+  SlackChannel,
+
+  // Webhook channel (stub)
+  type WebhookChannelConfig,
+  WebhookChannelConfigSchema,
+  WebhookChannel,
+
+  // Alert channel interface
+  type AlertChannel,
+
+  // Dispatcher
+  type AlertDispatcherConfig,
+  type DispatchResult,
+  AlertDispatcher,
+
+  // Factory functions
+  createEmailChannel,
+  createSlackChannel,
+  createWebhookChannel,
+  createAlertDispatcher,
+
+  // Singleton management
+  initializeAlertDispatcher,
+  getAlertDispatcher,
+  setAlertDispatcher,
+  resetAlertDispatcher,
+} from './alert-channels.js';
