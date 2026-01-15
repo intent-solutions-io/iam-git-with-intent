@@ -47,6 +47,9 @@ import { Marketplace } from './pages/Marketplace';
 import { MarketplaceDetail } from './pages/MarketplaceDetail';
 // Phase 33: Operations Dashboard
 import { AdminOps } from './pages/AdminOps';
+// Epic D: Violations Dashboard
+import { Violations } from './pages/Violations';
+import { ViolationDetail } from './pages/ViolationDetail';
 
 export function App() {
   return (
@@ -222,6 +225,23 @@ export function App() {
               element={
                 <ProtectedRoute>
                   <AdminOps />
+                </ProtectedRoute>
+              }
+            />
+            {/* Epic D: Violations Dashboard */}
+            <Route
+              path="/violations"
+              element={
+                <ProtectedRoute>
+                  <Violations />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/violations/:violationId"
+              element={
+                <ProtectedRoute>
+                  <ViolationDetail />
                 </ProtectedRoute>
               }
             />
