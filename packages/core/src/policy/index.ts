@@ -734,3 +734,52 @@ export {
   getOneClickActions,
   getActionsForActor,
 } from './remediation.js';
+
+// =============================================================================
+// Epic D: Report Signing (D4.4)
+// =============================================================================
+
+// Report signing and verification
+export {
+  // Schema types
+  SignatureAlgorithm,
+  SignerIdentity,
+  SigningKeyInfo,
+  ReportSignature,
+  SignedReport,
+  SignatureVerificationResult,
+
+  // Config types
+  type SigningOptions,
+  type SigningKeyPair,
+  type ReportSignerConfig,
+
+  // Key utilities
+  generateSignatureId,
+  computeKeyFingerprint,
+  computeReportHash,
+  canonicalizeReportContent,
+  generateSigningKeyPair,
+
+  // Signing functions
+  signReport,
+  signReportContent,
+  verifyReportSignature,
+  verifySignature,
+  isSignatureValid,
+
+  // Signer class
+  ReportSigner,
+
+  // Factory functions
+  createReportSigner,
+  createReportSignerWithKey,
+  createReportVerifier,
+
+  // Singleton management
+  initializeReportSigner,
+  initializeReportSignerWithKey,
+  getReportSigner,
+  setReportSigner,
+  resetReportSigner,
+} from './report-signing.js';
