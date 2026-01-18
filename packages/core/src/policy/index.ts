@@ -700,3 +700,64 @@ export {
   initializeInMemoryReportStore,
   initializeFirestoreReportStore,
 } from './report-storage.js';
+
+// =============================================================================
+// Epic D: Report Distribution (D4.6)
+// =============================================================================
+
+// Report distribution and delivery
+export {
+  // Types and schemas
+  DistributionChannel,
+  ReportFormat as DistributionReportFormat,
+  DistributionStatus,
+  EmailRecipient,
+  EmailDistributionConfig,
+  WebhookDistributionConfig,
+  DownloadLinkConfig,
+  SlackDistributionConfig,
+  S3UploadConfig,
+  DistributionConfig,
+  DistributionRequest,
+  DistributionAttempt,
+  DistributionRecord,
+  DownloadAccessRecord,
+  DistributionResult,
+
+  // Utility functions
+  generateDistributionId,
+  generateDistributionRequestId,
+  generateDownloadToken,
+  generateWebhookSignature,
+  hashDownloadPassword,
+  verifyDownloadPassword,
+  calculateLinkExpiration,
+  isLinkExpired,
+  isDownloadLimitReached,
+  formatReportContent,
+  buildEmailBody,
+  DEFAULT_EMAIL_TEMPLATE,
+  DEFAULT_SLACK_TEMPLATE,
+
+  // Interfaces
+  type DistributionChannelHandler,
+  type EmailChannelHandler,
+  type WebhookChannelHandler,
+  type DistributionStore,
+  type DistributionServiceConfig,
+
+  // Implementations
+  InMemoryDistributionStore,
+  ReportDistributionService,
+
+  // Factory functions
+  createDistributionService,
+  createDistributionServiceWithStore,
+  createDistributionRequest,
+
+  // Singleton management
+  getDistributionService,
+  setDistributionService,
+  resetDistributionService,
+  initializeDistributionService,
+} from './report-distribution.js';
