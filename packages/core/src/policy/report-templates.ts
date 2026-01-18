@@ -17,6 +17,7 @@
  */
 
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
 
 // =============================================================================
 // Framework Types
@@ -795,11 +796,11 @@ export const FRAMEWORK_METADATA: Record<ComplianceFramework, FrameworkMetadata> 
 // =============================================================================
 
 /**
- * Generate a unique report ID
+ * Generate a unique report ID using cryptographically secure random bytes
  */
 export function generateReportId(framework: ComplianceFramework): string {
   const timestamp = Date.now();
-  const random = Math.random().toString(36).slice(2, 8);
+  const random = randomBytes(4).toString('hex');
   return `rpt-${framework}-${timestamp}-${random}`;
 }
 
@@ -1034,7 +1035,7 @@ export function createAuditLogEvidence(
   }
 ): EvidenceReference {
   return {
-    id: `ev-audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `ev-audit-${Date.now()}-${randomBytes(3).toString('hex')}`,
     type: 'audit_log',
     description,
     auditLogEntryIds,
@@ -1057,7 +1058,7 @@ export function createDocumentEvidence(
   metadata?: Record<string, unknown>
 ): EvidenceReference {
   return {
-    id: `ev-doc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `ev-doc-${Date.now()}-${randomBytes(3).toString('hex')}`,
     type,
     description,
     url,
@@ -1249,7 +1250,7 @@ export function formatReportAsMarkdown(report: ComplianceReportTemplate): string
     for (const control of controls) {
       lines.push(`#### ${control.controlId}: ${control.title}`);
       lines.push('');
-      lines.push(`**Status:** ${statusEmoji(control.status)} ${control.status.replace('_', ' ')}`);
+      lines.push(`**Status:** ${statusEmoji(control.status)} ${control.status.replace(/_/g, ' ')}`);
       lines.push(`**Priority:** ${control.priority}`);
       lines.push('');
       lines.push('**Description:**');
@@ -1344,17 +1345,10 @@ export function formatReportAsMarkdown(report: ComplianceReportTemplate): string
 
 /**
  * Export report to JSON format
+ * Note: JSON.stringify automatically calls .toJSON() on Date objects, which serializes them to ISO 8601 strings
  */
 export function formatReportAsJSON(report: ComplianceReportTemplate): string {
-  // Convert dates to ISO strings for JSON serialization
-  const serializable = JSON.parse(JSON.stringify(report, (_key, value) => {
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-    return value;
-  }));
-
-  return JSON.stringify(serializable, null, 2);
+  return JSON.stringify(report, null, 2);
 }
 
 /**
@@ -1363,11 +1357,15 @@ export function formatReportAsJSON(report: ComplianceReportTemplate): string {
 export function parseReportFromJSON(json: string): ComplianceReportTemplate {
   const parsed = JSON.parse(json);
 
+  // Regex anchored at both ends to only match full ISO 8601 date strings
+  // Avoids misinterpreting strings like "2024-01-01T10:00:00 - Project meeting"
+  const isoDateRegex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/;
+
   // Convert date strings back to Date objects
   const convertDates = (obj: Record<string, unknown>): void => {
     for (const key of Object.keys(obj)) {
       const value = obj[key];
-      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+      if (typeof value === 'string' && isoDateRegex.test(value)) {
         obj[key] = new Date(value);
       } else if (value && typeof value === 'object') {
         convertDates(value as Record<string, unknown>);
