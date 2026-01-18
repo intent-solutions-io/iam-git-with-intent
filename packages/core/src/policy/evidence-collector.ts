@@ -52,10 +52,10 @@ export const EvidenceQuery = z.object({
   controlCategory: z.string().optional(),
   /** Filter by action categories */
   actionCategories: z.array(z.string()).optional(),
-  /** Filter by resource types */
-  resourceTypes: z.array(z.string()).optional(),
-  /** Filter by actor types */
-  actorTypes: z.array(z.string()).optional(),
+  /** Filter by resource type (single value - use actionCategories for multiple) */
+  resourceType: z.string().optional(),
+  /** Filter by actor type (single value - use actionCategories for multiple) */
+  actorType: z.string().optional(),
   /** Only include high-risk actions */
   highRiskOnly: z.boolean().optional(),
   /** Maximum evidence items to collect per source */
@@ -328,13 +328,13 @@ export class AuditLogEvidenceSource implements EvidenceSource {
       };
 
       // Add resource type filter if specified
-      if (query.resourceTypes && query.resourceTypes.length > 0) {
-        queryOptions.resourceType = query.resourceTypes[0];
+      if (query.resourceType) {
+        queryOptions.resourceType = query.resourceType;
       }
 
       // Add actor type filter if specified
-      if (query.actorTypes && query.actorTypes.length > 0) {
-        queryOptions.actorType = query.actorTypes[0];
+      if (query.actorType) {
+        queryOptions.actorType = query.actorType;
       }
 
       try {

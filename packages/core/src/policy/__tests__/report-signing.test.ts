@@ -235,8 +235,8 @@ describe('Utility Functions', () => {
 
 describe('Key Generation', () => {
   describe('generateSigningKeyPair', () => {
-    it('should generate a valid key pair', () => {
-      const keyPair = generateSigningKeyPair(mockSigner);
+    it('should generate a valid key pair', async () => {
+      const keyPair = await generateSigningKeyPair(mockSigner);
 
       expect(keyPair.info.keyId).toBeDefined();
       expect(keyPair.info.algorithm).toBe('RSA-SHA256');
@@ -246,16 +246,16 @@ describe('Key Generation', () => {
       expect(keyPair.publicKey).toContain('BEGIN PUBLIC KEY');
     });
 
-    it('should support different algorithms', () => {
-      const keyPair384 = generateSigningKeyPair(mockSigner, { algorithm: 'RSA-SHA384' });
-      const keyPair512 = generateSigningKeyPair(mockSigner, { algorithm: 'RSA-SHA512' });
+    it('should support different algorithms', async () => {
+      const keyPair384 = await generateSigningKeyPair(mockSigner, { algorithm: 'RSA-SHA384' });
+      const keyPair512 = await generateSigningKeyPair(mockSigner, { algorithm: 'RSA-SHA512' });
 
       expect(keyPair384.info.algorithm).toBe('RSA-SHA384');
       expect(keyPair512.info.algorithm).toBe('RSA-SHA512');
     });
 
-    it('should support expiration', () => {
-      const keyPair = generateSigningKeyPair(mockSigner, { expiresInDays: 30 });
+    it('should support expiration', async () => {
+      const keyPair = await generateSigningKeyPair(mockSigner, { expiresInDays: 30 });
 
       expect(keyPair.info.expiresAt).toBeDefined();
       const expectedExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -263,9 +263,9 @@ describe('Key Generation', () => {
       expect(diff).toBeLessThan(1000); // Within 1 second
     });
 
-    it('should generate unique key pairs', () => {
-      const kp1 = generateSigningKeyPair(mockSigner);
-      const kp2 = generateSigningKeyPair(mockSigner);
+    it('should generate unique key pairs', async () => {
+      const kp1 = await generateSigningKeyPair(mockSigner);
+      const kp2 = await generateSigningKeyPair(mockSigner);
 
       expect(kp1.info.keyId).not.toBe(kp2.info.keyId);
       expect(kp1.info.fingerprint).not.toBe(kp2.info.fingerprint);
@@ -278,10 +278,10 @@ describe('Key Generation', () => {
 // =============================================================================
 
 describe('Report Signing', () => {
-  let keyPair: ReturnType<typeof generateSigningKeyPair>;
+  let keyPair: Awaited<ReturnType<typeof generateSigningKeyPair>>;
 
-  beforeEach(() => {
-    keyPair = generateSigningKeyPair(mockSigner);
+  beforeEach(async () => {
+    keyPair = await generateSigningKeyPair(mockSigner);
   });
 
   describe('signReport', () => {
@@ -353,11 +353,11 @@ describe('Report Signing', () => {
 // =============================================================================
 
 describe('Signature Verification', () => {
-  let keyPair: ReturnType<typeof generateSigningKeyPair>;
+  let keyPair: Awaited<ReturnType<typeof generateSigningKeyPair>>;
   let signedReport: SignedReport;
 
-  beforeEach(() => {
-    keyPair = generateSigningKeyPair(mockSigner);
+  beforeEach(async () => {
+    keyPair = await generateSigningKeyPair(mockSigner);
     const report = createMockReport();
     signedReport = signReport(report, keyPair.privateKey, keyPair.info);
   });
@@ -398,8 +398,8 @@ describe('Signature Verification', () => {
       expect(result.errors).toBeDefined();
     });
 
-    it('should warn about key fingerprint mismatch', () => {
-      const otherKeyPair = generateSigningKeyPair(mockSigner);
+    it('should warn about key fingerprint mismatch', async () => {
+      const otherKeyPair = await generateSigningKeyPair(mockSigner);
 
       const result = verifyReportSignature(signedReport, otherKeyPair.publicKey);
 
@@ -452,10 +452,10 @@ describe('Signature Verification', () => {
 
 describe('ReportSigner', () => {
   let signer: ReportSigner;
-  let keyPair: ReturnType<typeof generateSigningKeyPair>;
+  let keyPair: Awaited<ReturnType<typeof generateSigningKeyPair>>;
 
-  beforeEach(() => {
-    keyPair = generateSigningKeyPair(mockSigner);
+  beforeEach(async () => {
+    keyPair = await generateSigningKeyPair(mockSigner);
     signer = createReportSignerWithKey(keyPair);
   });
 
@@ -476,8 +476,8 @@ describe('ReportSigner', () => {
   });
 
   describe('signWithKey', () => {
-    it('should sign with specific key', () => {
-      const secondKeyPair = generateSigningKeyPair(mockSigner);
+    it('should sign with specific key', async () => {
+      const secondKeyPair = await generateSigningKeyPair(mockSigner);
       signer.addKeyPair(secondKeyPair);
 
       const report = createMockReport();
@@ -532,8 +532,8 @@ describe('ReportSigner', () => {
   });
 
   describe('key management', () => {
-    it('should add and remove key pairs', () => {
-      const newKeyPair = generateSigningKeyPair(mockSigner);
+    it('should add and remove key pairs', async () => {
+      const newKeyPair = await generateSigningKeyPair(mockSigner);
 
       signer.addKeyPair(newKeyPair);
       expect(signer.getKeyPair(newKeyPair.info.keyId)).toBeDefined();
@@ -542,8 +542,8 @@ describe('ReportSigner', () => {
       expect(signer.getKeyPair(newKeyPair.info.keyId)).toBeUndefined();
     });
 
-    it('should set new key as default', () => {
-      const newKeyPair = generateSigningKeyPair(mockSigner);
+    it('should set new key as default', async () => {
+      const newKeyPair = await generateSigningKeyPair(mockSigner);
       signer.addKeyPair(newKeyPair, true);
 
       const report = createMockReport();
@@ -552,8 +552,8 @@ describe('ReportSigner', () => {
       expect(signed.signature.keyId).toBe(newKeyPair.info.keyId);
     });
 
-    it('should list key IDs', () => {
-      const newKeyPair = generateSigningKeyPair(mockSigner);
+    it('should list key IDs', async () => {
+      const newKeyPair = await generateSigningKeyPair(mockSigner);
       signer.addKeyPair(newKeyPair);
 
       const keyIds = signer.listKeyIds();
@@ -609,8 +609,8 @@ describe('ReportSigner', () => {
       expect(signer.isKeyExpired('unknown')).toBe(true);
     });
 
-    it('should detect expired keys', () => {
-      const expiredKeyPair = generateSigningKeyPair(mockSigner, { expiresInDays: -1 });
+    it('should detect expired keys', async () => {
+      const expiredKeyPair = await generateSigningKeyPair(mockSigner, { expiresInDays: -1 });
       signer.addKeyPair(expiredKeyPair);
 
       expect(signer.isKeyExpired(expiredKeyPair.info.keyId)).toBe(true);
@@ -645,8 +645,8 @@ describe('Factory Functions', () => {
   });
 
   describe('createReportSignerWithKey', () => {
-    it('should create signer with existing key', () => {
-      const keyPair = generateSigningKeyPair(mockSigner);
+    it('should create signer with existing key', async () => {
+      const keyPair = await generateSigningKeyPair(mockSigner);
       const signer = createReportSignerWithKey(keyPair);
 
       expect(signer.getKeyPair(keyPair.info.keyId)).toBeDefined();
@@ -654,8 +654,8 @@ describe('Factory Functions', () => {
   });
 
   describe('createReportVerifier', () => {
-    it('should create verifier-only signer', () => {
-      const keyPair = generateSigningKeyPair(mockSigner);
+    it('should create verifier-only signer', async () => {
+      const keyPair = await generateSigningKeyPair(mockSigner);
       const trustedKeys = new Map([[keyPair.info.keyId, keyPair.publicKey]]);
       const verifier = createReportVerifier(trustedKeys);
 
@@ -711,12 +711,12 @@ describe('Singleton Management', () => {
 // =============================================================================
 
 describe('Cross-Algorithm Signing', () => {
-  it('should verify signatures across algorithms', () => {
+  it('should verify signatures across algorithms', async () => {
     const algorithms: Array<'sha256' | 'sha384' | 'sha512'> = ['sha256', 'sha384', 'sha512'];
     const report = createMockReport();
 
     for (const hashAlgorithm of algorithms) {
-      const keyPair = generateSigningKeyPair(mockSigner);
+      const keyPair = await generateSigningKeyPair(mockSigner);
       const signed = signReport(report, keyPair.privateKey, keyPair.info, {
         hashAlgorithm,
       });

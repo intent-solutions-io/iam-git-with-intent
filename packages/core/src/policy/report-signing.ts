@@ -11,8 +11,12 @@
  */
 
 import { z } from 'zod';
-import { createSign, createVerify, createHash, generateKeyPairSync } from 'crypto';
+import { createSign, createVerify, createHash, generateKeyPair } from 'crypto';
+import { promisify } from 'util';
 import type { ComplianceReportTemplate } from './report-templates.js';
+
+// Promisify generateKeyPair for non-blocking key generation
+const generateKeyPairAsync = promisify(generateKeyPair);
 import { formatReportAsJSON } from './report-templates.js';
 
 // =============================================================================
@@ -217,22 +221,22 @@ function getSignatureAlgorithmForHash(
 // =============================================================================
 
 /**
- * Generate a new signing key pair
+ * Generate a new signing key pair (async to avoid blocking event loop)
  */
-export function generateSigningKeyPair(
+export async function generateSigningKeyPair(
   signer: SignerIdentity,
   options?: {
     algorithm?: SignatureAlgorithm;
     keySize?: number;
     expiresInDays?: number;
   }
-): SigningKeyPair {
+): Promise<SigningKeyPair> {
   const algorithm = options?.algorithm ?? 'RSA-SHA256';
   const keySize = options?.keySize ?? 2048;
   const expiresInDays = options?.expiresInDays;
 
-  // Generate RSA key pair
-  const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+  // Generate RSA key pair asynchronously
+  const { publicKey, privateKey } = await generateKeyPairAsync('rsa', {
     modulusLength: keySize,
     publicKeyEncoding: {
       type: 'spki',
@@ -244,7 +248,7 @@ export function generateSigningKeyPair(
     },
   });
 
-  const fingerprint = computeKeyFingerprint(publicKey);
+  const fingerprint = computeKeyFingerprint(publicKey as string);
   const createdAt = new Date();
   const expiresAt = expiresInDays
     ? new Date(createdAt.getTime() + expiresInDays * 24 * 60 * 60 * 1000)
@@ -261,8 +265,8 @@ export function generateSigningKeyPair(
       fingerprint,
       signer,
     },
-    privateKey,
-    publicKey,
+    privateKey: privateKey as string,
+    publicKey: publicKey as string,
   };
 }
 
@@ -619,7 +623,7 @@ export class ReportSigner {
   /**
    * Generate a new key pair and add it to the signer
    */
-  generateKey(
+  async generateKey(
     signer: SignerIdentity,
     options?: {
       algorithm?: SignatureAlgorithm;
@@ -627,8 +631,8 @@ export class ReportSigner {
       expiresInDays?: number;
       setAsDefault?: boolean;
     }
-  ): SigningKeyPair {
-    const keyPair = generateSigningKeyPair(signer, options);
+  ): Promise<SigningKeyPair> {
+    const keyPair = await generateSigningKeyPair(signer, options);
     this.addKeyPair(keyPair, options?.setAsDefault);
     return keyPair;
   }
@@ -658,15 +662,15 @@ export class ReportSigner {
 /**
  * Create a report signer with a new key pair
  */
-export function createReportSigner(
+export async function createReportSigner(
   signer: SignerIdentity,
   options?: {
     algorithm?: SignatureAlgorithm;
     keySize?: number;
     expiresInDays?: number;
   }
-): ReportSigner {
-  const keyPair = generateSigningKeyPair(signer, options);
+): Promise<ReportSigner> {
+  const keyPair = await generateSigningKeyPair(signer, options);
   return new ReportSigner({ defaultKeyPair: keyPair });
 }
 
@@ -695,17 +699,17 @@ export function createReportVerifier(
 let globalReportSigner: ReportSigner | null = null;
 
 /**
- * Initialize the global report signer
+ * Initialize the global report signer (async to avoid blocking)
  */
-export function initializeReportSigner(
+export async function initializeReportSigner(
   signer: SignerIdentity,
   options?: {
     algorithm?: SignatureAlgorithm;
     keySize?: number;
     expiresInDays?: number;
   }
-): ReportSigner {
-  globalReportSigner = createReportSigner(signer, options);
+): Promise<ReportSigner> {
+  globalReportSigner = await createReportSigner(signer, options);
   return globalReportSigner;
 }
 

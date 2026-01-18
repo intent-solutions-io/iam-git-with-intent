@@ -41,7 +41,8 @@ import { linkEvidenceToControl } from './evidence-collector.js';
 /**
  * Report generation request
  */
-export const ReportGenerationRequest = z.object({
+// Base schema without refinement (for .omit() usage)
+export const ReportGenerationRequestBase = z.object({
   /** Tenant ID */
   tenantId: z.string().min(1),
   /** Organization name for the report */
@@ -96,6 +97,15 @@ export const ReportGenerationRequest = z.object({
     })).optional(),
   }).optional(),
 });
+
+// Schema with refinement for validation (customFramework required when framework is 'custom')
+export const ReportGenerationRequest = ReportGenerationRequestBase.refine(
+  (data) => data.framework !== 'custom' || !!data.customFramework,
+  {
+    message: "customFramework is required when framework is 'custom'",
+    path: ['customFramework'],
+  }
+);
 export type ReportGenerationRequest = z.infer<typeof ReportGenerationRequest>;
 
 /**
@@ -137,7 +147,7 @@ export const ScheduledReportConfig = z.object({
   /** Whether schedule is enabled */
   enabled: z.boolean().default(true),
   /** Report generation request template */
-  requestTemplate: ReportGenerationRequest.omit({ period: true }),
+  requestTemplate: ReportGenerationRequestBase.omit({ period: true }),
   /** Period type for automatic date calculation */
   periodType: z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly']),
   /** Notification settings */

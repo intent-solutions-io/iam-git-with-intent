@@ -193,7 +193,7 @@ function createMockAuditLogStore(entries: ImmutableAuditLogEntry[] = []): Immuta
         filtered = filtered.filter(e => e.action.category === options.actionCategory);
       }
       if (options.highRiskOnly) {
-        filtered = filtered.filter(e => e.outcome.highRisk);
+        filtered = filtered.filter(e => e.highRisk);
       }
       if (options.startTime) {
         filtered = filtered.filter(e => e.timestamp >= options.startTime!);
