@@ -5,8 +5,8 @@
  * Part of Epic D: Policy & Audit - D5.5: Create violation dashboard
  */
 
-import { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   collection,
   query,
@@ -14,163 +14,80 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  Timestamp,
+  QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useTenant } from '../hooks/useTenant';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-type ViolationType = 'policy-denied' | 'approval-bypassed' | 'limit-exceeded' | 'anomaly-detected';
-type ViolationSeverity = 'low' | 'medium' | 'high' | 'critical';
-type ViolationStatus = 'open' | 'acknowledged' | 'investigating' | 'resolved' | 'dismissed' | 'escalated';
-
-interface Violation {
-  id: string;
-  tenantId: string;
-  type: ViolationType;
-  severity: ViolationSeverity;
-  status: ViolationStatus;
-  source: string;
-  actor: {
-    type: string;
-    id: string;
-    name?: string;
-  };
-  resource: {
-    type: string;
-    id: string;
-    name?: string;
-  };
-  action: {
-    type: string;
-    description?: string;
-  };
-  summary: string;
-  detectedAt: Date;
-}
-
-interface Filters {
-  type: ViolationType | 'all';
-  severity: ViolationSeverity | 'all';
-  status: ViolationStatus | 'all';
-  timeRange: '1h' | '24h' | '7d' | '30d' | 'all';
-}
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const VIOLATION_TYPES: { value: ViolationType | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Types' },
-  { value: 'policy-denied', label: 'Policy Denied' },
-  { value: 'approval-bypassed', label: 'Approval Bypassed' },
-  { value: 'limit-exceeded', label: 'Limit Exceeded' },
-  { value: 'anomaly-detected', label: 'Anomaly Detected' },
-];
-
-const SEVERITIES: { value: ViolationSeverity | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Severities' },
-  { value: 'critical', label: 'Critical' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
-];
-
-const STATUSES: { value: ViolationStatus | 'all'; label: string }[] = [
-  { value: 'all', label: 'All Statuses' },
-  { value: 'open', label: 'Open' },
-  { value: 'acknowledged', label: 'Acknowledged' },
-  { value: 'investigating', label: 'Investigating' },
-  { value: 'escalated', label: 'Escalated' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'dismissed', label: 'Dismissed' },
-];
-
-const TIME_RANGES: { value: Filters['timeRange']; label: string }[] = [
-  { value: '1h', label: 'Last Hour' },
-  { value: '24h', label: 'Last 24 Hours' },
-  { value: '7d', label: 'Last 7 Days' },
-  { value: '30d', label: 'Last 30 Days' },
-  { value: 'all', label: 'All Time' },
-];
-
-const SEVERITY_COLORS: Record<ViolationSeverity, string> = {
-  critical: 'bg-red-100 text-red-800 border-red-200',
-  high: 'bg-orange-100 text-orange-800 border-orange-200',
-  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  low: 'bg-green-100 text-green-800 border-green-200',
-};
-
-const STATUS_COLORS: Record<ViolationStatus, string> = {
-  open: 'bg-blue-100 text-blue-800',
-  acknowledged: 'bg-purple-100 text-purple-800',
-  investigating: 'bg-indigo-100 text-indigo-800',
-  escalated: 'bg-red-100 text-red-800',
-  resolved: 'bg-green-100 text-green-800',
-  dismissed: 'bg-gray-100 text-gray-800',
-};
-
-const TYPE_LABELS: Record<ViolationType, string> = {
-  'policy-denied': 'Policy Denied',
-  'approval-bypassed': 'Approval Bypassed',
-  'limit-exceeded': 'Limit Exceeded',
-  'anomaly-detected': 'Anomaly Detected',
-};
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-function getTimeRangeStart(range: Filters['timeRange']): Date | null {
-  const now = new Date();
-  switch (range) {
-    case '1h':
-      return new Date(now.getTime() - 60 * 60 * 1000);
-    case '24h':
-      return new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    case '7d':
-      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    case '30d':
-      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    case 'all':
-    default:
-      return null;
-  }
-}
-
-function formatTimeAgo(date: Date): string {
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
+import {
+  type Violation,
+  type ViolationFilters,
+  VIOLATION_TYPES,
+  SEVERITIES,
+  STATUSES,
+  TIME_RANGES,
+  SEVERITY_COLORS,
+  STATUS_COLORS,
+  TYPE_LABELS,
+  getTimeRangeStart,
+  formatTimeAgo,
+  parseViolation,
+} from '../types/violations';
 
 // =============================================================================
 // Component
 // =============================================================================
 
 export function Violations() {
+  const navigate = useNavigate();
   const { currentTenant, loading: tenantLoading } = useTenant();
   const [violations, setViolations] = useState<Violation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<Filters>({
+  const [filters, setFilters] = useState<ViolationFilters>({
     type: 'all',
     severity: 'all',
     status: 'all',
     timeRange: '24h',
   });
 
-  // Fetch violations from Firestore
+  // Build Firestore query with server-side filtering
+  const buildQuery = useCallback(() => {
+    if (!currentTenant) return null;
+
+    const constraints: QueryConstraint[] = [
+      where('tenantId', '==', currentTenant.id),
+    ];
+
+    // Apply type filter
+    if (filters.type !== 'all') {
+      constraints.push(where('type', '==', filters.type));
+    }
+
+    // Apply severity filter
+    if (filters.severity !== 'all') {
+      constraints.push(where('severity', '==', filters.severity));
+    }
+
+    // Apply status filter
+    if (filters.status !== 'all') {
+      constraints.push(where('status', '==', filters.status));
+    }
+
+    // Apply time range filter
+    if (filters.timeRange !== 'all') {
+      const startTime = getTimeRangeStart(filters.timeRange);
+      if (startTime) {
+        constraints.push(where('detectedAt', '>=', startTime));
+      }
+    }
+
+    // Order by detection time and limit results
+    constraints.push(orderBy('detectedAt', 'desc'));
+    constraints.push(limit(200));
+
+    return query(collection(db, 'gwi_violations'), ...constraints);
+  }, [currentTenant, filters]);
+
+  // Fetch violations from Firestore with server-side filtering
   useEffect(() => {
     if (!currentTenant) {
       setViolations([]);
@@ -178,25 +95,22 @@ export function Violations() {
       return;
     }
 
-    const violationsQuery = query(
-      collection(db, 'gwi_violations'),
-      where('tenantId', '==', currentTenant.id),
-      orderBy('detectedAt', 'desc'),
-      limit(200)
-    );
+    const violationsQuery = buildQuery();
+    if (!violationsQuery) {
+      setLoading(false);
+      return;
+    }
 
     const unsubscribe = onSnapshot(
       violationsQuery,
       (snapshot) => {
-        const fetched = snapshot.docs.map((doc) => {
+        const fetched: Violation[] = [];
+        snapshot.docs.forEach((doc) => {
           const data = doc.data() as Record<string, unknown>;
-          return {
-            id: doc.id,
-            ...data,
-            detectedAt: data.detectedAt instanceof Timestamp
-              ? data.detectedAt.toDate()
-              : new Date(data.detectedAt as string),
-          } as Violation;
+          const parsed = parseViolation(data, doc.id);
+          if (parsed) {
+            fetched.push(parsed);
+          }
         });
         setViolations(fetched);
         setLoading(false);
@@ -208,39 +122,21 @@ export function Violations() {
     );
 
     return () => unsubscribe();
-  }, [currentTenant]);
+  }, [currentTenant, buildQuery]);
 
-  // Apply client-side filters
-  const filteredViolations = useMemo(() => {
-    let result = violations;
-
-    if (filters.type !== 'all') {
-      result = result.filter((v) => v.type === filters.type);
-    }
-    if (filters.severity !== 'all') {
-      result = result.filter((v) => v.severity === filters.severity);
-    }
-    if (filters.status !== 'all') {
-      result = result.filter((v) => v.status === filters.status);
-    }
-    if (filters.timeRange !== 'all') {
-      const startTime = getTimeRangeStart(filters.timeRange);
-      if (startTime) {
-        result = result.filter((v) => v.detectedAt >= startTime);
-      }
-    }
-
-    return result;
-  }, [violations, filters]);
-
-  // Calculate stats
+  // Calculate stats from fetched violations
   const stats = useMemo(() => {
-    const critical = filteredViolations.filter((v) => v.severity === 'critical').length;
-    const high = filteredViolations.filter((v) => v.severity === 'high').length;
-    const open = filteredViolations.filter((v) => v.status === 'open').length;
-    const escalated = filteredViolations.filter((v) => v.status === 'escalated').length;
-    return { total: filteredViolations.length, critical, high, open, escalated };
-  }, [filteredViolations]);
+    const critical = violations.filter((v) => v.severity === 'critical').length;
+    const high = violations.filter((v) => v.severity === 'high').length;
+    const open = violations.filter((v) => v.status === 'open').length;
+    const escalated = violations.filter((v) => v.status === 'escalated').length;
+    return { total: violations.length, critical, high, open, escalated };
+  }, [violations]);
+
+  // Handle row click navigation
+  const handleRowClick = useCallback((violationId: string) => {
+    navigate(`/violations/${violationId}`);
+  }, [navigate]);
 
   // Loading state
   if (tenantLoading || loading) {
@@ -310,7 +206,7 @@ export function Violations() {
             </label>
             <select
               value={filters.type}
-              onChange={(e) => setFilters({ ...filters, type: e.target.value as Filters['type'] })}
+              onChange={(e) => setFilters({ ...filters, type: e.target.value as ViolationFilters['type'] })}
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               {VIOLATION_TYPES.map((t) => (
@@ -324,7 +220,7 @@ export function Violations() {
             </label>
             <select
               value={filters.severity}
-              onChange={(e) => setFilters({ ...filters, severity: e.target.value as Filters['severity'] })}
+              onChange={(e) => setFilters({ ...filters, severity: e.target.value as ViolationFilters['severity'] })}
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               {SEVERITIES.map((s) => (
@@ -338,7 +234,7 @@ export function Violations() {
             </label>
             <select
               value={filters.status}
-              onChange={(e) => setFilters({ ...filters, status: e.target.value as Filters['status'] })}
+              onChange={(e) => setFilters({ ...filters, status: e.target.value as ViolationFilters['status'] })}
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               {STATUSES.map((s) => (
@@ -352,7 +248,7 @@ export function Violations() {
             </label>
             <select
               value={filters.timeRange}
-              onChange={(e) => setFilters({ ...filters, timeRange: e.target.value as Filters['timeRange'] })}
+              onChange={(e) => setFilters({ ...filters, timeRange: e.target.value as ViolationFilters['timeRange'] })}
               className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
             >
               {TIME_RANGES.map((t) => (
@@ -364,16 +260,14 @@ export function Violations() {
       </div>
 
       {/* Violations Table */}
-      {filteredViolations.length === 0 ? (
+      {violations.length === 0 ? (
         <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
           <div className="text-4xl mb-4">🛡️</div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
             No Violations Found
           </h3>
           <p className="text-gray-500">
-            {violations.length === 0
-              ? 'No violations have been detected yet.'
-              : 'No violations match the current filters.'}
+            No violations match the current filters.
           </p>
         </div>
       ) : (
@@ -402,48 +296,47 @@ export function Violations() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredViolations.map((violation) => (
+              {violations.map((violation) => (
                 <tr
                   key={violation.id}
                   className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleRowClick(violation.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleRowClick(violation.id);
+                    }
+                  }}
                 >
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <Link to={`/violations/${violation.id}`}>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${SEVERITY_COLORS[violation.severity]}`}
-                      >
-                        {violation.severity}
-                      </span>
-                    </Link>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${SEVERITY_COLORS[violation.severity]}`}
+                    >
+                      {violation.severity}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <Link to={`/violations/${violation.id}`} className="text-sm text-gray-900">
-                      {TYPE_LABELS[violation.type]}
-                    </Link>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                    {TYPE_LABELS[violation.type]}
                   </td>
                   <td className="px-4 py-3">
-                    <Link to={`/violations/${violation.id}`} className="text-sm text-gray-900 line-clamp-2 max-w-md">
+                    <span className="text-sm text-gray-900 line-clamp-2 max-w-md">
                       {violation.summary}
-                    </Link>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    {violation.actor.name || violation.actor.id}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <Link to={`/violations/${violation.id}`} className="text-sm text-gray-500">
-                      {violation.actor.name || violation.actor.id}
-                    </Link>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[violation.status]}`}
+                    >
+                      {violation.status}
+                    </span>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <Link to={`/violations/${violation.id}`}>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[violation.status]}`}
-                      >
-                        {violation.status}
-                      </span>
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <Link to={`/violations/${violation.id}`} className="text-sm text-gray-500">
-                      {formatTimeAgo(violation.detectedAt)}
-                    </Link>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                    {formatTimeAgo(violation.detectedAt)}
                   </td>
                 </tr>
               ))}

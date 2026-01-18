@@ -3,141 +3,33 @@
  *
  * Shows violation details with remediation suggestions and one-click actions.
  * Part of Epic D: Policy & Audit - D5.5: Create violation dashboard
+ *
+ * NOTE: The client-side remediation generation (generateRemediation) is a
+ * temporary implementation. For production, this should be fetched from
+ * the backend API to ensure consistency with the core remediation engine
+ * in packages/core/src/policy/remediation.ts.
  */
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useTenant } from '../hooks/useTenant';
 import { useAuth } from '../contexts/AuthContext';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-type ViolationType = 'policy-denied' | 'approval-bypassed' | 'limit-exceeded' | 'anomaly-detected';
-type ViolationSeverity = 'low' | 'medium' | 'high' | 'critical';
-type ViolationStatus = 'open' | 'acknowledged' | 'investigating' | 'resolved' | 'dismissed' | 'escalated';
-type RemediationActor = 'user' | 'approver' | 'admin' | 'security_team';
-type RemediationDifficulty = 'easy' | 'moderate' | 'complex';
-
-interface Violation {
-  id: string;
-  tenantId: string;
-  type: ViolationType;
-  severity: ViolationSeverity;
-  status: ViolationStatus;
-  source: string;
-  actor: {
-    type: string;
-    id: string;
-    name?: string;
-    email?: string;
-  };
-  resource: {
-    type: string;
-    id: string;
-    name?: string;
-  };
-  action: {
-    type: string;
-    description?: string;
-  };
-  summary: string;
-  details?: Record<string, unknown>;
-  detectedAt: Date;
-  acknowledgedAt?: Date;
-  resolvedAt?: Date;
-  resolvedBy?: string;
-  resolution?: string;
-}
-
-interface RemediationAction {
-  id: string;
-  type: string;
-  label: string;
-  description: string;
-  actor: RemediationActor;
-  difficulty: RemediationDifficulty;
-  oneClick: boolean;
-  endpoint?: string;
-  method?: string;
-  url?: string;
-  estimatedTime?: string;
-  requiresConfirmation: boolean;
-}
-
-interface PolicyLink {
-  policyId: string;
-  policyName: string;
-  documentationUrl?: string;
-  section?: string;
-  relevance: string;
-}
-
-interface RemediationSuggestion {
-  id: string;
-  violationId: string;
-  violationType: ViolationType;
-  title: string;
-  explanation: string;
-  rootCause: string;
-  impact: string;
-  actions: RemediationAction[];
-  policyLinks: PolicyLink[];
-  notes?: string[];
-  tags?: string[];
-  generatedAt: Date;
-  expiresAt?: Date;
-}
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-const SEVERITY_COLORS: Record<ViolationSeverity, string> = {
-  critical: 'bg-red-100 text-red-800 border-red-200',
-  high: 'bg-orange-100 text-orange-800 border-orange-200',
-  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-  low: 'bg-green-100 text-green-800 border-green-200',
-};
-
-const STATUS_COLORS: Record<ViolationStatus, string> = {
-  open: 'bg-blue-100 text-blue-800',
-  acknowledged: 'bg-purple-100 text-purple-800',
-  investigating: 'bg-indigo-100 text-indigo-800',
-  escalated: 'bg-red-100 text-red-800',
-  resolved: 'bg-green-100 text-green-800',
-  dismissed: 'bg-gray-100 text-gray-800',
-};
-
-const TYPE_LABELS: Record<ViolationType, string> = {
-  'policy-denied': 'Policy Denied',
-  'approval-bypassed': 'Approval Bypassed',
-  'limit-exceeded': 'Limit Exceeded',
-  'anomaly-detected': 'Anomaly Detected',
-};
-
-const TYPE_ICONS: Record<ViolationType, string> = {
-  'policy-denied': '🚫',
-  'approval-bypassed': '⚠️',
-  'limit-exceeded': '📊',
-  'anomaly-detected': '🔍',
-};
-
-const DIFFICULTY_COLORS: Record<RemediationDifficulty, string> = {
-  easy: 'bg-green-100 text-green-800',
-  moderate: 'bg-yellow-100 text-yellow-800',
-  complex: 'bg-red-100 text-red-800',
-};
-
-const ACTOR_LABELS: Record<RemediationActor, string> = {
-  user: 'You',
-  approver: 'Approver',
-  admin: 'Admin',
-  security_team: 'Security Team',
-};
+import {
+  type Violation,
+  type ViolationStatus,
+  type RemediationAction,
+  type RemediationSuggestion,
+  type PolicyLink,
+  SEVERITY_COLORS,
+  STATUS_COLORS,
+  TYPE_LABELS,
+  TYPE_ICONS,
+  DIFFICULTY_COLORS,
+  ACTOR_LABELS,
+  parseViolation,
+} from '../types/violations';
 
 // =============================================================================
 // Remediation Generation (client-side, mirrors backend logic)
@@ -517,13 +409,16 @@ export function ViolationDetail() {
   const [error, setError] = useState<string | null>(null);
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [resolution, setResolution] = useState('');
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<RemediationAction | null>(null);
+  const [actionExecuting, setActionExecuting] = useState(false);
 
   // Generate remediation suggestion
   const remediation = useMemo(() => {
     return violation ? generateRemediation(violation) : null;
   }, [violation]);
 
-  // Fetch violation from Firestore
+  // Fetch violation from Firestore with Zod validation
   useEffect(() => {
     if (!currentTenant || !violationId) {
       setLoading(false);
@@ -536,19 +431,19 @@ export function ViolationDetail() {
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data() as Record<string, unknown>;
-          setViolation({
-            id: snapshot.id,
-            ...data,
-            detectedAt: data.detectedAt instanceof Timestamp
-              ? data.detectedAt.toDate()
-              : new Date(data.detectedAt as string),
-            acknowledgedAt: data.acknowledgedAt instanceof Timestamp
-              ? data.acknowledgedAt.toDate()
-              : data.acknowledgedAt ? new Date(data.acknowledgedAt as string) : undefined,
-            resolvedAt: data.resolvedAt instanceof Timestamp
-              ? data.resolvedAt.toDate()
-              : data.resolvedAt ? new Date(data.resolvedAt as string) : undefined,
-          } as Violation);
+          const parsed = parseViolation(data, snapshot.id);
+          if (parsed) {
+            // Verify tenant access
+            if (parsed.tenantId !== currentTenant.id) {
+              setError('You do not have access to this violation');
+              setViolation(null);
+            } else {
+              setViolation(parsed);
+            }
+          } else {
+            setError('Failed to parse violation data');
+            setViolation(null);
+          }
         } else {
           setViolation(null);
         }
@@ -563,6 +458,54 @@ export function ViolationDetail() {
 
     return () => unsubscribe();
   }, [currentTenant, violationId]);
+
+  // Handle one-click action execution
+  const handleActionClick = useCallback((action: RemediationAction) => {
+    if (action.requiresConfirmation) {
+      setPendingAction(action);
+      setShowActionModal(true);
+    } else {
+      executeAction(action);
+    }
+  }, []);
+
+  const executeAction = useCallback(async (action: RemediationAction) => {
+    setActionExecuting(true);
+    setError(null);
+
+    try {
+      // TODO: In production, call the actual API endpoint
+      // For now, simulate the action with a delay
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Log the action that would be taken
+      console.log('Would execute action:', {
+        type: action.type,
+        label: action.label,
+        endpoint: action.endpoint,
+        method: action.method,
+        violationId: violation?.id,
+      });
+
+      // Show success feedback
+      // In production, this would update the violation status based on the action result
+      setShowActionModal(false);
+      setPendingAction(null);
+
+      // Provide user feedback
+      setError(null);
+    } catch (err) {
+      console.error('Error executing action:', err);
+      setError(`Failed to execute action: ${action.label}`);
+    } finally {
+      setActionExecuting(false);
+    }
+  }, [violation?.id]);
+
+  const cancelAction = useCallback(() => {
+    setShowActionModal(false);
+    setPendingAction(null);
+  }, []);
 
   // Status update handlers
   const handleStatusChange = async (newStatus: ViolationStatus) => {
@@ -824,13 +767,11 @@ export function ViolationDetail() {
                   </div>
                   {action.oneClick && (
                     <button
-                      className="ml-4 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                      onClick={() => {
-                        // In a real app, this would call the action endpoint
-                        alert(`Action: ${action.label}\nThis would trigger the ${action.type} action.`);
-                      }}
+                      className="ml-4 px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
+                      onClick={() => handleActionClick(action)}
+                      disabled={actionExecuting}
                     >
-                      Execute
+                      {actionExecuting ? 'Executing...' : 'Execute'}
                     </button>
                   )}
                 </div>
@@ -936,6 +877,48 @@ export function ViolationDetail() {
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
               >
                 {actionLoading ? 'Resolving...' : 'Mark Resolved'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Confirmation Modal */}
+      {showActionModal && pendingAction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Confirm Action: {pendingAction.label}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {pendingAction.description}
+            </p>
+            <div className="bg-gray-50 rounded p-3 mb-4">
+              <div className="text-xs text-gray-500 space-y-1">
+                <p><strong>Action Type:</strong> {pendingAction.type}</p>
+                <p><strong>Difficulty:</strong> {pendingAction.difficulty}</p>
+                {pendingAction.estimatedTime && (
+                  <p><strong>Estimated Time:</strong> {pendingAction.estimatedTime}</p>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-amber-600 mb-4">
+              Note: This action will be logged for audit purposes.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={cancelAction}
+                disabled={actionExecuting}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => executeAction(pendingAction)}
+                disabled={actionExecuting}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {actionExecuting ? 'Executing...' : 'Confirm & Execute'}
               </button>
             </div>
           </div>
