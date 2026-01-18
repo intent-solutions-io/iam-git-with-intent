@@ -613,3 +613,54 @@ export {
   setReportGenerator,
   resetReportGenerator,
 } from './report-generator.js';
+
+// =============================================================================
+// Epic D: Report Signing (D4.4)
+// =============================================================================
+
+// Report signing and verification (prefixed to avoid conflicts with other modules)
+export {
+  // Types and schemas
+  SignatureAlgorithm as ReportSignatureAlgorithm,
+  SignerIdentity,
+  SigningKeyInfo as ReportSigningKeyInfo,
+  ReportSignature,
+  SignedReport,
+  SignatureVerificationResult as ReportSignatureVerificationResult,
+  type SigningOptions as ReportSigningOptions,
+  type SigningKeyPair as ReportSigningKeyPair,
+
+  // Utility functions
+  generateSignatureId as generateReportSignatureId,
+  computeKeyFingerprint as computeReportKeyFingerprint,
+  computeReportHash,
+  canonicalizeReportContent,
+
+  // Key generation
+  generateSigningKeyPair as generateReportSigningKeyPair,
+
+  // Signing functions
+  signReport,
+  signReportContent,
+
+  // Verification functions
+  verifyReportSignature,
+  verifySignature as verifyReportContentSignature,
+  isSignatureValid as isReportSignatureValid,
+
+  // Signer service
+  type ReportSignerConfig,
+  ReportSigner,
+
+  // Factory functions
+  createReportSigner,
+  createReportSignerWithKey,
+  createReportVerifier,
+
+  // Singleton management
+  initializeReportSigner,
+  initializeReportSignerWithKey,
+  getReportSigner,
+  setReportSigner,
+  resetReportSigner,
+} from './report-signing.js';
