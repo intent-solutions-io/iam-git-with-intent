@@ -664,3 +664,39 @@ export {
   setReportSigner,
   resetReportSigner,
 } from './report-signing.js';
+
+// =============================================================================
+// Epic D: Report Storage (D4.5)
+// =============================================================================
+
+// Report storage and persistence
+export {
+  // Types and schemas
+  ReportStatus,
+  StoredReportMetadata,
+  StoredReport,
+  ReportQueryOptions,
+  ReportQueryResult,
+  ReportVersionEntry,
+
+  // Interfaces
+  type ReportStore,
+
+  // Implementations
+  InMemoryReportStore,
+  FirestoreReportStore,
+
+  // Constants
+  REPORT_COLLECTIONS,
+
+  // Factory functions
+  createInMemoryReportStore,
+  createFirestoreReportStore,
+
+  // Singleton management
+  getReportStore,
+  setReportStore,
+  resetReportStore,
+  initializeInMemoryReportStore,
+  initializeFirestoreReportStore,
+} from './report-storage.js';
