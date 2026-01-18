@@ -170,7 +170,10 @@ export interface ViolationStore {
  */
 export class InMemoryViolationStore implements ViolationStore {
   private violations: Map<string, Violation> = new Map();
-  private idempotencyKeys: Map<string, Set<string>> = new Map();
+  /** Map of tenantId -> (idempotencyKey -> timestamp) for TTL-based expiration */
+  private idempotencyKeys: Map<string, Map<string, number>> = new Map();
+  /** TTL for idempotency keys in milliseconds (24 hours) */
+  private static readonly IDEMPOTENCY_KEY_TTL_MS = 24 * 60 * 60 * 1000;
 
   async create(violation: Violation): Promise<Violation> {
     this.violations.set(violation.id, violation);
@@ -313,7 +316,20 @@ export class InMemoryViolationStore implements ViolationStore {
 
   async existsByIdempotencyKey(tenantId: string, key: string): Promise<boolean> {
     const tenantKeys = this.idempotencyKeys.get(tenantId);
-    return tenantKeys?.has(key) ?? false;
+    if (!tenantKeys) return false;
+
+    const timestamp = tenantKeys.get(key);
+    if (timestamp === undefined) return false;
+
+    // Check if key has expired
+    const now = Date.now();
+    if (now - timestamp > InMemoryViolationStore.IDEMPOTENCY_KEY_TTL_MS) {
+      // Key expired, remove it
+      tenantKeys.delete(key);
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -322,10 +338,34 @@ export class InMemoryViolationStore implements ViolationStore {
   registerIdempotencyKey(tenantId: string, key: string): void {
     let tenantKeys = this.idempotencyKeys.get(tenantId);
     if (!tenantKeys) {
-      tenantKeys = new Set();
+      tenantKeys = new Map();
       this.idempotencyKeys.set(tenantId, tenantKeys);
     }
-    tenantKeys.add(key);
+    tenantKeys.set(key, Date.now());
+  }
+
+  /**
+   * Clean up expired idempotency keys to prevent memory growth
+   * Call this periodically in long-running processes
+   */
+  cleanupExpiredIdempotencyKeys(): number {
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const [tenantId, tenantKeys] of this.idempotencyKeys) {
+      for (const [key, timestamp] of tenantKeys) {
+        if (now - timestamp > InMemoryViolationStore.IDEMPOTENCY_KEY_TTL_MS) {
+          tenantKeys.delete(key);
+          cleaned++;
+        }
+      }
+      // Clean up empty tenant maps
+      if (tenantKeys.size === 0) {
+        this.idempotencyKeys.delete(tenantId);
+      }
+    }
+
+    return cleaned;
   }
 
   async aggregate(

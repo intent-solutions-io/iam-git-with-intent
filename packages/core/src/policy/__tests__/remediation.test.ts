@@ -304,14 +304,20 @@ describe('RemediationEngine', () => {
     });
 
     it('should set expiry based on window', () => {
+      // Use fake timers to make this test deterministic
+      vi.useFakeTimers();
+      const now = Date.now();
+      vi.setSystemTime(now);
+
       const violation = createLimitExceededTestViolation();
       const suggestion = engine.generate(violation);
 
       expect(suggestion.expiresAt).toBeDefined();
-      // Should expire in ~1 hour (window duration)
-      const expiryMs = suggestion.expiresAt!.getTime() - Date.now();
-      expect(expiryMs).toBeGreaterThan(3500000); // > 58 minutes
-      expect(expiryMs).toBeLessThan(3700000); // < 62 minutes
+      // Should expire in 1 hour (window duration)
+      const expectedExpiry = new Date(now + 3600000); // 1 hour from now
+      expect(suggestion.expiresAt!.getTime()).toBe(expectedExpiry.getTime());
+
+      vi.useRealTimers();
     });
   });
 
