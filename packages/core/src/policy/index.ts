@@ -575,3 +575,41 @@ export {
   setEvidenceCollector,
   resetEvidenceCollector,
 } from './evidence-collector.js';
+
+// =============================================================================
+// Epic D: Report Generator (D4.3)
+// =============================================================================
+
+// Report generation and scheduling
+export {
+  // Request and result types
+  ReportGenerationRequest,
+  ReportGenerationResult,
+
+  // Scheduling types
+  ScheduledReportConfig,
+  ScheduledReportRun,
+
+  // Cron utilities
+  parseNextCronRun,
+  calculatePeriodDates,
+
+  // Generator config
+  type ReportGeneratorConfig,
+
+  // Classes
+  ReportGenerator,
+  ReportScheduleManager,
+
+  // Factory functions
+  createReportGenerator,
+  createScheduleManager,
+  createScheduledReport,
+
+  // Singleton management
+  initializeReportGenerator,
+  getReportGenerator,
+  getScheduleManager,
+  setReportGenerator,
+  resetReportGenerator,
+} from './report-generator.js';
