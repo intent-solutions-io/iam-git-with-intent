@@ -361,7 +361,7 @@ export async function auditIsValidCommand(options: {
     }
 
     process.exit(isValid ? 0 : 1);
-  } catch (error) {
+  } catch {
     if (!options.quiet) {
       console.error('error');
     }
