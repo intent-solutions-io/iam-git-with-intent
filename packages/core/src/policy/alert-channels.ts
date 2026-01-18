@@ -17,6 +17,22 @@ import { z } from 'zod';
 import type { Violation, ViolationSeverity } from './violation-schema.js';
 
 // =============================================================================
+// Security Utilities
+// =============================================================================
+
+/**
+ * Escape HTML special characters to prevent XSS attacks
+ */
+function escapeHtml(unsafe: string | undefined): string {
+  return (unsafe ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// =============================================================================
 // Types and Schemas
 // =============================================================================
 
@@ -298,7 +314,7 @@ export class EmailChannel implements AlertChannel {
       return {
         success: false,
         channel: 'email',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startTime,
       };
     }
@@ -320,7 +336,7 @@ export class EmailChannel implements AlertChannel {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
@@ -329,6 +345,7 @@ export class EmailChannel implements AlertChannel {
     const color = severityToColor(payload.violation.severity);
     const v = payload.violation;
 
+    // All dynamic values are escaped to prevent XSS attacks
     return `
 <!DOCTYPE html>
 <html>
@@ -350,28 +367,28 @@ export class EmailChannel implements AlertChannel {
 </head>
 <body>
   <div class="header">
-    <span class="severity">${v.severity}</span>
-    <h1 class="title">${payload.title}</h1>
-    <p style="color: #6b7280; margin: 0;">${payload.summary}</p>
+    <span class="severity">${escapeHtml(v.severity)}</span>
+    <h1 class="title">${escapeHtml(payload.title)}</h1>
+    <p style="color: #6b7280; margin: 0;">${escapeHtml(payload.summary)}</p>
   </div>
 
   <div class="section">
     <div class="section-title">Violation Details</div>
     <div class="detail-row">
       <span class="detail-label">Type:</span>
-      <span class="detail-value">${v.type}</span>
+      <span class="detail-value">${escapeHtml(v.type)}</span>
     </div>
     <div class="detail-row">
       <span class="detail-label">Actor:</span>
-      <span class="detail-value">${v.actor.name || v.actor.id} (${v.actor.type})</span>
+      <span class="detail-value">${escapeHtml(v.actor.name || v.actor.id)} (${escapeHtml(v.actor.type)})</span>
     </div>
     <div class="detail-row">
       <span class="detail-label">Resource:</span>
-      <span class="detail-value">${v.resource.name || v.resource.id} (${v.resource.type})</span>
+      <span class="detail-value">${escapeHtml(v.resource.name || v.resource.id)} (${escapeHtml(v.resource.type)})</span>
     </div>
     <div class="detail-row">
       <span class="detail-label">Action:</span>
-      <span class="detail-value">${v.action.type}</span>
+      <span class="detail-value">${escapeHtml(v.action.type)}</span>
     </div>
     <div class="detail-row">
       <span class="detail-label">Detected:</span>
@@ -379,15 +396,15 @@ export class EmailChannel implements AlertChannel {
     </div>
     <div class="detail-row">
       <span class="detail-label">Status:</span>
-      <span class="detail-value">${v.status}</span>
+      <span class="detail-value">${escapeHtml(v.status)}</span>
     </div>
   </div>
 
-  ${payload.detailsUrl ? `<a href="${payload.detailsUrl}" class="btn">View Details</a>` : ''}
+  ${payload.detailsUrl ? `<a href="${escapeHtml(payload.detailsUrl)}" class="btn">View Details</a>` : ''}
 
   <div class="footer">
     <p>This is an automated alert from Git With Intent (GWI) security monitoring.</p>
-    <p>Alert ID: ${payload.id} | Violation ID: ${v.id}</p>
+    <p>Alert ID: ${escapeHtml(payload.id)} | Violation ID: ${escapeHtml(v.id)}</p>
   </div>
 </body>
 </html>`;
@@ -488,7 +505,7 @@ export class SlackChannel implements AlertChannel {
       return {
         success: false,
         channel: 'slack',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startTime,
       };
     }
@@ -515,7 +532,7 @@ export class SlackChannel implements AlertChannel {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
