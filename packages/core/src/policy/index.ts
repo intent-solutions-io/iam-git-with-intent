@@ -523,3 +523,55 @@ export {
   validateReportTemplate,
   isReportComplete,
 } from './report-templates.js';
+
+// =============================================================================
+// Epic D: Evidence Collection (D4.2)
+// =============================================================================
+
+// Evidence collection types and service
+export {
+  // Query types
+  EvidenceTimeRange,
+  EvidenceQuery,
+  CollectedEvidence,
+  EvidenceCollectionResult,
+
+  // Control-to-action mappings
+  CONTROL_TO_ACTION_MAPPINGS,
+  SOC2_CRITERIA_MAPPINGS,
+  ISO27001_CONTROL_MAPPINGS,
+
+  // Source interface
+  type EvidenceSource,
+
+  // Audit log evidence source
+  type AuditLogEvidenceSourceConfig,
+  AuditLogEvidenceSource,
+
+  // Decision trace evidence source
+  type DecisionTraceStore,
+  type DecisionTrace,
+  type DecisionTraceEvidenceSourceConfig,
+  DecisionTraceEvidenceSource,
+
+  // Main evidence collector
+  type EvidenceCollectorConfig,
+  EvidenceCollector,
+
+  // Factory functions
+  createAuditLogEvidenceSource,
+  createDecisionTraceEvidenceSource,
+  createEvidenceCollector,
+
+  // Helper functions
+  linkEvidenceToControl,
+  getEvidenceSummary,
+  filterByRelevance,
+  getTopEvidence,
+
+  // Singleton management
+  initializeEvidenceCollector,
+  getEvidenceCollector,
+  setEvidenceCollector,
+  resetEvidenceCollector,
+} from './evidence-collector.js';
