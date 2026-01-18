@@ -855,38 +855,42 @@ export class FirestoreReportStore implements ReportStore {
       customMetadata?: Record<string, unknown>;
     }
   ): Promise<StoredReport> {
-    const now = new Date();
     const ref = this.getReportRef(tenantId, report.reportId);
-    const existing = await ref.get();
 
-    const metadata: StoredReportMetadata = {
-      reportId: report.reportId,
-      tenantId,
-      version: report.version,
-      framework: this.extractFramework(report),
-      title: report.title,
-      status: options?.status ?? 'draft',
-      periodStart: report.period.start,
-      periodEnd: report.period.end,
-      organizationName: report.organizationName,
-      signed: false,
-      createdAt: existing.exists ? existing.data()?.metadata?.createdAt?.toDate() ?? now : now,
-      updatedAt: now,
-      createdBy: existing.exists ? existing.data()?.metadata?.createdBy : options?.createdBy ?? 'unknown',
-      updatedBy: options?.createdBy,
-      tags: options?.tags ?? [],
-      customMetadata: options?.customMetadata,
-    };
+    // Use transaction to avoid race conditions in read-modify-write
+    return this.db.runTransaction(async (transaction) => {
+      const now = new Date();
+      const existing = await transaction.get(ref);
 
-    const storedReport: StoredReport = {
-      metadata,
-      report,
-      contentJson: JSON.stringify(report),
-    };
+      const metadata: StoredReportMetadata = {
+        reportId: report.reportId,
+        tenantId,
+        version: report.version,
+        framework: this.extractFramework(report),
+        title: report.title,
+        status: options?.status ?? 'draft',
+        periodStart: report.period.start,
+        periodEnd: report.period.end,
+        organizationName: report.organizationName,
+        signed: false,
+        createdAt: existing.exists ? existing.data()?.metadata?.createdAt?.toDate() ?? now : now,
+        updatedAt: now,
+        createdBy: existing.exists ? existing.data()?.metadata?.createdBy : options?.createdBy ?? 'unknown',
+        updatedBy: options?.createdBy,
+        tags: options?.tags ?? [],
+        customMetadata: options?.customMetadata,
+      };
 
-    await ref.set(storedReport);
+      const storedReport: StoredReport = {
+        metadata,
+        report,
+        contentJson: JSON.stringify(report),
+      };
 
-    return storedReport;
+      transaction.set(ref, storedReport);
+
+      return storedReport;
+    });
   }
 
   async saveSigned(
@@ -899,42 +903,46 @@ export class FirestoreReportStore implements ReportStore {
       customMetadata?: Record<string, unknown>;
     }
   ): Promise<StoredReport> {
-    const now = new Date();
     const { report, signature, content } = signedReport;
     const ref = this.getReportRef(tenantId, report.reportId);
-    const existing = await ref.get();
 
-    const metadata: StoredReportMetadata = {
-      reportId: report.reportId,
-      tenantId,
-      version: report.version,
-      framework: this.extractFramework(report),
-      title: report.title,
-      status: options?.status ?? 'approved',
-      periodStart: report.period.start,
-      periodEnd: report.period.end,
-      organizationName: report.organizationName,
-      signed: true,
-      signerId: signature.signer.signerId,
-      signedAt: signature.signedAt,
-      createdAt: existing.exists ? existing.data()?.metadata?.createdAt?.toDate() ?? now : now,
-      updatedAt: now,
-      createdBy: existing.exists ? existing.data()?.metadata?.createdBy : options?.createdBy ?? 'unknown',
-      updatedBy: options?.createdBy,
-      tags: options?.tags ?? [],
-      customMetadata: options?.customMetadata,
-    };
+    // Use transaction to avoid race conditions in read-modify-write
+    return this.db.runTransaction(async (transaction) => {
+      const now = new Date();
+      const existing = await transaction.get(ref);
 
-    const storedReport: StoredReport = {
-      metadata,
-      report,
-      signature,
-      contentJson: content,
-    };
+      const metadata: StoredReportMetadata = {
+        reportId: report.reportId,
+        tenantId,
+        version: report.version,
+        framework: this.extractFramework(report),
+        title: report.title,
+        status: options?.status ?? 'approved',
+        periodStart: report.period.start,
+        periodEnd: report.period.end,
+        organizationName: report.organizationName,
+        signed: true,
+        signerId: signature.signer.signerId,
+        signedAt: signature.signedAt,
+        createdAt: existing.exists ? existing.data()?.metadata?.createdAt?.toDate() ?? now : now,
+        updatedAt: now,
+        createdBy: existing.exists ? existing.data()?.metadata?.createdBy : options?.createdBy ?? 'unknown',
+        updatedBy: options?.createdBy,
+        tags: options?.tags ?? [],
+        customMetadata: options?.customMetadata,
+      };
 
-    await ref.set(storedReport);
+      const storedReport: StoredReport = {
+        metadata,
+        report,
+        signature,
+        contentJson: content,
+      };
 
-    return storedReport;
+      transaction.set(ref, storedReport);
+
+      return storedReport;
+    });
   }
 
   async get(tenantId: string, reportId: string): Promise<StoredReport | null> {

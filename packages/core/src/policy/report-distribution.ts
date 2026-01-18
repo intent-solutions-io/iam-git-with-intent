@@ -292,6 +292,8 @@ export const DistributionRecord = z.object({
     downloadCount: z.number().int().default(0),
     /** Max downloads */
     maxDownloads: z.number().int(),
+    /** Password hash (stored securely, never plaintext) */
+    passwordHash: z.string().optional(),
   }).optional(),
   /** S3 details (for s3_upload channel) */
   s3Details: z.object({
@@ -465,10 +467,24 @@ export function formatReportContent(
 }
 
 /**
- * Basic markdown to HTML conversion
+ * Escape HTML special characters to prevent XSS
+ */
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Basic markdown to HTML conversion with XSS protection
+ * Note: For production use, consider using a vetted library like marked or markdown-it
  */
 function convertMarkdownToHtml(markdown: string): string {
-  let html = markdown
+  // First, escape HTML to prevent XSS
+  let html = escapeHtml(markdown)
     // Headers
     .replace(/^### (.*$)/gm, '<h3>$1</h3>')
     .replace(/^## (.*$)/gm, '<h2>$1</h2>')
@@ -1140,6 +1156,8 @@ export class ReportDistributionService {
       expiresAt,
       downloadCount: 0,
       maxDownloads: config.maxDownloads,
+      // Store password as hash, never plaintext
+      passwordHash: config.password ? hashDownloadPassword(config.password) : undefined,
     };
 
     const deliveredRecord = await this.store.updateStatus(
@@ -1231,15 +1249,17 @@ export class ReportDistributionService {
       }
     }
 
-    // Check password
-    if (config.password && options?.password) {
-      if (!verifyDownloadPassword(options.password, hashDownloadPassword(config.password))) {
+    // Check password - verify against stored hash, never plaintext
+    const storedPasswordHash = record.downloadLink.passwordHash;
+    if (storedPasswordHash) {
+      if (!options?.password) {
+        await this.recordAccessAttempt(record, token, false, 'Password required', options);
+        return { success: false, error: 'Invalid password', errorCode: 'invalid_password' };
+      }
+      if (!verifyDownloadPassword(options.password, storedPasswordHash)) {
         await this.recordAccessAttempt(record, token, false, 'Invalid password', options);
         return { success: false, error: 'Invalid password', errorCode: 'invalid_password' };
       }
-    } else if (config.password && !options?.password) {
-      await this.recordAccessAttempt(record, token, false, 'Password required', options);
-      return { success: false, error: 'Invalid password', errorCode: 'invalid_password' };
     }
 
     // Increment download count
