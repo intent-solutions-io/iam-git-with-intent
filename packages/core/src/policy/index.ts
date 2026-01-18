@@ -613,3 +613,39 @@ export {
   setReportGenerator,
   resetReportGenerator,
 } from './report-generator.js';
+
+// =============================================================================
+// Epic D: Violation Detector (D5.2)
+// =============================================================================
+
+// Violation detection and storage
+export {
+  // Store types
+  type ViolationQueryResult,
+  type ViolationAggregation,
+  type ViolationStore,
+
+  // Store implementations
+  InMemoryViolationStore,
+
+  // Detector types
+  type ViolationDetectorConfig,
+  type PolicyEvaluationContext,
+  type ApprovalBypassContext,
+  type RateLimitContext,
+  type AnomalyContext,
+  type DetectionResult,
+
+  // Detector class
+  ViolationDetector,
+
+  // Factory functions
+  createInMemoryViolationStore,
+  createViolationDetector,
+
+  // Singleton management
+  initializeViolationDetector,
+  getViolationDetector,
+  setViolationDetector,
+  resetViolationDetector,
+} from './violation-detector.js';
