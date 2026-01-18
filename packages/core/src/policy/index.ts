@@ -615,41 +615,160 @@ export {
 } from './report-generator.js';
 
 // =============================================================================
+// Epic D: Violation Detector (D5.2)
+// =============================================================================
+
+// Violation detection and storage
+export {
+  // Store types
+  type ViolationQueryResult,
+  type ViolationAggregation,
+  type ViolationStore,
+
+  // Store implementations
+  InMemoryViolationStore,
+
+  // Detector types
+  type ViolationDetectorConfig,
+  type PolicyEvaluationContext,
+  type ApprovalBypassContext,
+  type RateLimitContext,
+  type AnomalyContext,
+  type DetectionResult,
+
+  // Detector class
+  ViolationDetector,
+
+  // Factory functions
+  createInMemoryViolationStore,
+  createViolationDetector,
+
+  // Singleton management
+  initializeViolationDetector,
+  getViolationDetector,
+  setViolationDetector,
+  resetViolationDetector,
+} from './violation-detector.js';
+
+// =============================================================================
+// Epic D: Alert Channels (D5.3)
+// =============================================================================
+
+// Alert channels for violation notifications
+export {
+  // Types
+  type AlertChannelType,
+  type AlertPriority,
+  type AlertPayload,
+  type AlertResult,
+  type ChannelConfig,
+  type AlertChannel,
+
+  // Config schemas
+  EmailChannelConfigSchema,
+  type EmailChannelConfig,
+  SlackChannelConfigSchema,
+  type SlackChannelConfig,
+  WebhookChannelConfigSchema,
+  type WebhookChannelConfig,
+
+  // Channel implementations
+  EmailChannel,
+  SlackChannel,
+  WebhookChannel,
+
+  // Dispatcher
+  type AlertDispatcherConfig,
+  type DispatchResult,
+  AlertDispatcher,
+
+  // Factory functions
+  createEmailChannel,
+  createSlackChannel,
+  createWebhookChannel,
+  createAlertDispatcher,
+
+  // Singleton management
+  initializeAlertDispatcher,
+  getAlertDispatcher,
+  setAlertDispatcher,
+  resetAlertDispatcher,
+} from './alert-channels.js';
+
+// =============================================================================
+// Epic D: Remediation Suggestions (D5.4)
+// =============================================================================
+
+// Remediation types and engine
+export {
+  // Types
+  type RemediationActionType,
+  type RemediationDifficulty,
+  type RemediationActor,
+  type RemediationAction,
+  type PolicyLink,
+  type RemediationSuggestion,
+  type RemediationEngineConfig,
+
+  // Schemas
+  RemediationActionSchema,
+  PolicyLinkSchema,
+  RemediationSuggestionSchema,
+
+  // Engine
+  RemediationEngine,
+
+  // Factory functions
+  createRemediationEngine,
+  generateRemediation,
+
+  // Singleton management
+  initializeRemediationEngine,
+  getRemediationEngine,
+  setRemediationEngine,
+  resetRemediationEngine,
+
+  // Integration helpers
+  enrichViolationWithRemediation,
+  getPrimaryRemediationAction,
+  getOneClickActions,
+  getActionsForActor,
+} from './remediation.js';
+
+// =============================================================================
 // Epic D: Report Signing (D4.4)
 // =============================================================================
 
-// Report signing and verification (prefixed to avoid conflicts with other modules)
+// Report signing and verification
 export {
-  // Types and schemas
-  SignatureAlgorithm as ReportSignatureAlgorithm,
+  // Schema types
+  SignatureAlgorithm,
   SignerIdentity,
-  SigningKeyInfo as ReportSigningKeyInfo,
+  SigningKeyInfo,
   ReportSignature,
   SignedReport,
-  SignatureVerificationResult as ReportSignatureVerificationResult,
-  type SigningOptions as ReportSigningOptions,
-  type SigningKeyPair as ReportSigningKeyPair,
+  SignatureVerificationResult,
 
-  // Utility functions
-  generateSignatureId as generateReportSignatureId,
-  computeKeyFingerprint as computeReportKeyFingerprint,
+  // Config types
+  type SigningOptions,
+  type SigningKeyPair,
+  type ReportSignerConfig,
+
+  // Key utilities
+  generateSignatureId,
+  computeKeyFingerprint,
   computeReportHash,
   canonicalizeReportContent,
-
-  // Key generation
-  generateSigningKeyPair as generateReportSigningKeyPair,
+  generateSigningKeyPair,
 
   // Signing functions
   signReport,
   signReportContent,
-
-  // Verification functions
   verifyReportSignature,
-  verifySignature as verifyReportContentSignature,
-  isSignatureValid as isReportSignatureValid,
+  verifySignature,
+  isSignatureValid,
 
-  // Signer service
-  type ReportSignerConfig,
+  // Signer class
   ReportSigner,
 
   // Factory functions
