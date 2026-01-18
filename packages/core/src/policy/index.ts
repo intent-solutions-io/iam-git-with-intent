@@ -499,3 +499,63 @@ export {
   setViolationDetector,
   resetViolationDetector,
 } from './violation-detector.js';
+
+// =============================================================================
+// Epic D: Compliance Report Templates (D4.1)
+// =============================================================================
+
+// Compliance report template types and schemas (prefixed to avoid conflicts with compliance module)
+export {
+  // Framework types (prefixed to avoid conflict with compliance/index.ts)
+  ComplianceFramework as ReportComplianceFramework,
+  type FrameworkMetadata as ReportFrameworkMetadata,
+
+  // Control types (prefixed to avoid conflicts)
+  type ControlStatus as ReportControlStatus,
+  type ControlPriority as ReportControlPriority,
+  type EvidenceType as ReportEvidenceType,
+  type EvidenceReference as ReportEvidenceReference,
+  type Attestation as ReportAttestation,
+  type RemediationItem as ReportRemediationItem,
+  type ControlDefinition as ReportControlDefinition,
+
+  // Report structure
+  type ReportPeriod,
+  type ReportSummary,
+  type ComplianceReportTemplate,
+
+  // SOC2 types
+  type SOC2Category,
+  SOC2_COMMON_CRITERIA_DOMAINS,
+  SOC2_CONTROL_TEMPLATES,
+
+  // ISO 27001 types
+  ISO27001_DOMAINS,
+  ISO27001_CONTROL_TEMPLATES,
+
+  // Framework metadata
+  FRAMEWORK_METADATA as REPORT_FRAMEWORK_METADATA,
+
+  // Factory functions
+  generateReportId,
+  createControlFromTemplate,
+  createSOC2Template,
+  createISO27001Template,
+  createCustomTemplate,
+  calculateReportSummary,
+
+  // Evidence helpers
+  createAuditLogEvidence,
+  createDocumentEvidence,
+  addEvidenceToControl,
+  updateControlStatus as updateReportControlStatus,
+
+  // Formatters
+  formatReportAsMarkdown,
+  formatReportAsJSON,
+  parseReportFromJSON,
+
+  // Validation
+  validateReportTemplate,
+  isReportComplete,
+} from './report-templates.js';
