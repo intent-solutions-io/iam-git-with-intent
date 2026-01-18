@@ -694,3 +694,43 @@ export {
   setAlertDispatcher,
   resetAlertDispatcher,
 } from './alert-channels.js';
+
+// =============================================================================
+// Epic D: Remediation Suggestions (D5.4)
+// =============================================================================
+
+// Remediation types and engine
+export {
+  // Types
+  type RemediationActionType,
+  type RemediationDifficulty,
+  type RemediationActor,
+  type RemediationAction,
+  type PolicyLink,
+  type RemediationSuggestion,
+  type RemediationEngineConfig,
+
+  // Schemas
+  RemediationActionSchema,
+  PolicyLinkSchema,
+  RemediationSuggestionSchema,
+
+  // Engine
+  RemediationEngine,
+
+  // Factory functions
+  createRemediationEngine,
+  generateRemediation,
+
+  // Singleton management
+  initializeRemediationEngine,
+  getRemediationEngine,
+  setRemediationEngine,
+  resetRemediationEngine,
+
+  // Integration helpers
+  enrichViolationWithRemediation,
+  getPrimaryRemediationAction,
+  getOneClickActions,
+  getActionsForActor,
+} from './remediation.js';
