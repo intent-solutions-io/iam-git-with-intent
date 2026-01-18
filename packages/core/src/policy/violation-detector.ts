@@ -90,6 +90,13 @@ export interface ViolationStore {
   create(violation: Violation): Promise<Violation>;
 
   /**
+   * Store a new violation with idempotency check (atomic operation)
+   * Returns the violation if created, null if idempotency key already exists.
+   * This is the preferred method for creating violations as it handles race conditions.
+   */
+  createWithIdempotency(violation: Violation, idempotencyKey: string): Promise<Violation | null>;
+
+  /**
    * Get a violation by ID
    */
   get(id: string): Promise<Violation | null>;
@@ -173,6 +180,24 @@ export class InMemoryViolationStore implements ViolationStore {
   private idempotencyKeys: Map<string, Set<string>> = new Map();
 
   async create(violation: Violation): Promise<Violation> {
+    this.violations.set(violation.id, violation);
+    return violation;
+  }
+
+  async createWithIdempotency(violation: Violation, idempotencyKey: string): Promise<Violation | null> {
+    // Atomic check-and-create to prevent race conditions
+    const tenantKeys = this.idempotencyKeys.get(violation.tenantId);
+    if (tenantKeys?.has(idempotencyKey)) {
+      return null; // Key already exists, duplicate detected
+    }
+
+    // Register the idempotency key
+    if (!this.idempotencyKeys.has(violation.tenantId)) {
+      this.idempotencyKeys.set(violation.tenantId, new Set());
+    }
+    this.idempotencyKeys.get(violation.tenantId)!.add(idempotencyKey);
+
+    // Create the violation
     this.violations.set(violation.id, violation);
     return violation;
   }
@@ -701,33 +726,36 @@ export class ViolationDetector {
       }
     );
 
-    // Store the violation
-    await this.store.create(violation);
-
-    // Register idempotency key
-    if (this.store instanceof InMemoryViolationStore) {
-      this.store.registerIdempotencyKey(context.tenantId, idempotencyKey);
+    // Store the violation with atomic idempotency check
+    const createdViolation = await this.store.createWithIdempotency(violation, idempotencyKey);
+    if (!createdViolation) {
+      // Race condition: another request already created this violation
+      return {
+        created: false,
+        deduplicated: true,
+        idempotencyKey,
+      };
     }
 
     // Auto-escalate if critical
-    if (this.config.autoEscalateCritical && violation.severity === 'critical') {
-      await this.store.updateStatus(violation.id, 'escalated', {
+    if (this.config.autoEscalateCritical && createdViolation.severity === 'critical') {
+      await this.store.updateStatus(createdViolation.id, 'escalated', {
         updatedBy: 'system',
       });
-      violation.status = 'escalated';
+      createdViolation.status = 'escalated';
     }
 
     // Notify callback
     if (this.config.onViolationDetected) {
-      await this.config.onViolationDetected(violation);
+      await this.config.onViolationDetected(createdViolation);
     }
 
     // Check for patterns
-    const patternDetected = await this.checkForPatterns(context.tenantId, violation);
+    const patternDetected = await this.checkForPatterns(context.tenantId, createdViolation);
 
     return {
       created: true,
-      violation,
+      violation: createdViolation,
       deduplicated: false,
       idempotencyKey,
       patternDetected,
@@ -779,29 +807,34 @@ export class ViolationDetector {
       }
     );
 
-    await this.store.create(violation);
-
-    if (this.store instanceof InMemoryViolationStore) {
-      this.store.registerIdempotencyKey(context.tenantId, idempotencyKey);
+    // Store the violation with atomic idempotency check
+    const createdViolation = await this.store.createWithIdempotency(violation, idempotencyKey);
+    if (!createdViolation) {
+      // Race condition: another request already created this violation
+      return {
+        created: false,
+        deduplicated: true,
+        idempotencyKey,
+      };
     }
 
     // Approval bypasses are critical - always escalate
     if (this.config.autoEscalateCritical) {
-      await this.store.updateStatus(violation.id, 'escalated', {
+      await this.store.updateStatus(createdViolation.id, 'escalated', {
         updatedBy: 'system',
       });
-      violation.status = 'escalated';
+      createdViolation.status = 'escalated';
     }
 
     if (this.config.onViolationDetected) {
-      await this.config.onViolationDetected(violation);
+      await this.config.onViolationDetected(createdViolation);
     }
 
-    const patternDetected = await this.checkForPatterns(context.tenantId, violation);
+    const patternDetected = await this.checkForPatterns(context.tenantId, createdViolation);
 
     return {
       created: true,
-      violation,
+      violation: createdViolation,
       deduplicated: false,
       idempotencyKey,
       patternDetected,
@@ -865,21 +898,26 @@ export class ViolationDetector {
       }
     );
 
-    await this.store.create(violation);
-
-    if (this.store instanceof InMemoryViolationStore) {
-      this.store.registerIdempotencyKey(context.tenantId, idempotencyKey);
+    // Store the violation with atomic idempotency check
+    const createdViolation = await this.store.createWithIdempotency(violation, idempotencyKey);
+    if (!createdViolation) {
+      // Race condition: another request already created this violation
+      return {
+        created: false,
+        deduplicated: true,
+        idempotencyKey,
+      };
     }
 
     if (this.config.onViolationDetected) {
-      await this.config.onViolationDetected(violation);
+      await this.config.onViolationDetected(createdViolation);
     }
 
-    const patternDetected = await this.checkForPatterns(context.tenantId, violation);
+    const patternDetected = await this.checkForPatterns(context.tenantId, createdViolation);
 
     return {
       created: true,
-      violation,
+      violation: createdViolation,
       deduplicated: false,
       idempotencyKey,
       patternDetected,
@@ -932,29 +970,34 @@ export class ViolationDetector {
       }
     );
 
-    await this.store.create(violation);
-
-    if (this.store instanceof InMemoryViolationStore) {
-      this.store.registerIdempotencyKey(context.tenantId, idempotencyKey);
+    // Store the violation with atomic idempotency check
+    const createdViolation = await this.store.createWithIdempotency(violation, idempotencyKey);
+    if (!createdViolation) {
+      // Race condition: another request already created this violation
+      return {
+        created: false,
+        deduplicated: true,
+        idempotencyKey,
+      };
     }
 
     // High-confidence anomalies with high scores get escalated
     if (this.config.autoEscalateCritical && context.confidence >= 0.9 && context.score >= 90) {
-      await this.store.updateStatus(violation.id, 'escalated', {
+      await this.store.updateStatus(createdViolation.id, 'escalated', {
         updatedBy: 'system',
       });
-      violation.status = 'escalated';
+      createdViolation.status = 'escalated';
     }
 
     if (this.config.onViolationDetected) {
-      await this.config.onViolationDetected(violation);
+      await this.config.onViolationDetected(createdViolation);
     }
 
-    const patternDetected = await this.checkForPatterns(context.tenantId, violation);
+    const patternDetected = await this.checkForPatterns(context.tenantId, createdViolation);
 
     return {
       created: true,
-      violation,
+      violation: createdViolation,
       deduplicated: false,
       idempotencyKey,
       patternDetected,

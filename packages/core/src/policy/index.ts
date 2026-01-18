@@ -465,6 +465,156 @@ export {
 } from './violation-schema.js';
 
 // =============================================================================
+// Epic D: Compliance Report Templates (D4.1)
+// =============================================================================
+
+// Compliance report template types and schemas (prefixed to avoid conflicts with compliance module)
+export {
+  // Framework types (prefixed to avoid conflict with compliance/index.ts)
+  ComplianceFramework as ReportComplianceFramework,
+  type FrameworkMetadata as ReportFrameworkMetadata,
+
+  // Control types (prefixed to avoid conflicts)
+  type ControlStatus as ReportControlStatus,
+  type ControlPriority as ReportControlPriority,
+  type EvidenceType as ReportEvidenceType,
+  type EvidenceReference as ReportEvidenceReference,
+  type Attestation as ReportAttestation,
+  type RemediationItem as ReportRemediationItem,
+  type ControlDefinition as ReportControlDefinition,
+
+  // Report structure
+  type ReportPeriod,
+  type ReportSummary,
+  type ComplianceReportTemplate,
+
+  // SOC2 types
+  type SOC2Category,
+  SOC2_COMMON_CRITERIA_DOMAINS,
+  SOC2_CONTROL_TEMPLATES,
+
+  // ISO 27001 types
+  ISO27001_DOMAINS,
+  ISO27001_CONTROL_TEMPLATES,
+
+  // Framework metadata
+  FRAMEWORK_METADATA as REPORT_FRAMEWORK_METADATA,
+
+  // Factory functions
+  generateReportId,
+  createControlFromTemplate,
+  createSOC2Template,
+  createISO27001Template,
+  createCustomTemplate,
+  calculateReportSummary,
+
+  // Evidence helpers
+  createAuditLogEvidence,
+  createDocumentEvidence,
+  addEvidenceToControl,
+  updateControlStatus as updateReportControlStatus,
+
+  // Formatters
+  formatReportAsMarkdown,
+  formatReportAsJSON,
+  parseReportFromJSON,
+
+  // Validation
+  validateReportTemplate,
+  isReportComplete,
+} from './report-templates.js';
+
+// =============================================================================
+// Epic D: Evidence Collection (D4.2)
+// =============================================================================
+
+// Evidence collection types and service
+export {
+  // Query types
+  EvidenceTimeRange,
+  EvidenceQuery,
+  CollectedEvidence,
+  EvidenceCollectionResult,
+
+  // Control-to-action mappings
+  CONTROL_TO_ACTION_MAPPINGS,
+  SOC2_CRITERIA_MAPPINGS,
+  ISO27001_CONTROL_MAPPINGS,
+
+  // Source interface
+  type EvidenceSource,
+
+  // Audit log evidence source
+  type AuditLogEvidenceSourceConfig,
+  AuditLogEvidenceSource,
+
+  // Decision trace evidence source
+  type DecisionTraceStore,
+  type DecisionTrace,
+  type DecisionTraceEvidenceSourceConfig,
+  DecisionTraceEvidenceSource,
+
+  // Main evidence collector
+  type EvidenceCollectorConfig,
+  EvidenceCollector,
+
+  // Factory functions
+  createAuditLogEvidenceSource,
+  createDecisionTraceEvidenceSource,
+  createEvidenceCollector,
+
+  // Helper functions
+  linkEvidenceToControl,
+  getEvidenceSummary,
+  filterByRelevance,
+  getTopEvidence,
+
+  // Singleton management
+  initializeEvidenceCollector,
+  getEvidenceCollector,
+  setEvidenceCollector,
+  resetEvidenceCollector,
+} from './evidence-collector.js';
+
+// =============================================================================
+// Epic D: Report Generator (D4.3)
+// =============================================================================
+
+// Report generation and scheduling
+export {
+  // Request and result types
+  ReportGenerationRequest,
+  ReportGenerationResult,
+
+  // Scheduling types
+  ScheduledReportConfig,
+  ScheduledReportRun,
+
+  // Cron utilities
+  parseNextCronRun,
+  calculatePeriodDates,
+
+  // Generator config
+  type ReportGeneratorConfig,
+
+  // Classes
+  ReportGenerator,
+  ReportScheduleManager,
+
+  // Factory functions
+  createReportGenerator,
+  createScheduleManager,
+  createScheduledReport,
+
+  // Singleton management
+  initializeReportGenerator,
+  getReportGenerator,
+  getScheduleManager,
+  setReportGenerator,
+  resetReportGenerator,
+} from './report-generator.js';
+
+// =============================================================================
 // Epic D: Violation Detector (D5.2)
 // =============================================================================
 
@@ -504,7 +654,7 @@ export {
 // Epic D: Alert Channels (D5.3)
 // =============================================================================
 
-// Alert channel types and interfaces
+// Alert channels for violation notifications
 export {
   // Types
   type AlertChannelType,
@@ -512,24 +662,20 @@ export {
   type AlertPayload,
   type AlertResult,
   type ChannelConfig,
-
-  // Email channel
-  type EmailChannelConfig,
-  EmailChannelConfigSchema,
-  EmailChannel,
-
-  // Slack channel
-  type SlackChannelConfig,
-  SlackChannelConfigSchema,
-  SlackChannel,
-
-  // Webhook channel (stub)
-  type WebhookChannelConfig,
-  WebhookChannelConfigSchema,
-  WebhookChannel,
-
-  // Alert channel interface
   type AlertChannel,
+
+  // Config schemas
+  EmailChannelConfigSchema,
+  type EmailChannelConfig,
+  SlackChannelConfigSchema,
+  type SlackChannelConfig,
+  WebhookChannelConfigSchema,
+  type WebhookChannelConfig,
+
+  // Channel implementations
+  EmailChannel,
+  SlackChannel,
+  WebhookChannel,
 
   // Dispatcher
   type AlertDispatcherConfig,
