@@ -503,8 +503,8 @@ describe('ReportSigner', () => {
       expect(result.valid).toBe(true);
     });
 
-    it('should fail for unknown key ID', () => {
-      const otherSigner = createReportSigner(mockSigner);
+    it('should fail for unknown key ID', async () => {
+      const otherSigner = await createReportSigner(mockSigner);
       const report = createMockReport();
       const signed = otherSigner.sign(report);
 
@@ -516,11 +516,11 @@ describe('ReportSigner', () => {
   });
 
   describe('verifyWithKey', () => {
-    it('should verify with explicit public key', () => {
-      const otherSigner = createReportSigner(mockSigner);
+    it('should verify with explicit public key', async () => {
+      const otherSigner = await createReportSigner(mockSigner);
       const otherKeyPair = Array.from(
         (otherSigner as any).keyPairs.values()
-      )[0] as ReturnType<typeof generateSigningKeyPair>;
+      )[0] as Awaited<ReturnType<typeof generateSigningKeyPair>>;
 
       const report = createMockReport();
       const signed = otherSigner.sign(report);
@@ -562,11 +562,11 @@ describe('ReportSigner', () => {
       expect(keyIds).toContain(newKeyPair.info.keyId);
     });
 
-    it('should add trusted public keys', () => {
-      const otherSigner = createReportSigner(mockSigner);
+    it('should add trusted public keys', async () => {
+      const otherSigner = await createReportSigner(mockSigner);
       const otherKeyPair = Array.from(
         (otherSigner as any).keyPairs.values()
-      )[0] as ReturnType<typeof generateSigningKeyPair>;
+      )[0] as Awaited<ReturnType<typeof generateSigningKeyPair>>;
 
       // Sign with other signer
       const report = createMockReport();
@@ -588,9 +588,9 @@ describe('ReportSigner', () => {
   });
 
   describe('generateKey', () => {
-    it('should generate and add a new key', () => {
+    it('should generate and add a new key', async () => {
       const emptySigner = new ReportSigner({});
-      const generatedKeyPair = emptySigner.generateKey(mockSigner, { setAsDefault: true });
+      const generatedKeyPair = await emptySigner.generateKey(mockSigner, { setAsDefault: true });
 
       expect(emptySigner.getKeyPair(generatedKeyPair.info.keyId)).toBeDefined();
 
@@ -636,8 +636,8 @@ describe('ReportSigner', () => {
 
 describe('Factory Functions', () => {
   describe('createReportSigner', () => {
-    it('should create signer with new key', () => {
-      const signer = createReportSigner(mockSigner);
+    it('should create signer with new key', async () => {
+      const signer = await createReportSigner(mockSigner);
       const keyIds = signer.listKeyIds();
 
       expect(keyIds.length).toBe(1);
@@ -676,8 +676,8 @@ describe('Singleton Management', () => {
   });
 
   describe('initializeReportSigner', () => {
-    it('should initialize global signer', () => {
-      initializeReportSigner(mockSigner);
+    it('should initialize global signer', async () => {
+      await initializeReportSigner(mockSigner);
 
       expect(() => getReportSigner()).not.toThrow();
     });
@@ -688,8 +688,8 @@ describe('Singleton Management', () => {
       expect(() => getReportSigner()).toThrow('Report signer not initialized');
     });
 
-    it('should return initialized signer', () => {
-      initializeReportSigner(mockSigner);
+    it('should return initialized signer', async () => {
+      await initializeReportSigner(mockSigner);
       const signer = getReportSigner();
 
       expect(signer).toBeInstanceOf(ReportSigner);
@@ -697,8 +697,8 @@ describe('Singleton Management', () => {
   });
 
   describe('resetReportSigner', () => {
-    it('should reset global state', () => {
-      initializeReportSigner(mockSigner);
+    it('should reset global state', async () => {
+      await initializeReportSigner(mockSigner);
       resetReportSigner();
 
       expect(() => getReportSigner()).toThrow();

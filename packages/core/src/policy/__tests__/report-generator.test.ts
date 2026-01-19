@@ -116,12 +116,26 @@ describe('Report Generator Schemas', () => {
     });
 
     it('should accept all valid frameworks', () => {
-      const frameworks = ['soc2_type1', 'soc2_type2', 'iso27001', 'hipaa', 'gdpr', 'pci_dss', 'custom'] as const;
-      for (const framework of frameworks) {
+      // Test standard frameworks (no custom metadata required)
+      const standardFrameworks = ['soc2_type1', 'soc2_type2', 'iso27001', 'hipaa', 'gdpr', 'pci_dss'] as const;
+      for (const framework of standardFrameworks) {
         const request = createTestRequest({ framework });
         const result = ReportGenerationRequest.safeParse(request);
         expect(result.success).toBe(true);
       }
+
+      // Test custom framework (requires customFramework field)
+      const customRequest = createTestRequest({
+        framework: 'custom',
+        customFramework: {
+          name: 'Test Framework',
+          version: '1.0',
+          description: 'A test custom framework',
+          controls: [{ controlId: 'TEST-1', title: 'Test', description: 'Test control', category: 'General' }],
+        },
+      });
+      const customResult = ReportGenerationRequest.safeParse(customRequest);
+      expect(customResult.success).toBe(true);
     });
 
     it('should apply default values', () => {

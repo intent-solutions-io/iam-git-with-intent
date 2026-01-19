@@ -363,14 +363,14 @@ describe('AuditLogExportService', () => {
     it('should filter by date range', async () => {
       const tenantId = 'test-tenant';
 
-      // Create entries with different timestamps
-      const now = new Date();
-      const hourAgo = new Date(now.getTime() - 3600000);
-      const twoHoursAgo = new Date(now.getTime() - 7200000);
-
+      // Create entries first
       await store.append(tenantId, createMockEntry(0));
       await store.append(tenantId, createMockEntry(1));
       await store.append(tenantId, createMockEntry(2));
+
+      // Set time window AFTER creating entries so they fall within range
+      const now = new Date(Date.now() + 1000); // 1 second in future to ensure entries are included
+      const twoHoursAgo = new Date(now.getTime() - 7200000);
 
       // Filter by time (all entries are recent, so all should be included)
       const result = await service.export({
