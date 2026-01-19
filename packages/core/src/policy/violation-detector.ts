@@ -190,15 +190,24 @@ export class InMemoryViolationStore implements ViolationStore {
   async createWithIdempotency(violation: Violation, idempotencyKey: string): Promise<Violation | null> {
     // Atomic check-and-create to prevent race conditions
     const tenantKeys = this.idempotencyKeys.get(violation.tenantId);
-    if (tenantKeys?.has(idempotencyKey)) {
-      return null; // Key already exists, duplicate detected
+    if (tenantKeys) {
+      const timestamp = tenantKeys.get(idempotencyKey);
+      if (timestamp !== undefined) {
+        // Check if key has expired
+        const now = Date.now();
+        if (now - timestamp <= InMemoryViolationStore.IDEMPOTENCY_KEY_TTL_MS) {
+          return null; // Key exists and not expired, duplicate detected
+        }
+        // Key expired, remove it
+        tenantKeys.delete(idempotencyKey);
+      }
     }
 
-    // Register the idempotency key
+    // Register the idempotency key with timestamp
     if (!this.idempotencyKeys.has(violation.tenantId)) {
-      this.idempotencyKeys.set(violation.tenantId, new Set());
+      this.idempotencyKeys.set(violation.tenantId, new Map());
     }
-    this.idempotencyKeys.get(violation.tenantId)!.add(idempotencyKey);
+    this.idempotencyKeys.get(violation.tenantId)!.set(idempotencyKey, Date.now());
 
     // Create the violation
     this.violations.set(violation.id, violation);

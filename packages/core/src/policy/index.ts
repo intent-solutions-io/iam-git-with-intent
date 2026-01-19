@@ -739,34 +739,34 @@ export {
 // Epic D: Report Signing (D4.4)
 // =============================================================================
 
-// Report signing and verification
+// Report signing and verification (prefixed to avoid conflicts with approvals/connectors modules)
 export {
   // Schema types
-  SignatureAlgorithm,
-  SignerIdentity,
-  SigningKeyInfo,
+  SignatureAlgorithm as ReportSignatureAlgorithm,
+  SignerIdentity as ReportSignerIdentity,
+  SigningKeyInfo as ReportSigningKeyInfo,
   ReportSignature,
   SignedReport,
-  SignatureVerificationResult,
+  SignatureVerificationResult as ReportSignatureVerificationResult,
 
   // Config types
-  type SigningOptions,
-  type SigningKeyPair,
+  type SigningOptions as ReportSigningOptions,
+  type SigningKeyPair as ReportSigningKeyPair,
   type ReportSignerConfig,
 
   // Key utilities
-  generateSignatureId,
-  computeKeyFingerprint,
+  generateSignatureId as generateReportSignatureId,
+  computeKeyFingerprint as computeReportKeyFingerprint,
   computeReportHash,
   canonicalizeReportContent,
-  generateSigningKeyPair,
+  generateSigningKeyPair as generateReportSigningKeyPair,
 
   // Signing functions
   signReport,
   signReportContent,
   verifyReportSignature,
-  verifySignature,
-  isSignatureValid,
+  verifySignature as verifyReportSignatureContent,
+  isSignatureValid as isReportSignatureValid,
 
   // Signer class
   ReportSigner,
