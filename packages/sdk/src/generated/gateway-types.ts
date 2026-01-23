@@ -4,7 +4,7 @@
  * This file is auto-generated from the OpenAPI specification.
  * DO NOT EDIT MANUALLY - changes will be overwritten.
  *
- * Generated on: 2026-01-23T08:44:29.143Z
+ * Generated on: 2026-01-23T09:02:51.257Z
  * OpenAPI Spec: apps/gateway/openapi.yaml
  *
  * To regenerate:
@@ -464,6 +464,179 @@ export interface paths {
         patch: operations["patchScimGroup"];
         trace?: never;
     };
+    "/v1/audit/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List audit logs
+         * @description Query audit logs with filtering by tenant, date range, event type, and actor.
+         *     Returns paginated results with cryptographic integrity verification.
+         */
+        get: operations["listAuditLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit/logs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get audit log entry
+         * @description Get a specific audit log entry by ID with full details and integrity proof
+         */
+        get: operations["getAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit/logs/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify audit log integrity
+         * @description Verify the cryptographic chain integrity of audit logs for a tenant
+         */
+        post: operations["verifyAuditLogIntegrity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/audit/logs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export audit logs
+         * @description Export audit logs in various formats (JSON, CSV, SIEM)
+         */
+        post: operations["exportAuditLogs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List policies
+         * @description List all policies for a tenant
+         */
+        get: operations["listPolicies"];
+        put?: never;
+        /**
+         * Create policy
+         * @description Create a new policy
+         */
+        post: operations["createPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get policy
+         * @description Get a policy by ID
+         */
+        get: operations["getPolicy"];
+        /**
+         * Update policy
+         * @description Update an existing policy
+         */
+        put: operations["updatePolicy"];
+        post?: never;
+        /**
+         * Delete policy
+         * @description Delete a policy (soft delete, policy becomes inactive)
+         */
+        delete: operations["deletePolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate policy
+         * @description Validate a policy definition without saving
+         */
+        post: operations["validatePolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/policies/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate policies
+         * @description Evaluate policies against a context to determine allowed actions
+         */
+        post: operations["evaluatePolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -766,6 +939,210 @@ export interface components {
              */
             schemas: string[];
             Operations: components["schemas"]["ScimPatchOp"][];
+        };
+        AuditLogEntry: {
+            /** @description Unique entry ID */
+            id: string;
+            /** @description Tenant ID */
+            tenantId: string;
+            /**
+             * Format: date-time
+             * @description Event timestamp
+             */
+            timestamp: string;
+            /**
+             * @description Type of event
+             * @enum {string}
+             */
+            eventType: "policy.evaluated" | "violation.detected" | "approval.requested" | "approval.granted" | "approval.denied" | "run.started" | "run.completed";
+            /** @description User or agent that triggered the event */
+            actor: string;
+            /** @description Action performed */
+            action?: string;
+            /** @description Resource affected */
+            resource?: string;
+            /**
+             * @description Action outcome
+             * @enum {string}
+             */
+            outcome?: "success" | "failure" | "pending";
+            /** @description Additional event-specific data */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** @description SHA-256 hash for integrity verification */
+            hash?: string;
+            /** @description Hash of previous entry in chain */
+            previousHash?: string;
+        };
+        AuditLogList: {
+            entries: components["schemas"]["AuditLogEntry"][];
+            /** @description Total number of entries matching query */
+            total: number;
+            page?: number;
+            pageSize?: number;
+            /** @description Whether the chain integrity is valid */
+            chainIntegrity?: boolean;
+        };
+        AuditLogVerifyRequest: {
+            /** @description Tenant ID to verify */
+            tenantId: string;
+            /** Format: date-time */
+            startTime?: string;
+            /** Format: date-time */
+            endTime?: string;
+        };
+        AuditLogVerifyResponse: {
+            /** @description Whether all entries pass integrity check */
+            valid: boolean;
+            /** @description Number of entries verified */
+            entriesChecked: number;
+            /** Format: date-time */
+            firstEntry?: string;
+            /** Format: date-time */
+            lastEntry?: string;
+            brokenLinks?: {
+                entryId?: string;
+                expectedHash?: string;
+                actualHash?: string;
+            }[];
+        };
+        AuditLogExportRequest: {
+            tenantId: string;
+            /** @enum {string} */
+            format: "json" | "csv" | "siem";
+            /** Format: date-time */
+            startTime?: string;
+            /** Format: date-time */
+            endTime?: string;
+            eventTypes?: string[];
+            /** @default false */
+            includeIntegrityProofs: boolean;
+        };
+        AuditLogExportResponse: {
+            format?: string;
+            entriesExported?: number;
+            /** @description Exported data (base64 for binary formats) */
+            data?: string;
+            /**
+             * Format: uri
+             * @description URL to download large exports
+             */
+            downloadUrl?: string;
+        };
+        Policy: {
+            id: string;
+            tenantId: string;
+            name: string;
+            description?: string;
+            /**
+             * @default draft
+             * @enum {string}
+             */
+            status: "active" | "inactive" | "draft";
+            /** @description Policy category (e.g., security, compliance, operations) */
+            category?: string;
+            /**
+             * @description Higher priority policies are evaluated first
+             * @default 50
+             */
+            priority: number;
+            rules: components["schemas"]["PolicyRule"][];
+            /** @description Global conditions for policy applicability */
+            conditions?: Record<string, never>;
+            /** @description Parent policy ID for inheritance */
+            inheritsFrom?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+        };
+        PolicyRule: {
+            id: string;
+            /** @enum {string} */
+            effect: "allow" | "deny";
+            /** @description Actions this rule applies to */
+            actions: string[];
+            /** @description Resources this rule applies to */
+            resources?: string[];
+            /** @description Conditions for rule application */
+            conditions?: Record<string, never>;
+            /** @description Human-readable explanation */
+            reasoning?: string;
+        };
+        PolicyList: {
+            policies: components["schemas"]["Policy"][];
+            total: number;
+        };
+        PolicyCreateRequest: {
+            tenantId: string;
+            name: string;
+            description?: string;
+            category?: string;
+            priority?: number;
+            rules: components["schemas"]["PolicyRule"][];
+            conditions?: Record<string, never>;
+            inheritsFrom?: string;
+        };
+        PolicyUpdateRequest: {
+            name?: string;
+            description?: string;
+            /** @enum {string} */
+            status?: "active" | "inactive" | "draft";
+            category?: string;
+            priority?: number;
+            rules?: components["schemas"]["PolicyRule"][];
+            conditions?: Record<string, never>;
+        };
+        PolicyValidateRequest: {
+            policy: components["schemas"]["PolicyCreateRequest"];
+            /** @description Optional context to test policy against */
+            context?: Record<string, never>;
+        };
+        PolicyValidateResponse: {
+            valid: boolean;
+            errors?: {
+                path?: string;
+                message?: string;
+                code?: string;
+            }[];
+            warnings?: {
+                path?: string;
+                message?: string;
+            }[];
+        };
+        PolicyEvaluateRequest: {
+            tenantId: string;
+            context: {
+                /** @description Action being attempted */
+                action: string;
+                /** @description Resource being accessed */
+                resource: string;
+                /** @description Actor attempting the action */
+                actor?: string;
+                /** @description Additional context attributes */
+                attributes?: {
+                    [key: string]: unknown;
+                };
+            };
+            /** @description Specific policies to evaluate (default is all active) */
+            policyIds?: string[];
+        };
+        PolicyEvaluateResponse: {
+            /** @description Whether the action is allowed */
+            allowed: boolean;
+            /** @enum {string} */
+            decision: "allow" | "deny" | "not_applicable";
+            matchedPolicies?: {
+                policyId?: string;
+                policyName?: string;
+                ruleId?: string;
+                effect?: string;
+            }[];
+            /** @description Human-readable explanation of the decision */
+            reasoning?: string;
+            /** @description Time taken to evaluate */
+            evaluationTimeMs?: number;
         };
     };
     responses: {
@@ -1743,6 +2120,325 @@ export interface operations {
             400: components["responses"]["ScimBadRequest"];
             401: components["responses"]["ScimUnauthorized"];
             404: components["responses"]["ScimNotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAuditLogs: {
+        parameters: {
+            query: {
+                /** @description Tenant ID to query logs for */
+                tenantId: string;
+                /** @description Start of time range (ISO 8601) */
+                startTime?: string;
+                /** @description End of time range (ISO 8601) */
+                endTime?: string;
+                /** @description Filter by event type */
+                eventType?: "policy.evaluated" | "violation.detected" | "approval.requested" | "approval.granted" | "approval.denied" | "run.started" | "run.completed";
+                /** @description Filter by actor (user or agent ID) */
+                actor?: string;
+                /** @description Page number (1-indexed) */
+                page?: number;
+                /** @description Results per page */
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit log entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAuditLog: {
+        parameters: {
+            query?: {
+                /** @description Include cryptographic integrity proof */
+                includeProof?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Audit log entry ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit log entry details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogEntry"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    verifyAuditLogIntegrity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditLogVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Integrity verification result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogVerifyResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    exportAuditLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditLogExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Exported audit logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogExportResponse"];
+                    "text/csv": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listPolicies: {
+        parameters: {
+            query: {
+                /** @description Tenant ID */
+                tenantId: string;
+                /** @description Filter by policy status */
+                status?: "active" | "inactive" | "draft";
+                /** @description Filter by policy category */
+                category?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of policies */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Policy created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Policy ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Policy ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Policy updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Policy"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deletePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Policy ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    validatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyValidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Validation result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyValidateResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    evaluatePolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyEvaluateRequest"];
+            };
+        };
+        responses: {
+            /** @description Evaluation result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyEvaluateResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
         };
     };

@@ -50,6 +50,10 @@ tags:
     description: Single Sign-On (OIDC and SAML)
   - name: SCIM
     description: SCIM 2.0 user and group provisioning
+  - name: Audit
+    description: Audit log access and policy management
+  - name: Policy
+    description: Policy definition and validation
 
 paths:
   /v1/search:
@@ -904,6 +908,403 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ==========================================================================
+  # Audit & Policy Endpoints (Epic D - Story D6)
+  # ==========================================================================
+
+  /v1/audit/logs:
+    get:
+      operationId: listAuditLogs
+      summary: List audit logs
+      description: |
+        Query audit logs with filtering by tenant, date range, event type, and actor.
+        Returns paginated results with cryptographic integrity verification.
+      tags: [Audit]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          description: Tenant ID to query logs for
+          schema:
+            type: string
+        - name: startTime
+          in: query
+          description: Start of time range (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endTime
+          in: query
+          description: End of time range (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: eventType
+          in: query
+          description: Filter by event type
+          schema:
+            type: string
+            enum: [policy.evaluated, violation.detected, approval.requested, approval.granted, approval.denied, run.started, run.completed]
+        - name: actor
+          in: query
+          description: Filter by actor (user or agent ID)
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number (1-indexed)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Results per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/audit/logs/{id}:
+    get:
+      operationId: getAuditLog
+      summary: Get audit log entry
+      description: Get a specific audit log entry by ID with full details and integrity proof
+      tags: [Audit]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Audit log entry ID
+          schema:
+            type: string
+        - name: includeProof
+          in: query
+          description: Include cryptographic integrity proof
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Audit log entry details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/audit/logs/verify:
+    post:
+      operationId: verifyAuditLogIntegrity
+      summary: Verify audit log integrity
+      description: Verify the cryptographic chain integrity of audit logs for a tenant
+      tags: [Audit]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditLogVerifyRequest'
+      responses:
+        '200':
+          description: Integrity verification result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogVerifyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/audit/logs/export:
+    post:
+      operationId: exportAuditLogs
+      summary: Export audit logs
+      description: Export audit logs in various formats (JSON, CSV, SIEM)
+      tags: [Audit]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditLogExportRequest'
+      responses:
+        '200':
+          description: Exported audit logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogExportResponse'
+            text/csv:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/policies:
+    get:
+      operationId: listPolicies
+      summary: List policies
+      description: List all policies for a tenant
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          required: true
+          description: Tenant ID
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by policy status
+          schema:
+            type: string
+            enum: [active, inactive, draft]
+        - name: category
+          in: query
+          description: Filter by policy category
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createPolicy
+      summary: Create policy
+      description: Create a new policy
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyCreateRequest'
+      responses:
+        '201':
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/policies/{id}:
+    get:
+      operationId: getPolicy
+      summary: Get policy
+      description: Get a policy by ID
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Policy details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: updatePolicy
+      summary: Update policy
+      description: Update an existing policy
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyUpdateRequest'
+      responses:
+        '200':
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deletePolicy
+      summary: Delete policy
+      description: Delete a policy (soft delete, policy becomes inactive)
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Policy ID
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Policy deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/policies/validate:
+    post:
+      operationId: validatePolicy
+      summary: Validate policy
+      description: Validate a policy definition without saving
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyValidateRequest'
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyValidateResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /v1/policies/evaluate:
+    post:
+      operationId: evaluatePolicy
+      summary: Evaluate policies
+      description: Evaluate policies against a context to determine allowed actions
+      tags: [Policy]
+      security:
+        - UserIdAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyEvaluateRequest'
+      responses:
+        '200':
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyEvaluateResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     UserIdAuth:
@@ -1505,6 +1906,375 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScimPatchOp'
+
+    # ==========================================================================
+    # Audit & Policy Schemas (Epic D - Story D6)
+    # ==========================================================================
+
+    AuditLogEntry:
+      type: object
+      required: [id, tenantId, timestamp, eventType, actor]
+      properties:
+        id:
+          type: string
+          description: Unique entry ID
+        tenantId:
+          type: string
+          description: Tenant ID
+        timestamp:
+          type: string
+          format: date-time
+          description: Event timestamp
+        eventType:
+          type: string
+          description: Type of event
+          enum: [policy.evaluated, violation.detected, approval.requested, approval.granted, approval.denied, run.started, run.completed]
+        actor:
+          type: string
+          description: User or agent that triggered the event
+        action:
+          type: string
+          description: Action performed
+        resource:
+          type: string
+          description: Resource affected
+        outcome:
+          type: string
+          enum: [success, failure, pending]
+          description: Action outcome
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional event-specific data
+        hash:
+          type: string
+          description: SHA-256 hash for integrity verification
+        previousHash:
+          type: string
+          description: Hash of previous entry in chain
+
+    AuditLogList:
+      type: object
+      required: [entries, total]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLogEntry'
+        total:
+          type: integer
+          description: Total number of entries matching query
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        chainIntegrity:
+          type: boolean
+          description: Whether the chain integrity is valid
+
+    AuditLogVerifyRequest:
+      type: object
+      required: [tenantId]
+      properties:
+        tenantId:
+          type: string
+          description: Tenant ID to verify
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+
+    AuditLogVerifyResponse:
+      type: object
+      required: [valid, entriesChecked]
+      properties:
+        valid:
+          type: boolean
+          description: Whether all entries pass integrity check
+        entriesChecked:
+          type: integer
+          description: Number of entries verified
+        firstEntry:
+          type: string
+          format: date-time
+        lastEntry:
+          type: string
+          format: date-time
+        brokenLinks:
+          type: array
+          items:
+            type: object
+            properties:
+              entryId:
+                type: string
+              expectedHash:
+                type: string
+              actualHash:
+                type: string
+
+    AuditLogExportRequest:
+      type: object
+      required: [tenantId, format]
+      properties:
+        tenantId:
+          type: string
+        format:
+          type: string
+          enum: [json, csv, siem]
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        eventTypes:
+          type: array
+          items:
+            type: string
+        includeIntegrityProofs:
+          type: boolean
+          default: false
+
+    AuditLogExportResponse:
+      type: object
+      properties:
+        format:
+          type: string
+        entriesExported:
+          type: integer
+        data:
+          type: string
+          description: Exported data (base64 for binary formats)
+        downloadUrl:
+          type: string
+          format: uri
+          description: URL to download large exports
+
+    Policy:
+      type: object
+      required: [id, tenantId, name, rules]
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+          maxLength: 1024
+        status:
+          type: string
+          enum: [active, inactive, draft]
+          default: draft
+        category:
+          type: string
+          description: Policy category (e.g., security, compliance, operations)
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 100
+          default: 50
+          description: Higher priority policies are evaluated first
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRule'
+        conditions:
+          type: object
+          description: Global conditions for policy applicability
+        inheritsFrom:
+          type: string
+          description: Parent policy ID for inheritance
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PolicyRule:
+      type: object
+      required: [id, effect, actions]
+      properties:
+        id:
+          type: string
+        effect:
+          type: string
+          enum: [allow, deny]
+        actions:
+          type: array
+          items:
+            type: string
+          description: Actions this rule applies to
+        resources:
+          type: array
+          items:
+            type: string
+          description: Resources this rule applies to
+        conditions:
+          type: object
+          description: Conditions for rule application
+        reasoning:
+          type: string
+          description: Human-readable explanation
+
+    PolicyList:
+      type: object
+      required: [policies, total]
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Policy'
+        total:
+          type: integer
+
+    PolicyCreateRequest:
+      type: object
+      required: [tenantId, name, rules]
+      properties:
+        tenantId:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        description:
+          type: string
+        category:
+          type: string
+        priority:
+          type: integer
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRule'
+        conditions:
+          type: object
+        inheritsFrom:
+          type: string
+
+    PolicyUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, draft]
+        category:
+          type: string
+        priority:
+          type: integer
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyRule'
+        conditions:
+          type: object
+
+    PolicyValidateRequest:
+      type: object
+      required: [policy]
+      properties:
+        policy:
+          $ref: '#/components/schemas/PolicyCreateRequest'
+        context:
+          type: object
+          description: Optional context to test policy against
+
+    PolicyValidateResponse:
+      type: object
+      required: [valid]
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              message:
+                type: string
+              code:
+                type: string
+        warnings:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              message:
+                type: string
+
+    PolicyEvaluateRequest:
+      type: object
+      required: [tenantId, context]
+      properties:
+        tenantId:
+          type: string
+        context:
+          type: object
+          required: [action, resource]
+          properties:
+            action:
+              type: string
+              description: Action being attempted
+            resource:
+              type: string
+              description: Resource being accessed
+            actor:
+              type: string
+              description: Actor attempting the action
+            attributes:
+              type: object
+              additionalProperties: true
+              description: Additional context attributes
+        policyIds:
+          type: array
+          items:
+            type: string
+          description: Specific policies to evaluate (default is all active)
+
+    PolicyEvaluateResponse:
+      type: object
+      required: [allowed, decision]
+      properties:
+        allowed:
+          type: boolean
+          description: Whether the action is allowed
+        decision:
+          type: string
+          enum: [allow, deny, not_applicable]
+        matchedPolicies:
+          type: array
+          items:
+            type: object
+            properties:
+              policyId:
+                type: string
+              policyName:
+                type: string
+              ruleId:
+                type: string
+              effect:
+                type: string
+        reasoning:
+          type: string
+          description: Human-readable explanation of the decision
+        evaluationTimeMs:
+          type: integer
+          description: Time taken to evaluate
 
   responses:
     NotFound:

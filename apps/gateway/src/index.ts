@@ -38,6 +38,7 @@ import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
 import { getTenantStore, checkConcurrencyLimit, type PlanId, generateTraceId } from '@gwi/core';
 import { marketplaceRouter } from './marketplace-routes.js';
 import { onboardingRouter } from './onboarding-routes.js';
+import { auditPolicyRouter } from './audit-policy-routes.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -120,6 +121,9 @@ app.use(marketplaceRouter);
 
 // Mount onboarding routes (Phase 33: Customer Onboarding)
 app.use(onboardingRouter);
+
+// Mount audit/policy routes (Epic D Story D6: Audit API)
+app.use(auditPolicyRouter);
 
 // Environment
 const config = {
