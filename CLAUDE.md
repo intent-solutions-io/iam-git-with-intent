@@ -94,7 +94,7 @@ If beads isn't configured, see `/home/jeremy/000-projects/BEADS-SETUP-PROMPT.md`
 | Target Users | Developers wanting AI assistance with PR workflows |
 | Business Model | CLI open-source; hosted service paid |
 | Current Version | v0.3.0 |
-| Status | Active development (422 open tasks across 9 epics) |
+| Status | Active development (~438 open tasks across 10 epics) |
 
 ### Technology Stack
 
@@ -232,6 +232,12 @@ gwi issue-to-code <url>  # Turn issue into code
 gwi run list             # List recent runs
 gwi run status <id>      # Check run details
 gwi run approve <id>     # Approve changes for commit
+
+# Local review commands (Epic J - Roadmap)
+gwi review --local       # Review staged/unstaged changes locally
+gwi triage --diff HEAD~1 # Score complexity of local commits
+gwi explain .            # AI summary of what changed and why
+gwi gate                 # Pre-commit review gate with approval
 ```
 
 **Agent Routing**:
@@ -367,9 +373,9 @@ You can replay, audit, or debug any run from these artifacts.
 
 ---
 
-## EPIC STRUCTURE (422 Open Tasks)
+## EPIC STRUCTURE (~438 Open Tasks)
 
-Work is organized into 9 epics with team assignments:
+Work is organized into 10 epics with team assignments:
 
 | Epic | Owner | Open Tasks | Focus Area |
 |------|-------|------------|------------|
@@ -382,6 +388,7 @@ Work is organized into 9 epics with team assignments:
 | **G** | @frontend | ~30 | Slack Integration (notifications, interactive approvals) |
 | **H** | @infra | 37 | Infrastructure & Ops (Cloud Run, observability, DR, cost) |
 | **I** | @ai | 30 | Forecasting & ML (TimeGPT integration, predictions, embeddings) |
+| **J** | @cli | ~16 | Local Dev Review (pre-PR review, local diff analysis, explain) |
 
 Check task backlog: `bd list --status open`
 View epic tasks: `bd list --epic @orchestrator`
