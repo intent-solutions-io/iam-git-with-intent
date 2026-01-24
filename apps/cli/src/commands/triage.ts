@@ -1,8 +1,12 @@
 /**
  * gwi triage command
  *
- * Analyze PR complexity and determine resolution strategy.
+ * Analyze PR or local change complexity.
  * This is the first step in the GWI workflow.
+ *
+ * Modes:
+ *   gwi triage [pr-url]      Analyze PR complexity
+ *   gwi triage --diff [ref]  Analyze local changes (Epic J)
  *
  * Uses pluggable storage (SQLite by default).
  */
@@ -13,11 +17,14 @@ import { createGitHubClient } from '@gwi/integrations';
 import { createTriageAgent } from '@gwi/agents';
 import { getDefaultStoreFactory } from '@gwi/core';
 import type { PRMetadata, ConflictInfo } from '@gwi/core';
+import { localTriageCommand, type LocalTriageOptions } from './local-triage.js';
 
-export interface TriageOptions {
+export interface TriageOptions extends LocalTriageOptions {
   verbose?: boolean;
   json?: boolean;
   save?: boolean;
+  /** Local diff triage mode (Epic J) */
+  diff?: boolean;
 }
 
 export interface TriageResult {
@@ -45,6 +52,18 @@ export async function triageCommand(
   prUrlArg: string | undefined,
   options: TriageOptions
 ): Promise<void> {
+  // Route to local triage if --diff flag is set (Epic J)
+  if (options.diff) {
+    await localTriageCommand(prUrlArg, {
+      all: options.all,
+      untracked: options.untracked,
+      json: options.json,
+      verbose: options.verbose,
+      maxComplexity: options.maxComplexity,
+    });
+    return;
+  }
+
   const spinner = ora({ isSilent: options.json });
 
   try {

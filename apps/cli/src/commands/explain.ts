@@ -1,15 +1,16 @@
 /**
  * Explain Command
  *
- * Phase 35: Context Graph - "Why did AI do that?"
- *
- * One-click explanation for any AI decision.
- * Traces the decision trajectory and extracts human-readable explanations.
+ * Two modes:
+ * 1. AI Decision Trace (Phase 35): "Why did AI do that?"
+ * 2. Local Changes (Epic J): "What changed and why?"
  *
  * Usage:
- *   gwi explain <run-id>            Explain entire run
+ *   gwi explain <run-id>            Explain AI run
  *   gwi explain <run-id> <step-id>  Explain specific step
  *   gwi explain --trace <trace-id>  Explain by trace ID
+ *   gwi explain . --local           Explain local changes (Epic J)
+ *   gwi explain HEAD~1 --local      Explain since commit
  */
 
 import chalk from 'chalk';
@@ -18,17 +19,22 @@ import {
   formatExplanationForCLI,
   formatRunExplanationForCLI,
 } from '@gwi/core';
+import { localExplainCommand, type LocalExplainOptions } from './local-explain.js';
 
 // =============================================================================
 // Types
 // =============================================================================
 
-export interface ExplainOptions {
+export interface ExplainOptions extends LocalExplainOptions {
   json?: boolean;
   verbose?: boolean;
   trace?: string;
   tenant?: string;
   level?: 'brief' | 'standard' | 'detailed' | 'debug';
+  /** Local mode - explain local changes (Epic J) */
+  local?: boolean;
+  /** Markdown output */
+  markdown?: boolean;
 }
 
 // =============================================================================
@@ -164,6 +170,18 @@ export async function explainCommand(
   stepId: string | undefined,
   options: ExplainOptions
 ): Promise<void> {
+  // Route to local explain if --local flag is set (Epic J)
+  if (options.local) {
+    await localExplainCommand(runIdOrTraceId, {
+      staged: options.staged,
+      untracked: options.untracked,
+      format: options.json ? 'json' : options.markdown ? 'markdown' : 'text',
+      verbose: options.verbose,
+      brief: options.brief,
+    });
+    return;
+  }
+
   // If --trace is provided, use trace mode
   if (options.trace) {
     await explainTraceCommand(options.trace, options);

@@ -100,6 +100,7 @@ import {
 import {
   explainCommand,
 } from './commands/explain.js';
+import { gateCommand } from './commands/gate.js';
 import {
   simulateCommand,
   simulateCompareCommand,
@@ -132,14 +133,19 @@ program
 
 // Triage command - first step, analyze complexity
 program
-  .command('triage [pr-url]')
-  .description('Analyze PR complexity and determine resolution strategy')
+  .command('triage [pr-url-or-ref]')
+  .description('Analyze PR or local change complexity')
   .option('-v, --verbose', 'Show detailed analysis')
   .option('--json', 'Output as JSON')
   .option('--no-save', 'Do not save triage results')
-  .action(async (prUrl, options) => {
+  // Local diff triage options (Epic J)
+  .option('-d, --diff', 'Triage local changes instead of PR')
+  .option('-a, --all', 'Include all uncommitted changes (with --diff)')
+  .option('-u, --untracked', 'Include untracked files (with --diff)')
+  .option('--max-complexity <n>', 'Fail if complexity exceeds threshold', parseInt)
+  .action(async (prUrlOrRef, options) => {
     try {
-      await triageCommand(prUrl, options);
+      await triageCommand(prUrlOrRef, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -178,18 +184,27 @@ program
     }
   });
 
-// Review command - review resolutions before applying
+// Review command - review resolutions or local changes
 program
-  .command('review [pr-url]')
-  .description('Review AI-generated resolutions')
+  .command('review [pr-url-or-ref]')
+  .description('Review AI-generated resolutions or local changes')
   .option('-v, --verbose', 'Show detailed review with diffs')
   .option('--json', 'Output as JSON')
   .option('-f, --file <file>', 'Review specific file only')
   .option('--approve', 'Approve all resolutions')
   .option('--reject', 'Reject all resolutions')
-  .action(async (prUrl, options) => {
+  // Local review options (Epic J)
+  .option('-l, --local', 'Review local git changes (staged by default)')
+  .option('-a, --all', 'Review all uncommitted changes (with --local)')
+  .option('-u, --untracked', 'Include untracked files (with --local)')
+  .option('--markdown', 'Output as markdown (with --local)')
+  .option('-b, --brief', 'Brief output (with --local)')
+  .option('--score-only', 'Show only score without details (with --local)')
+  .option('--max-complexity <n>', 'Fail if complexity exceeds threshold (with --local)', parseInt)
+  .option('--block-security', 'Block security-sensitive changes (with --local)')
+  .action(async (prUrlOrRef, options) => {
     try {
-      await reviewCommand(prUrl, options);
+      await reviewCommand(prUrlOrRef, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -212,6 +227,25 @@ program
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
+    }
+  });
+
+// Gate command - pre-commit review gate (Epic J)
+program
+  .command('gate')
+  .description('Pre-commit review gate - check staged changes before commit')
+  .option('--strict', 'Block on high complexity (threshold: 5)')
+  .option('--max-complexity <n>', 'Maximum allowed complexity (default: 8)', parseInt)
+  .option('--block-security', 'Block security-sensitive changes')
+  .option('-v, --verbose', 'Show detailed output on failure')
+  .option('--json', 'Output as JSON')
+  .option('-q, --silent', 'Silent mode (only show errors)')
+  .action(async (options) => {
+    try {
+      await gateCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(2);
     }
   });
 
@@ -660,16 +694,22 @@ runCmd
 // =============================================================================
 
 program
-  .command('explain <run-id> [step-id]')
-  .description('Explain AI decisions - "Why did AI do that?" (Phase 35)')
+  .command('explain [run-id-or-ref] [step-id]')
+  .description('Explain AI decisions or local changes')
   .option('--trace <trace-id>', 'Explain by trace ID instead of run/step')
   .option('--tenant <id>', 'Tenant ID')
   .option('--level <level>', 'Detail level (brief, standard, detailed, debug)')
   .option('-v, --verbose', 'Show detailed output')
   .option('--json', 'Output as JSON')
-  .action(async (runId, stepId, options) => {
+  // Local explain options (Epic J)
+  .option('-l, --local', 'Explain local git changes (Epic J)')
+  .option('-s, --staged', 'Explain staged changes only (with --local)')
+  .option('-u, --untracked', 'Include untracked files (with --local)')
+  .option('--markdown', 'Output as markdown (with --local)')
+  .option('-b, --brief', 'Brief output (with --local)')
+  .action(async (runIdOrRef, stepId, options) => {
     try {
-      await explainCommand(runId, stepId, options);
+      await explainCommand(runIdOrRef, stepId, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -1458,6 +1498,27 @@ Forensics (Phase 27 - requires GWI_FORENSICS_ENABLED=1):
   gwi forensics timeline <file> Show event timeline
   gwi forensics dlq list        List DLQ items
   gwi forensics dlq replay <id> Replay from DLQ
+
+Local Dev Review (Epic J - Pre-PR Analysis):
+  gwi review --local            Review staged changes
+  gwi review --local -a         Review all uncommitted changes
+  gwi review --local HEAD~1     Review since specific commit
+  gwi triage --diff             Score staged change complexity
+  gwi triage --diff HEAD~3      Score last 3 commits
+  gwi explain . --local         Explain local changes ("What changed?")
+  gwi explain --staged --local  Explain staged changes only
+  gwi gate                      Pre-commit gate (for git hooks)
+  gwi gate --strict             Strict mode (block complexity > 5)
+
+  Pre-commit hook integration:
+    Add to .git/hooks/pre-commit:
+    #!/bin/sh
+    gwi gate || exit 1
+
+  Exit codes (gate):
+    0 - Ready to commit
+    1 - Review recommended (--strict mode)
+    2 - Blocked (must fix before commit)
 
 Operator Tools:
   gwi doctor                    Check environment health

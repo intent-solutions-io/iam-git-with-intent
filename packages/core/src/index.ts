@@ -304,6 +304,76 @@ export {
   extractTenantId,
 } from './idempotency/index.js';
 
+// Local Review exports (Epic J: Local Dev Review)
+// Explicit exports to avoid naming conflicts with run-bundle (RiskLevel) and sdk-gen (ChangeType)
+export {
+  // Types (prefixed to avoid conflicts)
+  type ChangeType as LocalChangeType,
+  type FileStatus,
+  type FileChange,
+  type FileDiff,
+  type DiffHunk,
+  type LocalChanges,
+  type ChangeReaderOptions,
+  type FileCategory,
+  type RiskLevel as LocalRiskLevel,
+  type FileAnalysis,
+  type ChangePattern,
+  type DiffAnalysis,
+  // Explainer types
+  type ExplainFormat,
+  type ExplainVerbosity,
+  type FileExplanation,
+  type ChangeExplanation,
+  // Git helpers
+  findRepoRoot,
+  isGitRepository,
+  getCurrentBranch,
+  getHeadCommit,
+  getShortCommit,
+  refExists,
+  // File operations
+  getStagedFiles,
+  getUnstagedFiles,
+  getUntrackedFiles,
+  // Main readers
+  readStagedChanges,
+  readUnstagedChanges,
+  readAllChanges,
+  readCommitChanges,
+  readRangeChanges,
+  readChanges,
+  getChangeSummary,
+  // Categorization
+  categorizeFile,
+  detectLanguage,
+  // Complexity
+  calculateFileComplexity,
+  quickComplexityScore,
+  // Main analyzer
+  analyzeDiff,
+  // Explainer
+  explainChanges,
+  quickExplain,
+  formatExplanation,
+  formatExplanationText,
+  formatExplanationMarkdown,
+  formatExplanationJson,
+  // Scorer types
+  type LocalComplexityScore,
+  type LocalRubricTag,
+  type LocalScoreResult,
+  type LocalTriageResult,
+  // Scoring
+  scoreLocalChanges,
+  scoreFromAnalysis,
+  clampScore as clampLocalScore,
+  scoreToRiskLevel,
+  quickScore,
+  // Triage
+  triageLocalChanges,
+} from './local/index.js';
+
 // Context Graph exports (Phase 35: Context Graph / Decision Ledger)
 // Note: generateTraceId excluded to avoid conflict with telemetry module
 export {
