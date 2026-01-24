@@ -102,6 +102,11 @@ import {
 } from './commands/explain.js';
 import { gateCommand } from './commands/gate.js';
 import {
+  hooksInstallCommand,
+  hooksUninstallCommand,
+  hooksStatusCommand,
+} from './commands/hooks.js';
+import {
   simulateCommand,
   simulateCompareCommand,
   simulateWhatIfCommand,
@@ -279,9 +284,60 @@ program
   .option('--minimal', 'Create minimal configuration')
   .option('--tenant <id>', 'Set tenant ID')
   .option('--workflow <type>', 'Enable specific workflow (issue-to-code, pr-resolve, pr-review, all)')
+  // Git hooks (Epic J)
+  .option('--hooks', 'Install pre-commit hook for local review')
+  .option('--strict', 'Use strict mode for pre-commit hook (with --hooks)')
   .action(async (options) => {
     try {
       await initCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Hooks Commands (Epic J - J4.2)
+// =============================================================================
+
+const hooksCmd = program
+  .command('hooks')
+  .description('Manage git hooks for local review (Epic J)');
+
+hooksCmd
+  .command('install')
+  .description('Install pre-commit hook')
+  .option('--strict', 'Use strict mode (block on warnings)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await hooksInstallCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+hooksCmd
+  .command('uninstall')
+  .description('Remove pre-commit hook')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await hooksUninstallCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+hooksCmd
+  .command('status')
+  .description('Check hook status')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await hooksStatusCommand(options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -1510,10 +1566,15 @@ Local Dev Review (Epic J - Pre-PR Analysis):
   gwi gate                      Pre-commit gate (for git hooks)
   gwi gate --strict             Strict mode (block complexity > 5)
 
-  Pre-commit hook integration:
-    Add to .git/hooks/pre-commit:
-    #!/bin/sh
-    gwi gate || exit 1
+  Git hooks management:
+    gwi hooks install           Install pre-commit hook
+    gwi hooks install --strict  Install with strict mode
+    gwi hooks uninstall         Remove pre-commit hook
+    gwi hooks status            Check hook status
+
+  Quick setup:
+    gwi init --hooks            Initialize and install hooks
+    gwi init --hooks --strict   Initialize with strict mode
 
   Exit codes (gate):
     0 - Ready to commit

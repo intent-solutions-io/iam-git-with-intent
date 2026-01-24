@@ -16,6 +16,10 @@ export interface InitOptions {
   minimal?: boolean;
   tenant?: string;
   workflow?: 'issue-to-code' | 'pr-resolve' | 'pr-review' | 'all';
+  /** Install git hooks for local review (Epic J) */
+  hooks?: boolean;
+  /** Strict mode for pre-commit hook */
+  strict?: boolean;
 }
 
 /**
@@ -178,6 +182,12 @@ cache/
       );
     }
 
+    // Install git hooks if requested (Epic J)
+    let hooksInstalled = false;
+    if (options.hooks && isGitRepo) {
+      hooksInstalled = installGitHooks(cwd, options.strict ?? false);
+    }
+
     spinner.succeed('Git With Intent initialized');
 
     // Print summary
@@ -203,17 +213,31 @@ cache/
       console.log(chalk.dim('    .gwi/.gitignore'));
       console.log(chalk.dim('    .gwi/workflows/example.json'));
     }
+    if (hooksInstalled) {
+      console.log(chalk.dim('    .git/hooks/pre-commit'));
+    }
     console.log();
 
     console.log(chalk.bold('  Next steps:'));
-    console.log(chalk.dim('    1. Configure your tenant ID (if using SaaS):'));
+    if (!options.hooks && isGitRepo) {
+      console.log(chalk.dim('    1. Install pre-commit hooks (recommended):'));
+      console.log(chalk.dim('       gwi init --hooks'));
+      console.log();
+      console.log(chalk.dim('    2. Or review local changes manually:'));
+      console.log(chalk.dim('       gwi review --local'));
+      console.log();
+    } else if (hooksInstalled) {
+      console.log(chalk.dim('    Pre-commit hook installed! Your commits will be automatically reviewed.'));
+      console.log();
+      console.log(chalk.dim('    To review changes before committing:'));
+      console.log(chalk.dim('       gwi review --local'));
+      console.log();
+    }
+    console.log(chalk.dim('    Configure tenant ID (if using SaaS):'));
     console.log(chalk.dim('       gwi config set api.tenantId <your-tenant-id>'));
     console.log();
-    console.log(chalk.dim('    2. Test with a PR:'));
+    console.log(chalk.dim('    Test with a PR:'));
     console.log(chalk.dim('       gwi triage <pr-url>'));
-    console.log();
-    console.log(chalk.dim('    3. Or start a workflow:'));
-    console.log(chalk.dim('       gwi workflow start issue-to-code --issue-url <url>'));
     console.log();
 
     // Add to .gitignore if not already present
@@ -246,4 +270,71 @@ function formatWorkflowName(workflow: string): string {
     'docs-update': 'Documentation Update',
   };
   return names[workflow] ?? workflow;
+}
+
+/**
+ * Install git hooks for local review (Epic J - J4.2)
+ */
+function installGitHooks(cwd: string, strict: boolean): boolean {
+  const hooksDir = join(cwd, '.git', 'hooks');
+
+  if (!existsSync(hooksDir)) {
+    mkdirSync(hooksDir, { recursive: true });
+  }
+
+  const preCommitPath = join(hooksDir, 'pre-commit');
+  const strictFlag = strict ? ' --strict' : '';
+
+  // Create pre-commit hook
+  const preCommitHook = `#!/bin/sh
+# GWI Pre-Commit Hook (Epic J)
+# Installed by: gwi init --hooks
+#
+# This hook runs gwi gate to check staged changes before commit.
+# Exit codes:
+#   0 - Ready to commit
+#   1 - Review recommended (warn only unless --strict)
+#   2 - Blocked (must fix before commit)
+#
+# To skip this hook temporarily: git commit --no-verify
+# To uninstall: rm .git/hooks/pre-commit
+
+# Check if gwi is available
+if ! command -v gwi &> /dev/null; then
+  # Try npx as fallback
+  if command -v npx &> /dev/null; then
+    npx gwi gate${strictFlag}
+    exit $?
+  fi
+  echo "Warning: gwi not found, skipping pre-commit check"
+  exit 0
+fi
+
+gwi gate${strictFlag}
+`;
+
+  try {
+    // Check for existing hook
+    if (existsSync(preCommitPath)) {
+      const existing = require('fs').readFileSync(preCommitPath, 'utf-8');
+      if (existing.includes('GWI Pre-Commit Hook')) {
+        // Already installed, update it
+        writeFileSync(preCommitPath, preCommitHook);
+        execSync(`chmod +x "${preCommitPath}"`);
+        return true;
+      }
+      // Different hook exists, append our check
+      const updatedHook = existing + '\n\n# GWI gate check (appended)\ngwi gate' + strictFlag + '\n';
+      writeFileSync(preCommitPath, updatedHook);
+      execSync(`chmod +x "${preCommitPath}"`);
+      return true;
+    }
+
+    // No existing hook, create new one
+    writeFileSync(preCommitPath, preCommitHook);
+    execSync(`chmod +x "${preCommitPath}"`);
+    return true;
+  } catch {
+    return false;
+  }
 }
