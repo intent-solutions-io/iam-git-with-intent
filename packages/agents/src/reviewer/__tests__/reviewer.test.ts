@@ -375,4 +375,123 @@ describe('hello', () => {
       expect(stats.approved).toBe(2);
     });
   });
+
+  describe('reviewLocalDiff (local-review workflow)', () => {
+    it('should review a clean local diff', async () => {
+      const input = {
+        diff: `diff --git a/src/utils.ts b/src/utils.ts
+index 1234567..abcdefg 100644
+--- a/src/utils.ts
++++ b/src/utils.ts
+@@ -1,3 +1,6 @@
++export function formatDate(date: Date): string {
++  return date.toISOString();
++}
+ export function helper() {
+   return "result";
+ }`,
+        files: [
+          {
+            path: 'src/utils.ts',
+            status: 'modified' as const,
+            additions: 3,
+            deletions: 0,
+          },
+        ],
+        context: {
+          branch: 'feature/add-format-date',
+          commitRef: 'HEAD',
+        },
+        workflowType: 'local-review' as const,
+      };
+
+      const result = await reviewer.reviewLocalDiff(input);
+
+      expect(result.review.approved).toBe(true);
+      expect(result.review.syntaxValid).toBe(true);
+      expect(result.shouldEscalate).toBe(false);
+    });
+
+    it('should detect security issues in local diff', async () => {
+      const input = {
+        diff: `diff --git a/src/config.ts b/src/config.ts
+index 1234567..abcdefg 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -1,3 +1,4 @@
++const API_KEY = "sk-1234567890abcdef";
+ export const config = {
+   endpoint: "https://api.example.com",
+ };`,
+        files: [
+          {
+            path: 'src/config.ts',
+            status: 'modified' as const,
+            additions: 1,
+            deletions: 0,
+          },
+        ],
+        context: {
+          branch: 'main',
+        },
+        workflowType: 'local-review' as const,
+      };
+
+      const result = await reviewer.reviewLocalDiff(input);
+
+      // Quick checks should catch the API_KEY pattern and block approval
+      expect(result.review.securityIssues.length).toBeGreaterThan(0);
+      expect(result.shouldEscalate).toBe(true);
+
+      // The approved flag might be true from LLM but we should have security issues flagged
+      const hasApiKeyIssue = result.review.securityIssues.some(issue =>
+        issue.toLowerCase().includes('api') || issue.toLowerCase().includes('key')
+      );
+      expect(hasApiKeyIssue).toBe(true);
+    });
+
+    it('should detect debugging artifacts', async () => {
+      const input = {
+        diff: `diff --git a/src/debug.ts b/src/debug.ts
+index 1234567..abcdefg 100644
+--- a/src/debug.ts
++++ b/src/debug.ts
+@@ -1,3 +1,4 @@
+ export function process() {
++  console.log("Debug: processing");
+   return result;
+ }`,
+        files: [
+          {
+            path: 'src/debug.ts',
+            status: 'modified' as const,
+            additions: 1,
+            deletions: 0,
+          },
+        ],
+        workflowType: 'local-review' as const,
+      };
+
+      const result = await reviewer.reviewLocalDiff(input);
+
+      expect(result.review.suggestions.length).toBeGreaterThan(0);
+      const hasDebugWarning = result.review.suggestions.some(s =>
+        s.toLowerCase().includes('debug')
+      );
+      expect(hasDebugWarning).toBe(true);
+    });
+
+    it('should handle empty diff', async () => {
+      const input = {
+        diff: '',
+        files: [],
+        workflowType: 'local-review' as const,
+      };
+
+      const result = await reviewer.reviewLocalDiff(input);
+
+      expect(result.review.approved).toBe(true);
+      expect(result.review.securityIssues).toEqual([]);
+    });
+  });
 });
