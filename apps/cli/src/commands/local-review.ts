@@ -33,6 +33,7 @@ import {
   type LocalScoreResult,
   type LocalTriageResult,
 } from '@gwi/core';
+import { createReviewerAgent, type LocalDiffReviewInput } from '@gwi/agents';
 
 // =============================================================================
 // Types
@@ -57,6 +58,8 @@ export interface LocalReviewOptions {
   blockSecurity?: boolean;
   /** Working directory */
   cwd?: string;
+  /** Use AI-powered review (ReviewerAgent) */
+  ai?: boolean;
 }
 
 export interface LocalReviewResult {
@@ -64,6 +67,54 @@ export interface LocalReviewResult {
   analysis: DiffAnalysis;
   score: LocalScoreResult;
   triage: LocalTriageResult;
+  aiReview?: {
+    approved: boolean;
+    confidence: number;
+    securityIssues: string[];
+    suggestions: string[];
+    syntaxValid: boolean;
+  };
+}
+
+// =============================================================================
+// AI Review Helper
+// =============================================================================
+
+/**
+ * Perform AI-powered review using ReviewerAgent
+ */
+async function performAIReview(changes: LocalChanges): Promise<LocalReviewResult['aiReview']> {
+  const reviewer = createReviewerAgent();
+  await reviewer.initialize();
+
+  try {
+    const input: LocalDiffReviewInput = {
+      diff: changes.combinedDiff,
+      files: changes.files.map(f => ({
+        path: f.path,
+        status: f.status as 'added' | 'modified' | 'deleted' | 'renamed',
+        additions: f.additions,
+        deletions: f.deletions,
+      })),
+      context: {
+        branch: changes.branch,
+        commitRef: changes.ref,
+      },
+      workflowType: 'local-review',
+    };
+
+    const result = await reviewer.reviewLocalDiff(input);
+
+    return {
+      approved: result.review.approved,
+      confidence: result.review.confidence,
+      securityIssues: result.review.securityIssues,
+      suggestions: result.review.suggestions,
+      syntaxValid: result.review.syntaxValid,
+    };
+  } finally {
+    await reviewer.shutdown();
+  }
 }
 
 // =============================================================================
@@ -152,8 +203,23 @@ export async function localReviewCommand(
 
     spinner.succeed(`Analyzed ${changes.files.length} file(s)`);
 
+    // Optional AI-powered review
+    let aiReview: LocalReviewResult['aiReview'] | undefined;
+    if (options.ai) {
+      try {
+        spinner.start('Running AI review...');
+        aiReview = await performAIReview(changes);
+        spinner.succeed('AI review complete');
+      } catch (error) {
+        spinner.warn('AI review failed');
+        if (options.verbose) {
+          console.error(chalk.yellow(`AI review error: ${error instanceof Error ? error.message : String(error)}`));
+        }
+      }
+    }
+
     // Output results
-    const result: LocalReviewResult = { changes, analysis, score, triage };
+    const result: LocalReviewResult = { changes, analysis, score, triage, aiReview };
 
     if (options.format === 'json') {
       outputJson(result);
@@ -202,6 +268,7 @@ function outputJson(result: LocalReviewResult): void {
       deletions: f.deletions,
       suggestions: f.suggestions,
     })),
+    aiReview: result.aiReview,
   }, null, 2));
 }
 
@@ -320,8 +387,35 @@ function outputText(result: LocalReviewResult, options: LocalReviewOptions): voi
     console.log();
   }
 
+  // AI Review (if available)
+  if (result.aiReview) {
+    console.log(chalk.bold('  AI Review:'));
+    const aiApprovalIcon = result.aiReview.approved ? chalk.green('✓') : chalk.red('✗');
+    const aiConfidenceColor = result.aiReview.confidence >= 80 ? chalk.green :
+      result.aiReview.confidence >= 60 ? chalk.yellow : chalk.red;
+    console.log(`    ${aiApprovalIcon} ${result.aiReview.approved ? 'Approved' : 'Not approved'} (confidence: ${aiConfidenceColor(`${result.aiReview.confidence}%`)})`);
+
+    if (result.aiReview.securityIssues.length > 0) {
+      console.log(chalk.red.bold('    Security Issues:'));
+      for (const issue of result.aiReview.securityIssues) {
+        console.log(chalk.red(`      - ${issue}`));
+      }
+    }
+
+    if (result.aiReview.suggestions.length > 0 && options.verbose) {
+      console.log(chalk.bold('    AI Suggestions:'));
+      for (const suggestion of result.aiReview.suggestions.slice(0, 5)) {
+        console.log(`      - ${suggestion}`);
+      }
+      if (result.aiReview.suggestions.length > 5) {
+        console.log(chalk.dim(`      ... and ${result.aiReview.suggestions.length - 5} more`));
+      }
+    }
+    console.log();
+  }
+
   // Status
-  if (triage.readyForCommit) {
+  if (triage.readyForCommit && (!result.aiReview || result.aiReview.approved)) {
     console.log(chalk.green('  ✓ Ready for commit'));
   } else {
     console.log(chalk.red('  ✗ Not ready for commit'));

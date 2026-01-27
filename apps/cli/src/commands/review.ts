@@ -21,6 +21,8 @@ export interface ReviewOptions extends LocalReviewOptions {
   local?: boolean;
   /** Markdown output */
   markdown?: boolean;
+  /** Use AI-powered review */
+  ai?: boolean;
 }
 
 export async function reviewCommand(
@@ -39,6 +41,7 @@ export async function reviewCommand(
       maxComplexity: options.maxComplexity,
       blockSecurity: options.blockSecurity,
       cwd: options.cwd,
+      ai: options.ai,
     });
     return;
   }

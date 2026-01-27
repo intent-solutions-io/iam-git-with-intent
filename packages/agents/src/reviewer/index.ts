@@ -60,6 +60,28 @@ export interface PRReviewInput {
 }
 
 /**
+ * Reviewer input for local diff review (local-review workflow)
+ */
+export interface LocalDiffReviewInput {
+  /** Combined diff string (unified format) */
+  diff: string;
+  /** Optional file metadata */
+  files?: Array<{
+    path: string;
+    status: 'added' | 'modified' | 'deleted' | 'renamed';
+    additions: number;
+    deletions: number;
+  }>;
+  /** Context about the changes */
+  context?: {
+    branch?: string;
+    commitRef?: string;
+    description?: string;
+  };
+  workflowType: 'local-review';
+}
+
+/**
  * Reviewer output
  */
 export interface ReviewerOutput {
@@ -209,6 +231,58 @@ Respond with a JSON object:
 }`;
 
 /**
+ * System prompt for local diff review (local-review workflow)
+ */
+const LOCAL_DIFF_REVIEW_SYSTEM_PROMPT = `You are the Reviewer Agent for Git With Intent, an AI-powered DevOps automation platform.
+
+Your role is to review local uncommitted changes before they are committed.
+
+## 1. Code Quality
+- Are the changes well-structured?
+- Is there any dead code or debugging artifacts?
+- Are naming conventions followed?
+- Is the code readable and maintainable?
+
+## 2. Security Scan
+- Check for hardcoded secrets/credentials
+- Check for SQL injection vulnerabilities
+- Check for XSS vulnerabilities
+- Check for unsafe eval/exec usage
+- Check for exposed sensitive data
+
+## 3. Completeness
+- Are there incomplete changes or TODOs?
+- Do the changes look ready to commit?
+- Are there any obvious logic errors?
+
+## 4. Best Practices
+- Are error cases handled appropriately?
+- Is there proper input validation?
+- Are there any anti-patterns?
+
+## Output Format
+
+Respond with a JSON object:
+{
+  "approved": true/false,
+  "syntaxValid": true/false,
+  "securityIssues": ["issue1", "issue2"],
+  "suggestions": ["suggestion1"],
+  "confidence": 85,
+  "reasoning": "Explanation of the review decision",
+  "readyForCommit": true/false,
+  "concerns": ["concern1", "concern2"]
+}
+
+## Critical Rules
+
+1. Be helpful but not overly strict - this is pre-commit review
+2. Security issues are critical - always flag them
+3. Flag incomplete work or debugging artifacts
+4. Syntax errors should block commit
+5. When in doubt about quality, suggest improvements but don't block`;
+
+/**
  * System prompt for code generation review (issue-to-code workflow)
  */
 const CODE_REVIEW_SYSTEM_PROMPT = `You are the Reviewer Agent for Git With Intent, an AI-powered DevOps automation platform.
@@ -305,7 +379,13 @@ export class ReviewerAgent extends BaseAgent {
       throw new Error(`Unsupported task type: ${payload.taskType}`);
     }
 
-    const input = payload.input as ReviewerInput | CodeReviewInput | PRReviewInput | Record<string, unknown>;
+    const input = payload.input as ReviewerInput | CodeReviewInput | PRReviewInput | LocalDiffReviewInput | Record<string, unknown>;
+
+    // Check if this is a local diff review (local-review workflow)
+    if ('workflowType' in input && input.workflowType === 'local-review') {
+      const localInput = input as LocalDiffReviewInput;
+      return this.reviewLocalDiff(localInput);
+    }
 
     // Check if this is a code review (issue-to-code workflow)
     if ('workflowType' in input && input.workflowType === 'issue-to-code') {
@@ -491,6 +571,65 @@ export class ReviewerAgent extends BaseAgent {
   }
 
   /**
+   * Review a local diff (local-review workflow)
+   */
+  async reviewLocalDiff(input: LocalDiffReviewInput): Promise<ReviewerOutput> {
+    // Quick security check on the diff
+    const quickChecks = this.performDiffQuickChecks(input.diff);
+
+    // If critical security issues found, don't even call LLM
+    if (quickChecks.criticalSecurityIssue) {
+      const review: ReviewResult = {
+        approved: false,
+        syntaxValid: true, // Assuming diff is syntactically valid
+        codeLossDetected: false, // Not applicable for local review
+        securityIssues: quickChecks.securityIssues,
+        suggestions: quickChecks.suggestions,
+        confidence: 95,
+      };
+
+      const contextId = input.context?.commitRef || input.context?.branch || 'local';
+      this.recordReview(contextId, review);
+
+      return {
+        review,
+        shouldEscalate: true,
+        escalationReason: 'Critical security issue detected',
+      };
+    }
+
+    // Deep review with LLM
+    const context = this.buildLocalDiffReviewContext(input);
+
+    const response = await this.chat({
+      model: this.config.defaultModel,
+      messages: [
+        { role: 'system', content: LOCAL_DIFF_REVIEW_SYSTEM_PROMPT },
+        { role: 'user', content: context },
+      ],
+      temperature: 0.3, // Moderate temperature for practical advice
+    });
+
+    const review = this.parseLocalDiffReviewResponse(response, quickChecks);
+
+    // Record in history
+    const contextId = input.context?.commitRef || input.context?.branch || 'local';
+    this.recordReview(contextId, review);
+
+    // Determine escalation
+    const shouldEscalate =
+      !review.approved ||
+      review.confidence < 70 ||
+      review.securityIssues.length > 0;
+
+    return {
+      review,
+      shouldEscalate,
+      escalationReason: shouldEscalate ? this.getEscalationReason(review) : undefined,
+    };
+  }
+
+  /**
    * Build context for PR quality review
    */
   private buildPRReviewContext(input: PRReviewInput): string {
@@ -572,6 +711,131 @@ Please review this PR and provide your assessment as a JSON object.`;
         confidence: 50,
       };
     }
+  }
+
+  /**
+   * Build context for local diff review
+   */
+  private buildLocalDiffReviewContext(input: LocalDiffReviewInput): string {
+    const filesList = input.files
+      ? input.files.map(f =>
+          `- ${f.path} (${f.status}): +${f.additions} -${f.deletions}`
+        ).join('\n')
+      : 'File metadata not available';
+
+    const contextInfo = input.context
+      ? `**Branch:** ${input.context.branch || 'unknown'}
+**Ref:** ${input.context.commitRef || 'uncommitted'}
+${input.context.description ? `**Description:** ${input.context.description}` : ''}`
+      : 'No context provided';
+
+    return `## Local Diff Review Request
+
+${contextInfo}
+
+### Changed Files
+${filesList}
+
+### Diff Content
+\`\`\`diff
+${input.diff.slice(0, 10000)}${input.diff.length > 10000 ? '\n...(truncated for length)' : ''}
+\`\`\`
+
+Please review these local changes and provide your assessment as a JSON object.`;
+  }
+
+  /**
+   * Parse local diff review response from LLM
+   */
+  private parseLocalDiffReviewResponse(
+    response: string,
+    quickChecks: ReturnType<typeof this.performDiffQuickChecks>
+  ): ReviewResult {
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON in response');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Merge with quick checks (quick checks are authoritative for security)
+      return {
+        approved: (parsed.approved || parsed.readyForCommit) && !quickChecks.criticalSecurityIssue,
+        syntaxValid: parsed.syntaxValid !== false,
+        codeLossDetected: false, // Not applicable for local review
+        securityIssues: [
+          ...quickChecks.securityIssues,
+          ...(parsed.securityIssues || []),
+        ],
+        suggestions: [
+          ...quickChecks.suggestions,
+          ...(parsed.suggestions || []),
+          ...(parsed.concerns || []),
+        ],
+        confidence: Math.min(parsed.confidence || 70, quickChecks.criticalSecurityIssue ? 20 : 100),
+      };
+    } catch {
+      // Fallback - conservative review
+      return {
+        approved: !quickChecks.criticalSecurityIssue && quickChecks.securityIssues.length === 0,
+        syntaxValid: true,
+        codeLossDetected: false,
+        securityIssues: quickChecks.securityIssues,
+        suggestions: [...quickChecks.suggestions, 'LLM review failed - manual review recommended'],
+        confidence: 50,
+      };
+    }
+  }
+
+  /**
+   * Perform quick security checks on diff content
+   */
+  private performDiffQuickChecks(diff: string): {
+    securityIssues: string[];
+    suggestions: string[];
+    criticalSecurityIssue: boolean;
+  } {
+    const securityIssues: string[] = [];
+    const suggestions: string[] = [];
+    let criticalSecurityIssue = false;
+
+    // Security pattern check on added lines only
+    const addedLines = diff.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++'));
+    const addedContent = addedLines.join('\n');
+
+    for (const pattern of this.securityPatterns) {
+      if (pattern.test(addedContent)) {
+        const issue = `Security pattern detected in changes: ${pattern.source}`;
+        securityIssues.push(issue);
+
+        // Hardcoded credentials are critical
+        if (/password|secret|api[_-]?key|token/i.test(pattern.source)) {
+          criticalSecurityIssue = true;
+        }
+      }
+    }
+
+    // Check for common debugging artifacts
+    const debugPatterns = [
+      /console\.log\(/,
+      /debugger;/,
+      /TODO:/i,
+      /FIXME:/i,
+      /XXX:/i,
+    ];
+
+    for (const pattern of debugPatterns) {
+      if (pattern.test(addedContent)) {
+        suggestions.push(`Debugging artifact detected: ${pattern.source}`);
+      }
+    }
+
+    return {
+      securityIssues,
+      suggestions,
+      criticalSecurityIssue,
+    };
   }
 
   /**
