@@ -238,10 +238,11 @@ program
 // Gate command - pre-commit review gate (Epic J)
 program
   .command('gate')
-  .description('Pre-commit review gate - check staged changes before commit')
+  .description('Pre-commit review gate with interactive approval')
   .option('--strict', 'Block on high complexity (threshold: 5)')
   .option('--max-complexity <n>', 'Maximum allowed complexity (default: 8)', parseInt)
   .option('--block-security', 'Block security-sensitive changes')
+  .option('--no-interactive', 'Skip approval prompt (for CI/hooks)')
   .option('-v, --verbose', 'Show detailed output on failure')
   .option('--json', 'Output as JSON')
   .option('-q, --silent', 'Silent mode (only show errors)')
