@@ -384,10 +384,13 @@ describe('Integration: Complex Conditions', () => {
 
   describe('time window + author combinations', () => {
     it('should allow senior devs to deploy outside business hours', () => {
-      const now = new Date();
+      // Use a fixed time to make the test deterministic
+      // Create a date at 14:00 local time to avoid edge cases
+      const testTime = new Date();
+      testTime.setHours(14, 30, 0, 0); // 2:30 PM local time
       const dayNames = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
-      const currentDay = dayNames[now.getDay()];
-      const currentHour = now.getHours();
+      const testDay = dayNames[testTime.getDay()]; // current day (local)
+      const testHour = testTime.getHours(); // 14 (local)
 
       engine.loadPolicy(createTestPolicy({
         name: 'after-hours-deploy',
@@ -398,7 +401,7 @@ describe('Integration: Complex Conditions', () => {
             priority: 100,
             conditions: [
               { type: 'author', roles: ['senior', 'lead'] },
-              { type: 'time_window', windows: [{ days: [currentDay], startHour: currentHour, endHour: currentHour + 1 }], matchType: 'during' },
+              { type: 'time_window', windows: [{ days: [testDay], startHour: testHour, endHour: testHour + 1 }], matchType: 'during' },
             ],
             action: { effect: 'allow' },
           },
@@ -411,17 +414,17 @@ describe('Integration: Complex Conditions', () => {
         ],
       }));
 
-      // Senior dev at current time
+      // Senior dev at test time
       const result1 = engine.evaluate(createTestRequest({
         actor: { id: 'senior-1', type: 'human', roles: ['senior'] },
-        context: { source: 'cli', timestamp: now },
+        context: { source: 'cli', timestamp: testTime },
       }));
       expect(result1.allowed).toBe(true);
 
-      // Junior dev at current time
+      // Junior dev at test time
       const result2 = engine.evaluate(createTestRequest({
         actor: { id: 'junior-1', type: 'human', roles: ['junior'] },
-        context: { source: 'cli', timestamp: now },
+        context: { source: 'cli', timestamp: testTime },
       }));
       expect(result2.allowed).toBe(false);
     });
