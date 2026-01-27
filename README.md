@@ -2,7 +2,7 @@
 
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
-**Version:** 0.3.0 | **Status:** Active development
+**Version:** 0.5.0 | **Status:** Active development
 
 ---
 
@@ -49,21 +49,24 @@ flowchart LR
         A[GitHub Issue] --> CLI
         B[Pull Request] --> CLI
         C[Merge Conflict] --> CLI
+        D[Local Changes] --> CLI
     end
 
     subgraph CLI[gwi CLI]
-        D[triage]
-        E[resolve]
-        F[review]
-        G[issue-to-code]
-        H[autopilot]
+        E[triage]
+        F[resolve]
+        G[review]
+        H[issue-to-code]
+        I[autopilot]
+        J[gate]
     end
 
     subgraph Outputs
-        CLI --> I[Complexity Score]
-        CLI --> J[Resolved Conflicts]
-        CLI --> K[Review Summary]
-        CLI --> L[Generated PR]
+        CLI --> K[Complexity Score]
+        CLI --> L[Resolved Conflicts]
+        CLI --> M[Review Summary]
+        CLI --> N[Generated PR]
+        CLI --> O[Approval Gate]
     end
 ```
 
@@ -73,6 +76,7 @@ flowchart LR
 - Score PR complexity (deterministic 1-10 scale)
 - Review and summarize PRs
 - Full autopilot: triage → resolve → review → commit
+- **Local review before PR** (v0.5.0): Review staged/unstaged changes locally
 
 ---
 
@@ -160,6 +164,56 @@ sequenceDiagram
     Dev->>CLI: gwi run approve abc123
     CLI->>GH: Commit + push
     GH-->>Dev: Changes committed
+```
+
+### Journey 4: Local Review Before PR (v0.5.0)
+
+```mermaid
+sequenceDiagram
+    actor Dev as Developer
+    participant CLI as gwi CLI
+    participant Reviewer as ReviewerAgent
+    participant Git as Local Git
+
+    Dev->>CLI: gwi review --local
+    CLI->>Git: Read staged changes
+    Git-->>CLI: Diff content
+    CLI->>CLI: Analyze complexity (deterministic)
+    CLI->>Dev: Show score + patterns
+
+    Dev->>CLI: gwi review --local --ai
+    CLI->>Reviewer: AI-powered analysis
+    Reviewer-->>CLI: Security issues + suggestions
+    CLI->>Dev: Show AI findings
+
+    Dev->>CLI: gwi gate
+    CLI->>Dev: Approve/reject prompt
+    Dev->>CLI: approve
+    CLI-->>Dev: Ready for commit
+```
+
+**Commands:**
+```bash
+# Review staged changes (fast, deterministic)
+gwi review --local
+
+# Review all uncommitted changes
+gwi review --local --all
+
+# AI-powered review (uses ReviewerAgent)
+gwi review --local --ai
+
+# Pre-commit approval gate
+gwi gate
+
+# Non-interactive gate for CI/hooks
+gwi gate --no-interactive
+
+# Score complexity of recent commits
+gwi triage --diff HEAD~1
+
+# Explain local changes
+gwi explain .
 ```
 
 ---
@@ -324,9 +378,40 @@ gwi run status <run-id>
 gwi run approve <run-id>
 ```
 
+### Local Development Review (v0.5.0)
+
+Review code locally **before** creating a PR:
+
+```bash
+# Review staged changes (fast, no AI)
+gwi review --local
+
+# Review all uncommitted changes
+gwi review --local --all
+
+# AI-powered local review
+gwi review --local --ai
+
+# Pre-commit approval gate
+gwi gate
+
+# Non-interactive for CI/git hooks
+gwi gate --no-interactive
+
+# Score complexity of local commits
+gwi triage --diff HEAD~1
+
+# Explain what changed locally
+gwi explain .
+
+# Manage git hooks
+gwi hooks install    # Install pre-commit hook
+gwi hooks status     # Check hook status
+```
+
 ---
 
-## Context Graph (New)
+## Context Graph & Explainability
 
 Captures decision traces to answer "why did AI do that?"
 
@@ -339,12 +424,10 @@ flowchart LR
 
     subgraph Query
         C --> D[gwi explain]
-        C --> E[gwi simulate]
     end
 
     subgraph Output
-        D --> F[Why AI did X]
-        E --> G[What if we do Y]
+        D --> E[Why AI did X]
     end
 ```
 
@@ -371,10 +454,12 @@ sequenceDiagram
 gwi explain <run-id>
 gwi explain <run-id> --step=coder
 
-# Simulate "what if"
-gwi simulate "merge PR without review" --context=repo:owner/repo
-gwi simulate compare "quick merge" "thorough review"
+# Explain local changes (v0.5.0)
+gwi explain .
+gwi explain HEAD~3
 ```
+
+> **Roadmap:** `gwi simulate` (world model simulation) is planned for Phase 35.
 
 ---
 
@@ -433,6 +518,7 @@ bd sync                     # Push to git
 | G | Planned | Slack integration |
 | H | Active | Infrastructure |
 | I | Active | Forecasting & ML |
+| J | **Complete** | **Local dev review (v0.5.0)** |
 
 ---
 
