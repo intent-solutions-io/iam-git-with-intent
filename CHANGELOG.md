@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-01-29
+
+### Added
+- Community health files (CONTRIBUTING, SECURITY, SUPPORT, GOVERNANCE, CODE_OF_CONDUCT)
+- GitHub issue templates (bug, feature, question, security)
+- Pull request template with checklist
+- CODEOWNERS for critical paths
+- Documentation: Discussions enablement guide, repo gaps audit
+
+### Changed
+- Expanded CONTRIBUTING.md with full development guidelines
+- Organized loose docs into 000-docs/ with proper naming
+- Updated CHANGELOG with historical v0.2.0 and v0.1.0 entries
+
 ## [0.5.0] - 2026-01-29
 
 ### Added
@@ -13,9 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `gwi gate` pre-commit approval gate
   - `gwi hooks install` for git hook management
 - ReviewerAgent integration for AI-powered local analysis
-- Community health files (CONTRIBUTING, SECURITY, SUPPORT, GOVERNANCE)
-- GitHub issue templates and PR template
-- CODEOWNERS for critical paths
 
 ### Changed
 - Updated CLAUDE.md with v0.5.0 commands and structure
@@ -100,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic CLI commands
 - Project template and monorepo structure
 
+[0.5.1]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.2.0...v0.3.0
