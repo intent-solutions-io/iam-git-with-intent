@@ -1,0 +1,20 @@
+name: Security Report
+description: Report a security vulnerability (redirects to SECURITY.md)
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Do NOT report security issues here
+
+        **Public issues are visible to everyone.**
+
+        Please follow [SECURITY.md](https://github.com/intent-solutions-io/iam-git-with-intent/blob/main/SECURITY.md) to report vulnerabilities privately.
+
+        Email: security@intentsolutions.io
+  - type: checkboxes
+    id: redirect
+    attributes:
+      label: I understand
+      options:
+        - label: I will report via SECURITY.md instead
+          required: true
