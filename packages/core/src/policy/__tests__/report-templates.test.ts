@@ -900,7 +900,7 @@ describe('Report Completeness Check', () => {
       type: 'period',
     };
 
-    let template = createSOC2Template('tenant-123', 'Acme Corp', period);
+    const template = createSOC2Template('tenant-123', 'Acme Corp', period);
 
     // Mark all controls evaluated, one as non-compliant without remediation
     for (const control of template.controls) {
@@ -932,7 +932,7 @@ describe('Report Completeness Check', () => {
       type: 'period',
     };
 
-    let template = createSOC2Template('tenant-123', 'Acme Corp', period);
+    const template = createSOC2Template('tenant-123', 'Acme Corp', period);
 
     // Mark all controls as compliant but only first one has evidence
     for (let i = 0; i < template.controls.length; i++) {
@@ -961,7 +961,7 @@ describe('Report Completeness Check', () => {
       type: 'period',
     };
 
-    let template = createSOC2Template('tenant-123', 'Acme Corp', period);
+    const template = createSOC2Template('tenant-123', 'Acme Corp', period);
 
     // Mark all controls as evaluated with evidence
     for (const control of template.controls) {
@@ -988,7 +988,7 @@ describe('Report Completeness Check', () => {
       type: 'period',
     };
 
-    let template = createSOC2Template('tenant-123', 'Acme Corp', period);
+    const template = createSOC2Template('tenant-123', 'Acme Corp', period);
 
     // Mark all controls as evaluated with evidence
     for (const control of template.controls) {

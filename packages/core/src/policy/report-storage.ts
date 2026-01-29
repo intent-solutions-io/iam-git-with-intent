@@ -649,7 +649,7 @@ export class InMemoryReportStore implements ReportStore {
 
     // Store current version in history
     if (existing) {
-      let history = this.versions.get(versionKey) ?? [];
+      const history = this.versions.get(versionKey) ?? [];
       history.push(existing);
       this.versions.set(versionKey, history);
     }
@@ -1187,7 +1187,7 @@ export class FirestoreReportStore implements ReportStore {
   ): Promise<number> {
     const excludeStatuses = options?.excludeStatuses ?? [];
 
-    let query: FirebaseFirestore.Query = this.db
+    const query: FirebaseFirestore.Query = this.db
       .collection(REPORT_COLLECTIONS.reports)
       .doc(tenantId)
       .collection('reports')

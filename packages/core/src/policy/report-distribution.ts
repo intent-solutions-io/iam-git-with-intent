@@ -484,7 +484,7 @@ function escapeHtml(unsafe: string): string {
  */
 function convertMarkdownToHtml(markdown: string): string {
   // First, escape HTML to prevent XSS
-  let html = escapeHtml(markdown)
+  const html = escapeHtml(markdown)
     // Headers
     .replace(/^### (.*$)/gm, '<h3>$1</h3>')
     .replace(/^## (.*$)/gm, '<h2>$1</h2>')
