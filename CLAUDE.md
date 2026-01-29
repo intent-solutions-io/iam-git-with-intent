@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Attribute | Value |
 |-----------|-------|
 | CLI Command | `gwi` |
-| Version | 0.5.0 |
+| Version | 0.5.1 |
 | Node | 20+ |
 | Build | Turbo monorepo (npm workspaces) |
 
@@ -115,6 +115,14 @@ gwi explain <run-id>     # Explain AI decisions
 
 **Approval gating**: Destructive operations (commit, push, merge) require explicit approval with SHA256 hash binding.
 
+### Agent Implementation
+
+All agents extend `BaseAgent` from `packages/agents/src/base/agent.ts`:
+- Agents are stateful and autonomous (not function wrappers)
+- Use A2A (Agent-to-Agent) protocol for inter-agent messaging
+- Each agent has a SPIFFE ID: `spiffe://intent.solutions/agent/<name>`
+- In-memory state resets on restart; use Storage interfaces for persistence
+
 ## Storage
 
 | Backend | Usage |
@@ -175,6 +183,11 @@ ARV includes specialized gates beyond lint/contracts/goldens:
 - `observability-gate.ts` - Logging/tracing
 - `planner-gate.ts` - Plan validation
 - `openapi-gate.ts` - API schema validation
+- `connector-supply-chain.ts` - Connector trust verification
+- `marketplace-gate.ts` - Marketplace validation
+- `merge-resolver-gate.ts` - Merge resolution testing
+- `forensics-gate.ts` - Forensics/audit trail checks
+- `ga-readiness-gate.ts` - General availability readiness
 
 ## Documentation
 
@@ -182,3 +195,21 @@ ARV includes specialized gates beyond lint/contracts/goldens:
 - Threat model: `000-docs/110-DR-TMOD-security-threat-model.md`
 - SLO/SLA: `000-docs/111-DR-TARG-slo-sla-targets.md`
 - Disaster recovery: `000-docs/112-DR-RUNB-disaster-recovery-runbook.md`
+
+## Commit Message Format
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+```
+<type>(<scope>): <description>
+```
+
+**Types**: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
+
+**Scopes**: `cli`, `api`, `agents`, `core`, `engine`, `integrations`, `sdk`, `infra`
+
+Examples:
+```
+feat(cli): add --local flag for local review
+fix(resolver): handle three-way merge edge case
+docs(readme): update installation instructions
+```
