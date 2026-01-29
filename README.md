@@ -493,19 +493,7 @@ npm run arv:smoke     # Boot test
 
 ---
 
-## Task Tracking
-
-Uses [beads](https://github.com/steveyegge/beads) for issue tracking.
-
-```bash
-bd list --status open       # View open tasks
-bd ready                    # Available tasks
-bd update <id> --status in_progress
-bd close <id> -r "reason"
-bd sync                     # Push to git
-```
-
-### Epic Status
+## Epic Status
 
 | Epic | Status | Focus |
 |------|--------|-------|
