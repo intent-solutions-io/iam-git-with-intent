@@ -21,7 +21,6 @@ import {
   getImmutableAuditLogStore,
   createAuditVerificationService,
   createAuditLogExportService,
-  type ImmutableAuditLogStore,
   type AuditLogExportFormat,
 } from '@gwi/core';
 
