@@ -2,7 +2,7 @@
 
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
-**Version:** 0.5.0 | **Status:** Active development
+**Version:** 0.5.1 | **Status:** Active development
 
 ---
 
@@ -495,7 +495,7 @@ npm run arv:smoke     # Boot test
 
 ## Task Tracking
 
-Uses [beads](https://github.com/Dicklesworthstone/beads_viewer) for issue tracking.
+Uses [beads](https://github.com/steveyegge/beads) for issue tracking.
 
 ```bash
 bd list --status open       # View open tasks
@@ -632,7 +632,11 @@ gantt
 
 ## Contributing
 
-Private repo under active development.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Security Policy: [SECURITY.md](SECURITY.md)
+- Support: [SUPPORT.md](SUPPORT.md)
 
 📧 jeremy@intentsolutions.io
 
@@ -640,7 +644,7 @@ Private repo under active development.
 
 ## Security
 
-[Security Policy](000-docs/004-BL-POLI-security-policy.md)
+[Security Policy](SECURITY.md)
 
 - Security audit completed Dec 2025
 - Pre-alpha software - not production-ready
@@ -650,6 +654,6 @@ Private repo under active development.
 
 ## License
 
-MIT License - Copyright (c) 2025 Intent Solutions LLC
+MIT License - Copyright (c) 2025-2026 Intent Solutions LLC
 
 Open source CLI. Hosted service (when available) is commercial.
