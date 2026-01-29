@@ -76,7 +76,7 @@ flowchart LR
 - Score PR complexity (deterministic 1-10 scale)
 - Review and summarize PRs
 - Full autopilot: triage → resolve → review → commit
-- **Local review before PR** (v0.5.0): Review staged/unstaged changes locally
+- **Local review before PR**: Review staged/unstaged changes locally
 
 ---
 
@@ -166,7 +166,7 @@ sequenceDiagram
     GH-->>Dev: Changes committed
 ```
 
-### Journey 4: Local Review Before PR (v0.5.0)
+### Journey 4: Local Review Before PR
 
 ```mermaid
 sequenceDiagram
@@ -237,7 +237,7 @@ flowchart TB
     subgraph Agents["AI Agents"]
         triage[Triage<br/>Gemini Flash]
         coder[Coder<br/>Claude Sonnet]
-        resolver[Resolver<br/>Claude Opus]
+        resolver[Resolver<br/>Claude Sonnet/Opus]
         reviewer[Reviewer<br/>Claude Sonnet]
     end
 
@@ -301,13 +301,17 @@ git-with-intent/
 │   ├── api/              # REST API (Cloud Run)
 │   ├── gateway/          # A2A agent coordination
 │   ├── github-webhook/   # Webhook handler
+│   ├── webhook-receiver/ # Generic webhook receiver
 │   ├── worker/           # Background jobs
+│   ├── registry/         # Workflow template registry
 │   └── web/              # Dashboard (React)
 ├── packages/
-│   ├── core/             # Storage, billing, security (68 modules)
+│   ├── core/             # Storage, billing, security (76 modules)
 │   ├── agents/           # AI agent implementations
 │   ├── engine/           # Workflow orchestration
 │   ├── integrations/     # GitHub/GitLab connectors
+│   ├── connectors/       # Airbyte-style data connectors
+│   ├── forecasting/      # TimeGPT integration
 │   └── sdk/              # TypeScript SDK
 └── infra/                # OpenTofu (GCP infrastructure)
 ```
@@ -322,11 +326,14 @@ flowchart TD
 
     agents --> core
     integrations --> core
+    connectors[packages/connectors] --> core
+    forecasting[packages/forecasting] --> core
 
     api[apps/api] --> core
     gateway[apps/gateway] --> core
     webhook[apps/github-webhook] --> core
     worker[apps/worker] --> core
+    registry[apps/registry] --> core
 
     sdk[packages/sdk] --> core
     engine[packages/engine] --> agents
@@ -378,7 +385,7 @@ gwi run status <run-id>
 gwi run approve <run-id>
 ```
 
-### Local Development Review (v0.5.0)
+### Local Development Review
 
 Review code locally **before** creating a PR:
 
@@ -454,7 +461,7 @@ sequenceDiagram
 gwi explain <run-id>
 gwi explain <run-id> --step=coder
 
-# Explain local changes (v0.5.0)
+# Explain local changes
 gwi explain .
 gwi explain HEAD~3
 ```
@@ -506,7 +513,7 @@ npm run arv:smoke     # Boot test
 | G | Planned | Slack integration |
 | H | Active | Infrastructure |
 | I | Active | Forecasting & ML |
-| J | **Complete** | **Local dev review (v0.5.0)** |
+| J | **Complete** | **Local dev review** |
 
 ---
 
