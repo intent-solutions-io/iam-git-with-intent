@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Attribute | Value |
 |-----------|-------|
 | CLI Command | `gwi` |
-| Version | 0.4.0 |
+| Version | 0.5.0 |
 | Node | 20+ |
 | Build | Turbo monorepo (npm workspaces) |
 
@@ -56,7 +56,9 @@ git-with-intent/
 │   ├── api/              # REST API (Cloud Run)
 │   ├── gateway/          # A2A Gateway (Cloud Run)
 │   ├── github-webhook/   # Webhook handler (Cloud Run)
+│   ├── webhook-receiver/ # Generic webhook receiver
 │   ├── worker/           # Background jobs (Cloud Run)
+│   ├── registry/         # Workflow template registry
 │   └── web/              # Dashboard (React/Firebase Hosting)
 ├── packages/
 │   ├── core/             # Storage, billing, security interfaces
@@ -67,6 +69,7 @@ git-with-intent/
 │   ├── forecasting/      # TimeGPT integration
 │   └── sdk/              # TypeScript SDK
 ├── infra/                # OpenTofu (source of truth for GCP)
+├── scripts/arv/          # Agent Readiness Verification gates
 ├── test/                 # Cross-cutting tests (contracts, goldens)
 └── 000-docs/             # Internal docs (NNN-CC-ABCD-*.md)
 ```
@@ -86,12 +89,18 @@ apps/* → @gwi/core
 gwi triage <pr-url>      # Score PR complexity (1-10)
 gwi resolve <pr-url>     # Resolve merge conflicts
 gwi review <pr-url>      # Generate review summary
+gwi review --local       # Review staged changes (fast, deterministic)
+gwi review --local --ai  # AI-powered local review
 gwi issue-to-code <url>  # Create PR from issue
 gwi autopilot <pr-url>   # Full pipeline with approval
 
 gwi run list             # List recent runs
 gwi run status <id>      # Check run details
 gwi run approve <id>     # Approve pending changes
+
+gwi gate                 # Pre-commit approval gate
+gwi hooks install        # Install pre-commit hook
+gwi explain <run-id>     # Explain AI decisions
 ```
 
 ## Agent Architecture
@@ -147,6 +156,8 @@ Every run creates artifacts at `.gwi/runs/<runId>/`:
 - Add tests with every change
 - Prefer small diffs over rewrites
 - Do NOT delete `000-docs/`, `.claude/`, `infra/` without explicit instruction
+- Storage interfaces in `packages/core/src/storage/interfaces.ts` are contracts - do not break them
+- All Cloud Run deploys via GitHub Actions + OpenTofu - never `gcloud deploy` directly
 
 ## Debugging
 
@@ -154,6 +165,16 @@ Every run creates artifacts at `.gwi/runs/<runId>/`:
 gwi run status <run-id>
 cat .gwi/runs/<run-id>/audit.log
 ```
+
+## ARV Gates (scripts/arv/)
+
+ARV includes specialized gates beyond lint/contracts/goldens:
+- `security-gate.ts` - Security validation
+- `identity-gate.ts` - Identity/auth checks
+- `reliability-gate.ts` - Reliability patterns
+- `observability-gate.ts` - Logging/tracing
+- `planner-gate.ts` - Plan validation
+- `openapi-gate.ts` - API schema validation
 
 ## Documentation
 

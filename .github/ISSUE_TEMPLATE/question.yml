@@ -1,0 +1,22 @@
+name: Question
+description: Ask a question (redirects to Discussions)
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Questions belong in Discussions
+
+        Please use [GitHub Discussions](https://github.com/intent-solutions-io/iam-git-with-intent/discussions) for questions.
+
+        - **Q&A**: General how-to questions
+        - **Ideas**: Feature brainstorming
+        - **Show and Tell**: Share what you've built
+
+        This helps keep Issues focused on actionable bugs and features.
+  - type: checkboxes
+    id: redirect
+    attributes:
+      label: I understand
+      options:
+        - label: I will ask my question in Discussions instead
+          required: true
