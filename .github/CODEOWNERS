@@ -1,0 +1,15 @@
+# Global owners
+* @jeremylongshore
+
+# Core packages (critical)
+/packages/core/ @jeremylongshore
+/packages/agents/ @jeremylongshore
+
+# Infrastructure (sensitive)
+/infra/ @jeremylongshore
+/.github/workflows/ @jeremylongshore
+
+# Security-sensitive
+/apps/api/ @jeremylongshore
+/apps/gateway/ @jeremylongshore
+/apps/github-webhook/ @jeremylongshore
