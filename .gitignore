@@ -69,3 +69,4 @@ infra/*.tfstate.*
 infra/.terraform.lock.hcl
 infra/*.tfplan
 *.backup
+consistency-reports/
