@@ -160,7 +160,7 @@ function formatEntryAsJson(entry: ImmutableAuditLogEntry, includeChainData: bool
   }
 
   // Exclude chain data for simpler exports
-  const { chain, contextHash, ...rest } = entry;
+  const { chain: _chain, contextHash: _contextHash, ...rest } = entry;
   return rest;
 }
 
