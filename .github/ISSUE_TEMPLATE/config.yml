@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: mailto:security@intentsolutions.io
+    about: Report security issues privately via email
+  - name: GitHub Discussions
+    url: https://github.com/intent-solutions-io/git-with-intent/discussions
+    about: Ask questions and discuss ideas
