@@ -38,10 +38,14 @@ import {
   isForensicsEnabled,
   createForensicCollector,
   type ForensicCollector,
+  getLogger,
 } from '@gwi/core';
 import { OrchestratorAgent } from '@gwi/agents';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { HeartbeatService } from './heartbeat.js';
+
+const logger = getLogger('engine');
 
 // =============================================================================
 // Default Configuration
@@ -175,7 +179,7 @@ export async function createEngine(
   // Get store backend info for logging
   const storeBackend = getStoreBackend();
   if (cfg.debug) {
-    console.log(`[Engine] Using ${storeBackend} store backend`);
+    logger.debug('Using store backend', { storeBackend });
   }
 
   // Get TenantStore from deps or environment-based singleton
@@ -186,7 +190,7 @@ export async function createEngine(
   try {
     hookRunner = await buildDefaultHookRunner();
   } catch (error) {
-    console.warn('[Engine] Failed to build hook runner, continuing without hooks:', error);
+    logger.warn('Failed to build hook runner, continuing without hooks', { error });
   }
 
   // Phase 13: Initialize orchestrator for workflow execution
@@ -195,10 +199,26 @@ export async function createEngine(
     orchestrator = new OrchestratorAgent();
     await orchestrator.initialize();
     if (cfg.debug) {
-      console.log('[Engine] Orchestrator initialized');
+      logger.debug('Orchestrator initialized');
     }
   } catch (error) {
-    console.warn('[Engine] Failed to initialize orchestrator, workflows will be limited:', error);
+    logger.warn('Failed to initialize orchestrator, workflows will be limited', { error });
+  }
+
+  // B2: Initialize heartbeat service for durability
+  const heartbeatService = new HeartbeatService({ store: tenantStore });
+
+  // B2: Recover orphaned runs on startup
+  try {
+    const orphanedRuns = await heartbeatService.recoverOrphanedRuns({ failOrphans: true });
+    if (orphanedRuns.length > 0) {
+      logger.info('Recovered orphaned runs on startup', {
+        count: orphanedRuns.length,
+        ownerId: heartbeatService.getOwnerId(),
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to recover orphaned runs', { error });
   }
 
   /**
@@ -233,7 +253,7 @@ export async function createEngine(
     } catch (error) {
       // Hooks should never crash the engine
       if (cfg.debug) {
-        console.warn('[Engine] Hook execution failed:', error);
+        logger.warn('Hook execution failed', { error });
       }
     }
   }
@@ -265,7 +285,7 @@ export async function createEngine(
       const { runId, tenantId, runType, repo } = validatedRequest;
 
       if (cfg.debug) {
-        console.log(`[Engine] Starting run ${runId} for ${repo.fullName}`);
+        logger.debug('Starting run', { runId, repo: repo.fullName });
       }
 
       // Create initial result
@@ -294,16 +314,22 @@ export async function createEngine(
             commandText: request.metadata?.commandText as string | undefined,
           },
           a2aCorrelationId: runId,
+          // B2: Durability - track owner and heartbeat for orphan detection
+          ownerId: heartbeatService.getOwnerId(),
+          lastHeartbeatAt: new Date(),
         };
 
         await tenantStore.createRun(tenantId, saasRun);
 
+        // B2: Start heartbeat for this run
+        heartbeatService.startHeartbeat(tenantId, runId);
+
         if (cfg.debug) {
-          console.log(`[Engine] Run ${runId} stored in ${storeBackend}`);
+          logger.debug('Run stored and heartbeat started', { runId, storeBackend });
         }
       } catch (error) {
         // Fall back to in-memory storage if TenantStore fails
-        console.warn(`[Engine] TenantStore.createRun failed, using fallback:`, error);
+        logger.warn('TenantStore.createRun failed, using fallback', { error });
         fallbackRuns.set(`${tenantId}:${runId}`, {
           request: validatedRequest,
           result,
@@ -334,7 +360,7 @@ export async function createEngine(
           riskMode: request.riskMode,
         });
         if (cfg.debug) {
-          console.log(`[Engine] Forensic collector initialized for run ${runId}`);
+          logger.debug('Forensic collector initialized', { runId });
         }
       }
 
@@ -358,6 +384,9 @@ export async function createEngine(
         // Start workflow execution in background
         orchestrator.startWorkflow(workflowType, workflowInput.payload)
           .then(async (workflowResult) => {
+            // B2: Stop heartbeat - run is completing
+            heartbeatService.stopHeartbeat(runId);
+
             // Update run status based on workflow result
             const finalStatus: EngineRunStatus =
               workflowResult.status === 'completed' ? 'completed' :
@@ -374,7 +403,7 @@ export async function createEngine(
 
               await logToHooks(validatedRequest, finalStatus);
             } catch (err) {
-              console.error(`[Engine] Failed to update run ${runId}:`, err);
+              logger.error('Failed to update run', { runId, error: err });
             }
 
             // Phase 27: Complete forensic collection and save bundle
@@ -384,19 +413,25 @@ export async function createEngine(
                 const bundle = collector.build();
                 const bundlePath = saveForensicBundle(bundle);
                 if (cfg.debug) {
-                  console.log(`[Engine] Forensic bundle saved: ${bundlePath}`);
+                  logger.debug('Forensic bundle saved', { bundlePath });
                 }
               } catch (err) {
-                console.error(`[Engine] Failed to save forensic bundle:`, err);
+                logger.error('Failed to save forensic bundle', { error: err });
               }
             }
 
             if (cfg.debug) {
-              console.log(`[Engine] Workflow ${workflowResult.workflowId} completed with status: ${workflowResult.status}`);
+              logger.debug('Workflow completed', {
+                workflowId: workflowResult.workflowId,
+                status: workflowResult.status,
+              });
             }
           })
           .catch(async (error) => {
-            console.error(`[Engine] Workflow failed for run ${runId}:`, error);
+            // B2: Stop heartbeat - run failed
+            heartbeatService.stopHeartbeat(runId);
+
+            logger.error('Workflow failed for run', { runId, error });
             try {
               await tenantStore.updateRun(tenantId, runId, {
                 status: 'failed',
@@ -405,7 +440,7 @@ export async function createEngine(
               });
               await logToHooks(validatedRequest, 'failed');
             } catch (err) {
-              console.error(`[Engine] Failed to update failed run ${runId}:`, err);
+              logger.error('Failed to update failed run', { runId, error: err });
             }
 
             // Phase 27: Record failure in forensic bundle
@@ -419,10 +454,10 @@ export async function createEngine(
                 const bundle = collector.build();
                 const bundlePath = saveForensicBundle(bundle);
                 if (cfg.debug) {
-                  console.log(`[Engine] Forensic bundle (failed) saved: ${bundlePath}`);
+                  logger.debug('Forensic bundle (failed) saved', { bundlePath });
                 }
               } catch (err) {
-                console.error(`[Engine] Failed to save forensic bundle:`, err);
+                logger.error('Failed to save forensic bundle', { error: err });
               }
             }
           });
@@ -440,7 +475,7 @@ export async function createEngine(
         }
       } catch (error) {
         if (cfg.debug) {
-          console.warn(`[Engine] TenantStore.getRun failed:`, error);
+          logger.warn('TenantStore.getRun failed', { error });
         }
       }
 
@@ -462,13 +497,13 @@ export async function createEngine(
           await tenantStore.updateRun(tenantId, runId, { status: 'cancelled' });
 
           if (cfg.debug) {
-            console.log(`[Engine] Cancelled run ${runId} in ${storeBackend}`);
+            logger.debug('Cancelled run', { runId, storeBackend });
           }
           return true;
         }
       } catch (error) {
         if (cfg.debug) {
-          console.warn(`[Engine] TenantStore.cancelRun failed:`, error);
+          logger.warn('TenantStore.cancelRun failed', { error });
         }
       }
 
@@ -488,7 +523,7 @@ export async function createEngine(
       stored.result.completedAt = new Date().toISOString();
 
       if (cfg.debug) {
-        console.log(`[Engine] Cancelled run ${runId} in fallback storage`);
+        logger.debug('Cancelled run in fallback storage', { runId });
       }
 
       return true;
@@ -503,7 +538,7 @@ export async function createEngine(
         }
       } catch (error) {
         if (cfg.debug) {
-          console.warn(`[Engine] TenantStore.listRuns failed:`, error);
+          logger.warn('TenantStore.listRuns failed', { error });
         }
       }
 
