@@ -22,6 +22,9 @@ import {
   getFirestoreCheckpointManager,
   getLogger,
   getFirestoreClient,
+  // B5: Health check utilities
+  createHealthRouter,
+  type ServiceHealthConfig,
 } from '@gwi/core';
 import { getIdempotencyService } from '@gwi/engine';
 import { WorkerProcessor, type WorkerJob, type JobResult } from './processor.js';
@@ -79,55 +82,49 @@ registerHandlers(processor);
 let broker: MessageBroker | null = null;
 
 // =============================================================================
-// Health Check Endpoints
+// Health Check Endpoints (B5: Standardized health checks)
 // =============================================================================
 
 /**
- * Liveness probe - is the process running?
+ * B5: Create standardized health router for Cloud Run integration.
+ *
+ * Provides:
+ * - GET /health - Liveness probe
+ * - GET /health/ready - Readiness probe (checks broker connection)
+ * - GET /health/deep - Full diagnostics (includes DLQ metrics, recovery status)
  */
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'worker',
-    version: '0.2.0',
-    env: config.env,
-    mode: config.pullMode ? 'pull' : 'push',
-    timestamp: Date.now(),
-  });
-});
-
-/**
- * Readiness probe - can we process jobs?
- * Cloud Run startup probe expects /health/ready
- */
-app.get('/health/ready', async (_req, res) => {
-  try {
-    // Check if broker is connected
-    const brokerReady = broker?.isConnected() ?? false;
-
-    if (!brokerReady && !config.pullMode) {
+const healthConfig: ServiceHealthConfig = {
+  serviceName: 'worker',
+  version: '0.2.0',
+  env: config.env,
+  checks: {
+    // Queue check - verify Pub/Sub broker is connected
+    queue: async () => {
+      const brokerReady = broker?.isConnected() ?? false;
       // In push mode, we're ready as soon as we're listening
-      res.json({
-        status: 'ready',
-        service: 'worker',
-        mode: 'push',
-      });
-      return;
-    }
+      if (!brokerReady && !config.pullMode) {
+        return {
+          healthy: true,
+          message: 'Push mode - ready to receive',
+          details: { mode: 'push' },
+        };
+      }
+      return {
+        healthy: brokerReady,
+        message: brokerReady ? 'Broker connected' : 'Broker not connected',
+        details: { mode: config.pullMode ? 'pull' : 'push', connected: brokerReady },
+      };
+    },
+  },
+  metadata: {
+    mode: config.pullMode ? 'pull' : 'push',
+    projectId: config.projectId,
+    subscriptionId: config.subscriptionId,
+  },
+};
 
-    res.json({
-      status: brokerReady ? 'ready' : 'not_ready',
-      service: 'worker',
-      mode: config.pullMode ? 'pull' : 'push',
-      brokerConnected: brokerReady,
-    });
-  } catch (error) {
-    res.status(503).json({
-      status: 'not_ready',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
-});
+const healthRouter = createHealthRouter(healthConfig);
+app.use(healthRouter);
 
 // =============================================================================
 // Push Endpoint (for Pub/Sub push subscriptions)
