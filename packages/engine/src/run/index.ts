@@ -14,3 +14,4 @@ export * from './cancellation.js';
 export * from './checkpoint.js';
 export * from './resume.js';
 export * from './state-machine.js';
+export * from './heartbeat.js';

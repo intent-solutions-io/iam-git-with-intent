@@ -48,6 +48,16 @@ import type {
 import { generateInstanceId, generateScheduleId } from '../templates/index.js';
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * B2: Statuses considered "in-flight" (non-terminal) for durability queries
+ * Used by listOrphanedRuns and listInFlightRunsByOwner
+ */
+const IN_FLIGHT_STATUSES: RunStatus[] = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
@@ -377,6 +387,50 @@ export class InMemoryTenantStore implements TenantStore {
   async countInFlightRuns(tenantId: string): Promise<number> {
     const runs = this.runs.get(tenantId) ?? [];
     return runs.filter(r => r.status === 'pending' || r.status === 'running').length;
+  }
+
+  // B2: Durability - Heartbeat and Orphan Detection
+  async updateRunHeartbeat(tenantId: string, runId: string, ownerId: string): Promise<void> {
+    const runs = this.runs.get(tenantId) ?? [];
+    const run = runs.find(r => r.id === runId);
+    if (run) {
+      run.lastHeartbeatAt = now();
+      run.ownerId = ownerId;
+      run.updatedAt = now();
+    }
+  }
+
+  async listOrphanedRuns(staleThresholdMs = 300000): Promise<SaaSRun[]> {
+    const staleThreshold = new Date(Date.now() - staleThresholdMs);
+    const orphaned: SaaSRun[] = [];
+
+    for (const runs of this.runs.values()) {
+      for (const run of runs) {
+        if (
+          IN_FLIGHT_STATUSES.includes(run.status) &&
+          run.lastHeartbeatAt &&
+          run.lastHeartbeatAt < staleThreshold
+        ) {
+          orphaned.push(run);
+        }
+      }
+    }
+
+    return orphaned;
+  }
+
+  async listInFlightRunsByOwner(ownerId: string): Promise<SaaSRun[]> {
+    const result: SaaSRun[] = [];
+
+    for (const runs of this.runs.values()) {
+      for (const run of runs) {
+        if (run.ownerId === ownerId && IN_FLIGHT_STATUSES.includes(run.status)) {
+          result.push(run);
+        }
+      }
+    }
+
+    return result;
   }
 
   // Phase 12: Connector Config management

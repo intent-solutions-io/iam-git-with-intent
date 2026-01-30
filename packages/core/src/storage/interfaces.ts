@@ -545,6 +545,10 @@ export interface SaaSRun extends Run {
   approvalReason?: string;
   /** Phase 11: Proposed changes summary */
   proposedChanges?: ProposedChange[];
+  /** B2: Last heartbeat timestamp for orphan detection */
+  lastHeartbeatAt?: Date;
+  /** B2: Instance ID that owns this run (for orphan detection) */
+  ownerId?: string;
 }
 
 /**
@@ -800,6 +804,25 @@ export interface TenantStore {
    * Phase A6: Concurrency caps
    */
   countInFlightRuns(tenantId: string): Promise<number>;
+
+  /**
+   * Update heartbeat timestamp for a running run
+   * B2: Durability - allows orphan detection
+   */
+  updateRunHeartbeat(tenantId: string, runId: string, ownerId: string): Promise<void>;
+
+  /**
+   * List orphaned runs (stale heartbeat, non-terminal status)
+   * B2: Recovery - finds runs that need to be recovered or failed
+   * @param staleThresholdMs - Runs with heartbeat older than this are considered orphaned
+   */
+  listOrphanedRuns(staleThresholdMs?: number): Promise<SaaSRun[]>;
+
+  /**
+   * List in-flight runs for a specific owner
+   * B2: Recovery - allows instance to find its own runs on restart
+   */
+  listInFlightRunsByOwner(ownerId: string): Promise<SaaSRun[]>;
 
   // Phase 12: Connector Config management
   getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null>;
