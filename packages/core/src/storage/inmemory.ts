@@ -379,6 +379,52 @@ export class InMemoryTenantStore implements TenantStore {
     return runs.filter(r => r.status === 'pending' || r.status === 'running').length;
   }
 
+  // B2: Durability - Heartbeat and Orphan Detection
+  async updateRunHeartbeat(tenantId: string, runId: string, ownerId: string): Promise<void> {
+    const runs = this.runs.get(tenantId) ?? [];
+    const run = runs.find(r => r.id === runId);
+    if (run) {
+      run.lastHeartbeatAt = now();
+      run.ownerId = ownerId;
+      run.updatedAt = now();
+    }
+  }
+
+  async listOrphanedRuns(staleThresholdMs = 300000): Promise<SaaSRun[]> {
+    const staleThreshold = new Date(Date.now() - staleThresholdMs);
+    const nonTerminalStatuses = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
+    const orphaned: SaaSRun[] = [];
+
+    for (const runs of this.runs.values()) {
+      for (const run of runs) {
+        if (
+          nonTerminalStatuses.includes(run.status) &&
+          run.lastHeartbeatAt &&
+          run.lastHeartbeatAt < staleThreshold
+        ) {
+          orphaned.push(run);
+        }
+      }
+    }
+
+    return orphaned;
+  }
+
+  async listInFlightRunsByOwner(ownerId: string): Promise<SaaSRun[]> {
+    const nonTerminalStatuses = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
+    const result: SaaSRun[] = [];
+
+    for (const runs of this.runs.values()) {
+      for (const run of runs) {
+        if (run.ownerId === ownerId && nonTerminalStatuses.includes(run.status)) {
+          result.push(run);
+        }
+      }
+    }
+
+    return result;
+  }
+
   // Phase 12: Connector Config management
   async getConnectorConfig(tenantId: string, connectorId: string): Promise<TenantConnectorConfig | null> {
     const configs = this.connectorConfigs.get(tenantId) ?? [];

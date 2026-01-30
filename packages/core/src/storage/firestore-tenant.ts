@@ -130,6 +130,10 @@ interface RunDoc {
   updatedAt: Timestamp;
   completedAt?: Timestamp;
   durationMs?: number;
+  /** B2: Last heartbeat for orphan detection */
+  lastHeartbeatAt?: Timestamp;
+  /** B2: Instance ID owning this run */
+  ownerId?: string;
 }
 
 // =============================================================================
@@ -239,6 +243,9 @@ function runDocToModel(doc: RunDoc): SaaSRun {
     updatedAt: timestampToDate(doc.updatedAt)!,
     completedAt: timestampToDate(doc.completedAt),
     durationMs: doc.durationMs,
+    // B2: Durability fields
+    lastHeartbeatAt: timestampToDate(doc.lastHeartbeatAt),
+    ownerId: doc.ownerId,
   };
 }
 
@@ -266,6 +273,9 @@ function runModelToDoc(run: SaaSRun): RunDoc {
     updatedAt: dateToTimestamp(run.updatedAt)!,
     completedAt: dateToTimestamp(run.completedAt),
     durationMs: run.durationMs,
+    // B2: Durability fields
+    lastHeartbeatAt: dateToTimestamp(run.lastHeartbeatAt),
+    ownerId: run.ownerId,
   };
 }
 
@@ -635,6 +645,55 @@ export class FirestoreTenantStore implements TenantStore {
     ]);
 
     return pendingSnapshot.data().count + runningSnapshot.data().count;
+  }
+
+  // ---------------------------------------------------------------------------
+  // B2: Durability - Heartbeat and Orphan Detection
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Update heartbeat timestamp for a running run
+   * Called periodically by the engine while a run is active
+   */
+  async updateRunHeartbeat(_tenantId: string, runId: string, ownerId: string): Promise<void> {
+    // tenantId kept for API consistency; runId is globally unique
+    await this.runDoc(runId).update({
+      lastHeartbeatAt: Timestamp.now(),
+      ownerId,
+      updatedAt: Timestamp.now(),
+    });
+  }
+
+  /**
+   * List orphaned runs (stale heartbeat, non-terminal status)
+   * Used by recovery process to find and handle abandoned runs
+   * @param staleThresholdMs - Default 5 minutes (300000ms)
+   */
+  async listOrphanedRuns(staleThresholdMs = 300000): Promise<SaaSRun[]> {
+    const staleThreshold = new Date(Date.now() - staleThresholdMs);
+
+    // Query for runs that have a heartbeat and it's stale
+    // Only non-terminal statuses (pending, running, awaiting_approval, waiting_external)
+    const snapshot = await this.runsRef()
+      .where('lastHeartbeatAt', '<', Timestamp.fromDate(staleThreshold))
+      .where('status', 'in', ['pending', 'running', 'awaiting_approval', 'waiting_external'])
+      .limit(100) // Process in batches
+      .get();
+
+    return snapshot.docs.map(doc => runDocToModel(doc.data() as RunDoc));
+  }
+
+  /**
+   * List in-flight runs for a specific owner instance
+   * Used on startup to recover runs that this instance was processing
+   */
+  async listInFlightRunsByOwner(ownerId: string): Promise<SaaSRun[]> {
+    const snapshot = await this.runsRef()
+      .where('ownerId', '==', ownerId)
+      .where('status', 'in', ['pending', 'running', 'awaiting_approval', 'waiting_external'])
+      .get();
+
+    return snapshot.docs.map(doc => runDocToModel(doc.data() as RunDoc));
   }
 
   // ---------------------------------------------------------------------------
