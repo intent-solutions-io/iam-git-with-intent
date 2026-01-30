@@ -28,6 +28,9 @@ import {
   createWorkflowJob,
   type AutomationTriggers,
   getAutomationRateLimiter,
+  // B5: Health check utilities
+  createHealthRouter,
+  type ServiceHealthConfig,
 } from '@gwi/core';
 import {
   getIdempotencyService,
@@ -82,42 +85,37 @@ app.use(express.json({
 const tenantLinker = getTenantLinker();
 
 /**
- * Health check (liveness probe)
+ * B5: Create standardized health router for Cloud Run integration.
+ *
+ * Provides:
+ * - GET /health - Liveness probe
+ * - GET /health/ready - Readiness probe (checks webhook secret)
+ * - GET /health/deep - Full diagnostics
  */
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'healthy',
-    service: 'github-webhook',
-    version: '0.2.0',
-    env: config.env,
-    timestamp: new Date().toISOString(),
-  });
-});
+const healthConfig: ServiceHealthConfig = {
+  serviceName: 'github-webhook',
+  version: '0.2.0',
+  env: config.env,
+  checks: {
+    // External check - verify webhook secret is configured
+    external: {
+      'webhook-secret': async () => {
+        const isConfigured = !!config.webhookSecret;
+        return {
+          healthy: isConfigured,
+          message: isConfigured ? 'Webhook secret configured' : 'Webhook secret not configured',
+        };
+      },
+    },
+  },
+  metadata: {
+    projectId: config.projectId,
+    useJobQueue: config.useJobQueue,
+  },
+};
 
-/**
- * Startup/readiness probe endpoint
- * Cloud Run startup probe checks this to determine when the service is ready.
- */
-app.get('/health/ready', (_req, res) => {
-  // Webhook handler is ready when the secret is configured
-  const isReady = !!config.webhookSecret;
-
-  if (isReady) {
-    res.json({
-      status: 'ready',
-      service: 'github-webhook',
-      version: '0.2.0',
-      env: config.env,
-      timestamp: new Date().toISOString(),
-    });
-  } else {
-    res.status(503).json({
-      status: 'not_ready',
-      reason: 'Webhook secret not configured',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
+const healthRouter = createHealthRouter(healthConfig);
+app.use(healthRouter);
 
 /**
  * GitHub webhook endpoint

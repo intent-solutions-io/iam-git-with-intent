@@ -35,7 +35,15 @@ import cors from 'cors';
 import { z } from 'zod';
 import { createEngine, idempotencyMiddleware, getIdempotencyMetrics } from '@gwi/engine';
 import type { Engine, RunRequest, EngineRunType } from '@gwi/engine';
-import { getTenantStore, checkConcurrencyLimit, type PlanId, generateTraceId } from '@gwi/core';
+import {
+  getTenantStore,
+  checkConcurrencyLimit,
+  type PlanId,
+  generateTraceId,
+  // B5: Health check utilities
+  createHealthRouter,
+  type ServiceHealthConfig,
+} from '@gwi/core';
 import { marketplaceRouter } from './marketplace-routes.js';
 import { onboardingRouter } from './onboarding-routes.js';
 import { auditPolicyRouter } from './audit-policy-routes.js';
@@ -196,42 +204,38 @@ const ForemanRequestSchema = z.object({
 });
 
 /**
- * Health check endpoint (liveness probe)
+ * B5: Create standardized health router for Cloud Run integration.
+ *
+ * Provides:
+ * - GET /health - Liveness probe
+ * - GET /health/ready - Readiness probe (checks agent engines)
+ * - GET /health/deep - Full diagnostics
  */
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'healthy',
-    app: config.appName,
-    version: config.appVersion,
-    env: config.env,
-    timestamp: Date.now(),
-  });
-});
+const healthConfig: ServiceHealthConfig = {
+  serviceName: config.appName,
+  version: config.appVersion,
+  env: config.env,
+  checks: {
+    // External check - verify agent engines are configured
+    external: {
+      agents: async () => {
+        const hasEngines = Object.keys(agentEngines).length > 0;
+        return {
+          healthy: hasEngines,
+          message: hasEngines ? `${Object.keys(agentEngines).length} agent engines configured` : 'No agent engines configured',
+          details: { agents: Object.keys(agentEngines) },
+        };
+      },
+    },
+  },
+  metadata: {
+    location: config.location,
+    projectId: config.projectId,
+  },
+};
 
-/**
- * Startup/readiness probe endpoint
- * Cloud Run startup probe checks this to determine when the service is ready.
- */
-app.get('/health/ready', (_req, res) => {
-  // Gateway is ready when agent engines are configured
-  const hasEngines = Object.keys(agentEngines).length > 0;
-
-  if (hasEngines) {
-    res.json({
-      status: 'ready',
-      app: config.appName,
-      version: config.appVersion,
-      agents: Object.keys(agentEngines),
-      timestamp: new Date().toISOString(),
-    });
-  } else {
-    res.status(503).json({
-      status: 'not_ready',
-      reason: 'No agent engines configured',
-      timestamp: new Date().toISOString(),
-    });
-  }
-});
+const healthRouter = createHealthRouter(healthConfig);
+app.use(healthRouter);
 
 /**
  * GET /metrics - Idempotency and gateway metrics

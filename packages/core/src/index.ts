@@ -216,6 +216,9 @@ export * from './export-integrations/index.js';
 // System Health exports (Phase 69: Health Monitoring & Diagnostics)
 export * from './system-health/index.js';
 
+// Health Check exports (B5: Cloud Run health check endpoints)
+export * from './health/index.js';
+
 // GA Readiness exports (Phase 70: Production Launch Gate)
 export * from './ga-readiness/index.js';
 

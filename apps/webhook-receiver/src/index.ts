@@ -39,6 +39,10 @@ import { WebhookRouter } from './pubsub/WebhookRouter.js';
 import { getRateLimiter } from './ratelimit/RateLimiter.js';
 import { createLogger } from './logger.js';
 import { createSecretManager } from './secrets.js';
+import {
+  createHealthRouter,
+  type ServiceHealthConfig,
+} from '@gwi/core';
 
 // =============================================================================
 // Configuration
@@ -123,64 +127,70 @@ app.use(express.json({
 }));
 
 // =============================================================================
-// Health Check Endpoints
+// Health Check Endpoints (B5: Standardized health checks)
 // =============================================================================
 
 /**
- * Liveness probe - is the service running?
+ * B5: Create standardized health router for Cloud Run integration.
+ *
+ * Provides:
+ * - GET /health - Liveness probe
+ * - GET /health/ready - Readiness probe (checks Pub/Sub topics)
+ * - GET /health/deep - Full diagnostics
  */
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'healthy',
-    service: 'webhook-receiver',
-    version: '0.1.0',
-    env: config.environment,
-    timestamp: Date.now(),
-  });
-});
-
-/**
- * Readiness probe - is the service ready to receive traffic?
- */
-app.get('/health/ready', async (_req: Request, res: Response) => {
-  try {
-    // Check Pub/Sub connection if project ID is set
-    if (config.projectId) {
-      const router = getWebhookRouter();
-      const topicHealth = await router.checkAllTopicsHealth();
-      const allHealthy = Object.values(topicHealth).every(Boolean);
-
-      if (!allHealthy) {
-        const unhealthyTopics = Object.entries(topicHealth)
-          .filter(([, healthy]) => !healthy)
-          .map(([source]) => source);
-
-        res.status(503).json({
-          status: 'not_ready',
-          reason: `Pub/Sub topics not ready: ${unhealthyTopics.join(', ')}`,
-          topics: topicHealth,
-          timestamp: Date.now(),
-        });
-        return;
+const healthConfig: ServiceHealthConfig = {
+  serviceName: 'webhook-receiver',
+  version: '0.1.0',
+  env: config.environment,
+  checks: {
+    // Queue check - verify Pub/Sub topics are healthy
+    queue: async () => {
+      if (!config.projectId) {
+        return {
+          healthy: true,
+          message: 'No project ID configured (dev mode)',
+          details: { projectId: 'not_configured' },
+        };
       }
-    }
 
-    res.json({
-      status: 'ready',
-      service: 'webhook-receiver',
-      version: '0.1.0',
-      env: config.environment,
-      projectId: config.projectId || 'not_configured',
-      timestamp: Date.now(),
-    });
-  } catch (error) {
-    res.status(503).json({
-      status: 'not_ready',
-      reason: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: Date.now(),
-    });
-  }
-});
+      try {
+        const router = getWebhookRouter();
+        const topicHealth = await router.checkAllTopicsHealth();
+        const allHealthy = Object.values(topicHealth).every(Boolean);
+
+        if (!allHealthy) {
+          const unhealthyTopics = Object.entries(topicHealth)
+            .filter(([, healthy]) => !healthy)
+            .map(([source]) => source);
+          return {
+            healthy: false,
+            message: `Unhealthy topics: ${unhealthyTopics.join(', ')}`,
+            details: { topics: topicHealth },
+          };
+        }
+
+        return {
+          healthy: true,
+          message: 'All Pub/Sub topics healthy',
+          details: { topics: topicHealth },
+        };
+      } catch (error) {
+        return {
+          healthy: false,
+          message: error instanceof Error ? error.message : 'Unknown error',
+        };
+      }
+    },
+  },
+  metadata: {
+    projectId: config.projectId || 'not_configured',
+    requireSignature: config.requireSignature,
+    rateLimitPerMinute: config.rateLimitPerMinute,
+  },
+};
+
+const healthRouter = createHealthRouter(healthConfig);
+app.use(healthRouter);
 
 // =============================================================================
 // Webhook Endpoints
