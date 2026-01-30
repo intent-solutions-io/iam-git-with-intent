@@ -201,17 +201,19 @@ quality-checks → build → build-images → deploy-*
    ARV Check
 ```
 
-**Blocking:** PRs cannot merge if ARV fails.
+**Note:** ARV runs in CI but currently issues warnings only. Hard mode can be enabled for strict enforcement.
 
 ### ARV Checks
 
-| Check | Description | Blocks Merge? |
-|-------|-------------|---------------|
-| Agent run method | Verifies async run/processTask exists | No (warning) |
-| Error handling | Checks for try/catch blocks | No (warning) |
-| Model configuration | Verifies model config present | No (warning) |
-| SPIFFE ID (hard mode) | Checks for SPIFFE identity | No |
-| Audit logging (hard mode) | Verifies audit calls | No |
+| Check | Description | Behavior |
+|-------|-------------|----------|
+| Agent run method | Verifies async run/processTask exists | Warning (soft fail) |
+| Error handling | Checks for try/catch blocks | Warning (soft fail) |
+| Model configuration | Verifies model config present | Warning (soft fail) |
+| SPIFFE ID (hard mode) | Checks for SPIFFE identity | Warning (off by default) |
+| Audit logging (hard mode) | Verifies audit calls | Warning (off by default) |
+
+**To enable blocking mode:** Set `HARD_MODE=true` in CI environment.
 
 ### Running ARV Locally
 
@@ -323,6 +325,6 @@ variable "enable_stripe" {
 
 ## Related Documentation
 
-- [Secrets Inventory](./000-docs/XXX-secrets-inventory.md) - PR #47
 - [Threat Model](./000-docs/110-DR-TMOD-security-threat-model.md)
 - [Observability Runbook](./000-docs/032-OD-RUNB-observability-operations.md)
+- [Disaster Recovery Runbook](./000-docs/112-DR-RUNB-disaster-recovery-runbook.md)
