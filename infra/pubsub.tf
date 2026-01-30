@@ -82,8 +82,8 @@ resource "google_pubsub_subscription" "worker_jobs" {
 
   # Retry policy with exponential backoff
   retry_policy {
-    minimum_backoff = "10s"   # Start at 10 seconds
-    maximum_backoff = "600s"  # Cap at 10 minutes
+    minimum_backoff = "10s"  # Start at 10 seconds
+    maximum_backoff = "600s" # Cap at 10 minutes
   }
 
   # Dead letter policy - route to DLQ after 5 failed attempts
