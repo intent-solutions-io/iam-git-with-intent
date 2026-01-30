@@ -56,7 +56,7 @@ This document defines the standard release process for Git With Intent. Follow t
 git checkout main
 git pull origin main
 
-# Create release branch (optional for major releases)
+# Create release branch (required for review process)
 git checkout -b release/vX.Y.Z
 ```
 
@@ -105,7 +105,10 @@ npm run arv
 ### Step 5: Commit Release
 
 ```bash
-git add VERSION package.json package-lock.json CHANGELOG.md
+# Include all version-bumped files (root and workspace packages)
+git add VERSION CHANGELOG.md package.json package-lock.json \
+  apps/*/package.json packages/*/package.json
+
 git commit -m "chore(release): prepare vX.Y.Z
 
 - Update version to X.Y.Z
@@ -113,9 +116,20 @@ git commit -m "chore(release): prepare vX.Y.Z
 "
 ```
 
-### Step 6: Create Tag
+### Step 6: Create PR and Merge
 
 ```bash
+# Push release branch
+git push origin release/vX.Y.Z
+
+# Create PR for review
+gh pr create --title "chore(release): prepare vX.Y.Z" \
+  --body "Release preparation for vX.Y.Z. See CHANGELOG.md for details."
+
+# After PR is approved and merged, create tag on main
+git checkout main
+git pull origin main
+
 # Create annotated tag
 git tag -a vX.Y.Z -m "Release vX.Y.Z
 
@@ -125,8 +139,7 @@ Highlights:
 - Bug fix Y
 "
 
-# Push commit and tag
-git push origin main
+# Push tag
 git push origin vX.Y.Z
 ```
 
@@ -189,8 +202,9 @@ tofu apply -var-file=envs/prod.tfvars \
 ```bash
 # Revert release commit
 git revert HEAD
+git push origin main
 
-# Delete broken tag
+# Delete broken tag (local and remote)
 git push origin --delete vX.Y.Z
 git tag -d vX.Y.Z
 
