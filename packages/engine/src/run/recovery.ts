@@ -145,8 +145,16 @@ export class RecoveryOrchestrator {
       ownerId: config.ownerId,
     });
 
-    // Use provided checkpoint store or create in-memory one
+    // Use provided checkpoint store or create in-memory one.
+    // Warn if no persistent store is provided in non-test environments,
+    // as this breaks cross-instance recovery.
     this.checkpointStore = config.checkpointStore ?? new InMemoryCheckpointStore();
+    if (!config.checkpointStore && process.env.NODE_ENV !== 'test') {
+      logger.warn(
+        'RecoveryOrchestrator using InMemoryCheckpointStore - run recovery will not work across instance restarts',
+        { ownerId: this.getOwnerId() }
+      );
+    }
   }
 
   /**
@@ -339,13 +347,24 @@ export class RecoveryOrchestrator {
               resumeCount: (run.resumeCount || 0) + 1,
             });
           } else {
-            runResult.success = false;
+            // Resume action failed - mark run as failed to prevent infinite recovery loops
+            runResult.decision = 'fail';
+            runResult.reason = `Resume action failed: ${resumeResult.error}`;
             runResult.error = resumeResult.error;
 
-            logger.error('Failed to resume run', {
+            logger.error('Failed to resume run, marking as failed', {
               runId: run.id,
               error: resumeResult.error,
             });
+
+            // Fail the run to prevent recovery loops
+            await this.store.updateRun(run.tenantId, run.id, {
+              status: 'failed',
+              error: `Run orphaned and resumable, but resume action failed: ${resumeResult.error}. Recovered by: ${this.getOwnerId()}`,
+              completedAt: new Date(),
+            });
+
+            runResult.success = true; // The 'fail' action was successful
           }
         } else {
           // Dry run - just mark as would succeed
