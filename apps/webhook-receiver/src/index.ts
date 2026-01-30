@@ -177,7 +177,8 @@ const healthConfig: ServiceHealthConfig = {
       } catch (error) {
         return {
           healthy: false,
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message: error instanceof Error ? error.message : 'Unknown error checking queue health',
+          details: { error: String(error) },
         };
       }
     },

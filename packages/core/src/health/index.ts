@@ -163,66 +163,38 @@ export class ServiceHealthManager {
 
   private registerChecks(): void {
     const { checks } = this.config;
+    if (!checks) return;
 
-    // Storage check
-    if (checks?.storage) {
-      this.healthService.registerHealthCheck({
-        name: 'storage',
-        type: 'storage' as ComponentType,
-        check: async () => {
-          const result = await checks.storage!();
-          return {
-            status: result.healthy ? ('healthy' as SystemHealthStatus) : ('unhealthy' as SystemHealthStatus),
-            message: result.message,
-            details: result.details,
-          };
-        },
-        timeoutMs: 5000,
-        intervalMs: 30000,
-        critical: true,
-      });
-    }
+    // Standard check configurations for DRY registration
+    const standardChecks = [
+      { key: 'storage' as const, type: 'storage' as ComponentType, critical: true, unhealthyStatus: 'unhealthy' as SystemHealthStatus, timeoutMs: 5000, intervalMs: 30000 },
+      { key: 'queue' as const, type: 'queue' as ComponentType, critical: true, unhealthyStatus: 'unhealthy' as SystemHealthStatus, timeoutMs: 5000, intervalMs: 30000 },
+      { key: 'cache' as const, type: 'cache' as ComponentType, critical: false, unhealthyStatus: 'degraded' as SystemHealthStatus, timeoutMs: 2000, intervalMs: 30000 },
+    ];
 
-    // Queue check
-    if (checks?.queue) {
-      this.healthService.registerHealthCheck({
-        name: 'queue',
-        type: 'queue' as ComponentType,
-        check: async () => {
-          const result = await checks.queue!();
-          return {
-            status: result.healthy ? ('healthy' as SystemHealthStatus) : ('unhealthy' as SystemHealthStatus),
-            message: result.message,
-            details: result.details,
-          };
-        },
-        timeoutMs: 5000,
-        intervalMs: 30000,
-        critical: true,
-      });
-    }
-
-    // Cache check
-    if (checks?.cache) {
-      this.healthService.registerHealthCheck({
-        name: 'cache',
-        type: 'cache' as ComponentType,
-        check: async () => {
-          const result = await checks.cache!();
-          return {
-            status: result.healthy ? ('healthy' as SystemHealthStatus) : ('degraded' as SystemHealthStatus),
-            message: result.message,
-            details: result.details,
-          };
-        },
-        timeoutMs: 2000,
-        intervalMs: 30000,
-        critical: false,
-      });
+    for (const { key, type, critical, unhealthyStatus, timeoutMs, intervalMs } of standardChecks) {
+      const checkFn = checks[key];
+      if (checkFn) {
+        this.healthService.registerHealthCheck({
+          name: key,
+          type,
+          check: async () => {
+            const result = await checkFn();
+            return {
+              status: result.healthy ? ('healthy' as SystemHealthStatus) : unhealthyStatus,
+              message: result.message,
+              details: result.details,
+            };
+          },
+          timeoutMs,
+          intervalMs,
+          critical,
+        });
+      }
     }
 
     // External checks
-    if (checks?.external) {
+    if (checks.external) {
       for (const [name, checkFn] of Object.entries(checks.external)) {
         this.healthService.registerHealthCheck({
           name: `external:${name}`,
@@ -457,6 +429,15 @@ export function createHealthRouter(config: ServiceHealthConfig): Router {
 
 /**
  * Create a Firestore health check function
+ *
+ * @remarks
+ * This health check reads from the `_health` collection with document ID `ping`.
+ * The collection doesn't need to exist - Firestore returns an empty document
+ * for non-existent paths, which is sufficient to verify connectivity.
+ * No write permissions or collection setup required.
+ *
+ * @param getFirestore - Function that returns the Firestore instance or null if not initialized
+ * @returns A health check function suitable for use with ServiceHealthConfig
  */
 export function createFirestoreCheck(
   getFirestore: () => FirebaseFirestore.Firestore | null
@@ -468,7 +449,7 @@ export function createFirestoreCheck(
         return { healthy: false, message: 'Firestore not initialized' };
       }
 
-      // Try to read a test document
+      // Read a test document - collection doesn't need to exist
       const startTime = Date.now();
       await firestore.collection('_health').doc('ping').get();
       const latencyMs = Date.now() - startTime;
