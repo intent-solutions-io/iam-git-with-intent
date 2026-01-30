@@ -15,3 +15,11 @@ export * from './checkpoint.js';
 export * from './resume.js';
 export * from './state-machine.js';
 export * from './heartbeat.js';
+export {
+  RecoveryOrchestrator,
+  type RecoveryDecision,
+  type RunRecoveryResult,
+  type RecoveryResult,
+  type RecoveryOptions,
+  type RecoveryOrchestratorConfig,
+} from './recovery.js';

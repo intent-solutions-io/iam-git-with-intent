@@ -43,7 +43,7 @@ import {
 import { OrchestratorAgent } from '@gwi/agents';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { HeartbeatService } from './heartbeat.js';
+import { RecoveryOrchestrator } from './recovery.js';
 
 const logger = getLogger('engine');
 
@@ -205,16 +205,24 @@ export async function createEngine(
     logger.warn('Failed to initialize orchestrator, workflows will be limited', { error });
   }
 
-  // B2: Initialize heartbeat service for durability
-  const heartbeatService = new HeartbeatService({ store: tenantStore });
+  // B3: Initialize recovery orchestrator for durability and resume
+  const recoveryOrchestrator = new RecoveryOrchestrator({ store: tenantStore });
+  const heartbeatService = recoveryOrchestrator.getHeartbeatService();
 
-  // B2: Recover orphaned runs on startup
+  // B3: Recover orphaned runs on startup (with resume capability)
   try {
-    const orphanedRuns = await heartbeatService.recoverOrphanedRuns({ failOrphans: true });
-    if (orphanedRuns.length > 0) {
+    const recoveryResult = await recoveryOrchestrator.recoverOrphanedRuns({
+      staleThresholdMs: 300_000, // 5 minutes
+      executeResume: true,
+    });
+
+    if (recoveryResult.orphanedCount > 0) {
       logger.info('Recovered orphaned runs on startup', {
-        count: orphanedRuns.length,
-        ownerId: heartbeatService.getOwnerId(),
+        orphanedCount: recoveryResult.orphanedCount,
+        resumedCount: recoveryResult.resumedCount,
+        failedCount: recoveryResult.failedCount,
+        durationMs: recoveryResult.durationMs,
+        ownerId: recoveryResult.ownerId,
       });
     }
   } catch (error) {
