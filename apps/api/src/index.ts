@@ -50,9 +50,6 @@ import {
   generateTraceId,
   type Action,
   type PlanId,
-  // B5: Health check utilities
-  createHealthRouter,
-  type ServiceHealthConfig,
 } from '@gwi/core';
 
 const app = express();
@@ -625,39 +622,53 @@ function isDevEnvironment(): boolean {
 }
 
 // =============================================================================
-// Routes: Health (B5: Standardized health checks)
+// Routes: Health
 // =============================================================================
 
 /**
- * B5: Create standardized health router for Cloud Run integration.
- *
- * Provides:
- * - GET /health - Liveness probe
- * - GET /health/ready - Readiness probe (checks storage backend)
- * - GET /health/deep - Full diagnostics
+ * GET /health - Health check endpoint
  */
-const healthConfig: ServiceHealthConfig = {
-  serviceName: config.appName,
-  version: config.appVersion,
-  env: config.env,
-  checks: {
-    // Storage check - verify backend is accessible
-    storage: async () => {
-      const isConfigured = config.storeBackend === 'memory' || config.storeBackend === 'firestore';
-      return {
-        healthy: isConfigured,
-        message: isConfigured ? `${config.storeBackend} backend configured` : 'Storage backend not configured',
-        details: { backend: config.storeBackend },
-      };
-    },
-  },
-  metadata: {
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'healthy',
+    app: config.appName,
+    version: config.appVersion,
+    env: config.env,
     storeBackend: config.storeBackend,
-  },
-};
+    timestamp: new Date().toISOString(),
+  });
+});
 
-const healthRouter = createHealthRouter(healthConfig);
-app.use(healthRouter);
+/**
+ * GET /health/ready - Startup/readiness probe endpoint
+ * Cloud Run startup probe checks this to determine when the service is ready.
+ */
+app.get('/health/ready', async (_req, res) => {
+  try {
+    // Verify storage backend is accessible
+    const isReady = config.storeBackend === 'memory' || config.storeBackend === 'firestore';
+
+    if (isReady) {
+      res.json({
+        status: 'ready',
+        app: config.appName,
+        version: config.appVersion,
+        storeBackend: config.storeBackend,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      res.status(503).json({
+        status: 'not_ready',
+        reason: 'Storage backend not configured',
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'not_ready',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
 
 /**
  * Internal-only middleware for metrics endpoints
