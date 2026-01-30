@@ -141,20 +141,20 @@ Captures all ERROR and above log entries from Cloud Run services.
 **Resource:** `google_logging_metric.auth_failures`
 
 ```hcl
-filter = "jsonPayload.eventName =~ \"auth.failure|auth.unauthorized|webhook.verify.failure\""
+filter = "jsonPayload.eventName =~ \"webhook.verify.failure|plan.limit.exceeded\""
 ```
 
-Tracks authentication and authorization failures.
+Tracks authentication, authorization, and plan limit failures.
 
 ### AI Errors Metric
 
 **Resource:** `google_logging_metric.ai_errors`
 
 ```hcl
-filter = "jsonPayload.eventName =~ \"ai.error|llm.error|agent.error\""
+filter = "jsonPayload.eventName =~ \"job.failure|connector.failure\" AND jsonPayload.context.agent IS NOT NULL"
 ```
 
-Monitors AI/LLM provider failures.
+Monitors AI agent and connector job failures.
 
 ### Idempotency Metrics
 
@@ -196,7 +196,7 @@ open "https://console.cloud.google.com/monitoring/dashboards?project=git-with-in
 |---------|-----------|--------|----------|
 | API | 5% error rate | 5 min | Critical |
 | Gateway | 5% error rate | 5 min | Critical |
-| Webhook | 5% error rate | 5 min | Warning |
+| Webhook | 5% error rate | 5 min | Critical |
 
 ### Latency Alerts
 
@@ -260,13 +260,25 @@ variable "alert_notification_channels" {
 ```json
 {
   "status": "healthy",
-  "checks": {
-    "database": "ok",
-    "queue": "ok",
-    "pubsub": "ok"
-  },
-  "uptime": 3600,
-  "version": "0.5.1"
+  "service": "gwi-api",
+  "version": "0.5.1",
+  "env": "production",
+  "uptimeSeconds": 3600,
+  "timestamp": "2026-01-30T10:00:00.000Z",
+  "components": [
+    {
+      "name": "storage",
+      "status": "healthy",
+      "responseTimeMs": 45,
+      "message": "Firestore connected"
+    },
+    {
+      "name": "queue",
+      "status": "healthy",
+      "responseTimeMs": 23,
+      "message": "All Pub/Sub topics healthy"
+    }
+  ]
 }
 ```
 
@@ -329,15 +341,13 @@ gcloud logging metrics describe critical_errors --project=git-with-intent
 
 ```bash
 # List alert policies
-gcloud alpha monitoring policies list --project=git-with-intent
+gcloud monitoring policies list --project=git-with-intent
 
 # List notification channels
-gcloud alpha monitoring channels list --project=git-with-intent
+gcloud monitoring channels list --project=git-with-intent
 
-# Create incident from CLI (for testing)
-gcloud alpha monitoring policies conditions list \
-  --policy=POLICY_ID \
-  --project=git-with-intent
+# View policy details
+gcloud monitoring policies describe POLICY_ID --project=git-with-intent
 ```
 
 ### Checking Uptime
