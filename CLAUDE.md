@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Attribute | Value |
 |-----------|-------|
 | CLI Command | `gwi` |
-| Version | 0.5.1 |
+| Version | 0.6.0 |
 | Node | 20+ |
 | Build | Turbo monorepo (npm workspaces) |
 

@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-30
+
+### Added
+
+#### Epic A: Firebase Hosting
+- Multi-target Firebase Hosting deployment (staging/production)
+- Security headers with Content-Security-Policy
+- Workload Identity Federation for CI/CD
+
+#### Epic B: Cloud Run Reliability
+- **B2**: Firestore run persistence with heartbeat durability
+- **B3**: Recovery/resume on Cloud Run restart
+- **B4**: Standardized Pub/Sub queue and DLQ semantics
+- **B5**: Health check endpoints (`/health`, `/health/ready`, `/health/deep`)
+  - ServiceHealthManager for Cloud Run services
+  - Firestore, Pub/Sub, and cache health checks
+  - Integration with system health monitoring
+
+#### Documentation
+- Epic C: Observability operations runbook
+- Epic D: Security/IAM operations runbook
+- Epic E: Release process checklist
+- 6767 document filing system standard v4.2
+- Secrets inventory and Secret Manager guide
+- Run lifecycle state model specification
+
+### Fixed
+- Resolved lint errors blocking CI
+- Removed unused ImmutableAuditLogStore type import
+
+### Changed
+- Improved health check DRY patterns in core package
+- Enhanced webhook receiver error handling
+
 ## [0.5.1] - 2026-01-29
 
 ### Added
@@ -111,6 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic CLI commands
 - Project template and monorepo structure
 
+[0.6.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.3.0...v0.4.0
