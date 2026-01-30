@@ -1,11 +1,16 @@
 {
   "projects": {
-    "default": "git-with-intent"
+    "default": "git-with-intent",
+    "staging": "git-with-intent",
+    "production": "git-with-intent"
   },
   "targets": {
     "git-with-intent": {
       "hosting": {
-        "web": [
+        "staging": [
+          "git-with-intent-staging"
+        ],
+        "production": [
           "git-with-intent"
         ]
       }
