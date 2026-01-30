@@ -71,8 +71,10 @@ git-with-intent/
 ├── infra/                # OpenTofu (source of truth for GCP)
 ├── scripts/arv/          # Agent Readiness Verification gates
 ├── test/                 # Cross-cutting tests (contracts, goldens)
-└── 000-docs/             # Internal docs (NNN-CC-ABCD-*.md)
+└── 000-docs/             # Internal docs (NNN-CC-ABCD-*.md, 6767-*-DR-STND-*.md)
 ```
+
+**Documentation Standard**: All docs follow [6767-a-DR-STND-document-filing-system-standard-v4-2.md](000-docs/6767-a-DR-STND-document-filing-system-standard-v4-2.md) naming convention.
 
 ### Package Dependencies
 
