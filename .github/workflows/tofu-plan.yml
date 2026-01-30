@@ -133,7 +133,7 @@ jobs:
 
             const devSummary = extractSummary(planDev);
             const stagingSummary = extractSummary(planStaging);
-            const prodSummary = extractSummary(prodProd);
+            const prodSummary = extractSummary(planProd);
 
             // Format check status
             const fmtStatus = '${{ steps.fmt.outcome }}' === 'success' ? '✅ Passed' : '❌ Failed';

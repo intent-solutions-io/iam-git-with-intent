@@ -575,3 +575,21 @@ export {
   createPublisher,
   createSubscriber,
 } from './pubsub-client.js';
+
+// B4: Export DLQ handler and configuration
+export {
+  // Types
+  type ErrorClassification,
+  type ClassificationResult,
+  type PoisonMessage,
+  type DLQHandlerConfig,
+  type DLQMetrics,
+  // Constants
+  RETRY_POLICY,
+  DLQ_CONFIG,
+  // Classes
+  DLQHandler,
+  // Factory functions
+  getDefaultDLQHandler,
+  createDLQHandler,
+} from './dlq-handler.js';
