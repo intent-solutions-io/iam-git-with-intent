@@ -48,6 +48,16 @@ import type {
 import { generateInstanceId, generateScheduleId } from '../templates/index.js';
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * B2: Statuses considered "in-flight" (non-terminal) for durability queries
+ * Used by listOrphanedRuns and listInFlightRunsByOwner
+ */
+const IN_FLIGHT_STATUSES: RunStatus[] = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
+
+// =============================================================================
 // Helper Functions
 // =============================================================================
 
@@ -392,13 +402,12 @@ export class InMemoryTenantStore implements TenantStore {
 
   async listOrphanedRuns(staleThresholdMs = 300000): Promise<SaaSRun[]> {
     const staleThreshold = new Date(Date.now() - staleThresholdMs);
-    const nonTerminalStatuses = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
     const orphaned: SaaSRun[] = [];
 
     for (const runs of this.runs.values()) {
       for (const run of runs) {
         if (
-          nonTerminalStatuses.includes(run.status) &&
+          IN_FLIGHT_STATUSES.includes(run.status) &&
           run.lastHeartbeatAt &&
           run.lastHeartbeatAt < staleThreshold
         ) {
@@ -411,12 +420,11 @@ export class InMemoryTenantStore implements TenantStore {
   }
 
   async listInFlightRunsByOwner(ownerId: string): Promise<SaaSRun[]> {
-    const nonTerminalStatuses = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
     const result: SaaSRun[] = [];
 
     for (const runs of this.runs.values()) {
       for (const run of runs) {
-        if (run.ownerId === ownerId && nonTerminalStatuses.includes(run.status)) {
+        if (run.ownerId === ownerId && IN_FLIGHT_STATUSES.includes(run.status)) {
           result.push(run);
         }
       }

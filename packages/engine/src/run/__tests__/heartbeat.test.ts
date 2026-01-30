@@ -48,8 +48,8 @@ describe('HeartbeatService', () => {
 
   describe('startHeartbeat', () => {
     it('should track active runs', async () => {
-      // Create a run first
-      await store.createRun('tenant-1', {
+      // Create a run first and capture the returned ID
+      const run = await store.createRun('tenant-1', {
         tenantId: 'tenant-1',
         repoId: 'repo-1',
         prId: 'pr-1',
@@ -60,14 +60,14 @@ describe('HeartbeatService', () => {
         trigger: { source: 'cli' },
       });
 
-      service.startHeartbeat('tenant-1', 'run-1');
+      service.startHeartbeat('tenant-1', run.id);
 
       expect(service.getActiveRunCount()).toBe(1);
-      expect(service.getActiveRunIds()).toContain('run-1');
+      expect(service.getActiveRunIds()).toContain(run.id);
     });
 
     it('should not duplicate heartbeat for same run', async () => {
-      await store.createRun('tenant-1', {
+      const run = await store.createRun('tenant-1', {
         tenantId: 'tenant-1',
         repoId: 'repo-1',
         prId: 'pr-1',
@@ -78,8 +78,8 @@ describe('HeartbeatService', () => {
         trigger: { source: 'cli' },
       });
 
-      service.startHeartbeat('tenant-1', 'run-1');
-      service.startHeartbeat('tenant-1', 'run-1');
+      service.startHeartbeat('tenant-1', run.id);
+      service.startHeartbeat('tenant-1', run.id);
 
       expect(service.getActiveRunCount()).toBe(1);
     });
@@ -87,7 +87,7 @@ describe('HeartbeatService', () => {
 
   describe('stopHeartbeat', () => {
     it('should remove run from tracking', async () => {
-      await store.createRun('tenant-1', {
+      const run = await store.createRun('tenant-1', {
         tenantId: 'tenant-1',
         repoId: 'repo-1',
         prId: 'pr-1',
@@ -98,10 +98,10 @@ describe('HeartbeatService', () => {
         trigger: { source: 'cli' },
       });
 
-      service.startHeartbeat('tenant-1', 'run-1');
+      service.startHeartbeat('tenant-1', run.id);
       expect(service.getActiveRunCount()).toBe(1);
 
-      service.stopHeartbeat('run-1');
+      service.stopHeartbeat(run.id);
       expect(service.getActiveRunCount()).toBe(0);
     });
 
@@ -229,7 +229,7 @@ describe('HeartbeatService', () => {
 
   describe('shutdown', () => {
     it('should stop all active heartbeats', async () => {
-      await store.createRun('tenant-1', {
+      const run1 = await store.createRun('tenant-1', {
         tenantId: 'tenant-1',
         repoId: 'repo-1',
         prId: 'pr-1',
@@ -240,8 +240,19 @@ describe('HeartbeatService', () => {
         trigger: { source: 'cli' },
       });
 
-      service.startHeartbeat('tenant-1', 'run-1');
-      service.startHeartbeat('tenant-1', 'run-2');
+      const run2 = await store.createRun('tenant-1', {
+        tenantId: 'tenant-1',
+        repoId: 'repo-2',
+        prId: 'pr-2',
+        prUrl: 'https://github.com/test/repo/pull/2',
+        type: 'review',
+        status: 'running',
+        steps: [],
+        trigger: { source: 'cli' },
+      });
+
+      service.startHeartbeat('tenant-1', run1.id);
+      service.startHeartbeat('tenant-1', run2.id);
       expect(service.getActiveRunCount()).toBe(2);
 
       service.shutdown();

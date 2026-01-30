@@ -33,6 +33,16 @@ import {
 import { validateRunStatusTransition } from './run-status-machine.js';
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/**
+ * B2: Statuses considered "in-flight" (non-terminal) for durability queries
+ * Used by listOrphanedRuns and listInFlightRunsByOwner
+ */
+const IN_FLIGHT_STATUSES: RunStatus[] = ['pending', 'running', 'awaiting_approval', 'waiting_external'];
+
+// =============================================================================
 // Firestore Document Types (with Timestamps)
 // =============================================================================
 
@@ -673,10 +683,10 @@ export class FirestoreTenantStore implements TenantStore {
     const staleThreshold = new Date(Date.now() - staleThresholdMs);
 
     // Query for runs that have a heartbeat and it's stale
-    // Only non-terminal statuses (pending, running, awaiting_approval, waiting_external)
+    // Only non-terminal statuses
     const snapshot = await this.runsRef()
       .where('lastHeartbeatAt', '<', Timestamp.fromDate(staleThreshold))
-      .where('status', 'in', ['pending', 'running', 'awaiting_approval', 'waiting_external'])
+      .where('status', 'in', IN_FLIGHT_STATUSES)
       .limit(100) // Process in batches
       .get();
 
@@ -690,7 +700,7 @@ export class FirestoreTenantStore implements TenantStore {
   async listInFlightRunsByOwner(ownerId: string): Promise<SaaSRun[]> {
     const snapshot = await this.runsRef()
       .where('ownerId', '==', ownerId)
-      .where('status', 'in', ['pending', 'running', 'awaiting_approval', 'waiting_external'])
+      .where('status', 'in', IN_FLIGHT_STATUSES)
       .get();
 
     return snapshot.docs.map(doc => runDocToModel(doc.data() as RunDoc));

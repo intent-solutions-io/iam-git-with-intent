@@ -29,6 +29,18 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_STALE_THRESHOLD_MS = 300_000;
 
 // =============================================================================
+// Utilities
+// =============================================================================
+
+/**
+ * Extract error message from unknown error type
+ */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -117,7 +129,7 @@ export class HeartbeatService {
     this.sendHeartbeat(tenantId, runId).catch(err => {
       logger.error('Failed to send initial heartbeat', {
         runId,
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       });
     });
 
@@ -131,7 +143,7 @@ export class HeartbeatService {
       this.sendHeartbeat(tenantId, runId).catch(err => {
         logger.error('Failed to send heartbeat', {
           runId,
-          error: err instanceof Error ? err.message : String(err),
+          error: getErrorMessage(err),
         });
       });
     }, this.intervalMs);
@@ -215,9 +227,7 @@ export class HeartbeatService {
           try {
             await this.store.updateRun(run.tenantId, run.id, {
               status: 'failed',
-              error: `Run orphaned: previous owner (${run.ownerId || 'unknown'}) stopped responding. ` +
-                     `Last heartbeat: ${run.lastHeartbeatAt?.toISOString() || 'never'}. ` +
-                     `Recovered by: ${this.ownerId}`,
+              error: `Run orphaned: previous owner (${run.ownerId || 'unknown'}) stopped responding. Last heartbeat: ${run.lastHeartbeatAt?.toISOString() || 'never'}. Recovered by: ${this.ownerId}`,
               completedAt: new Date(),
             });
 
@@ -229,7 +239,7 @@ export class HeartbeatService {
           } catch (err) {
             logger.error('Failed to update orphaned run', {
               runId: run.id,
-              error: err instanceof Error ? err.message : String(err),
+              error: getErrorMessage(err),
             });
           }
         }
@@ -238,7 +248,7 @@ export class HeartbeatService {
       return orphanedRuns;
     } catch (err) {
       logger.error('Failed to list orphaned runs', {
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       });
       return [];
     }
@@ -271,7 +281,7 @@ export class HeartbeatService {
       return ownedRuns;
     } catch (err) {
       logger.error('Failed to list owned runs', {
-        error: err instanceof Error ? err.message : String(err),
+        error: getErrorMessage(err),
       });
       return [];
     }
