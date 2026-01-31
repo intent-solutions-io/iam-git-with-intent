@@ -17,6 +17,7 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
+  // Routes that show sidebar (authenticated app routes including /marketplace, /dashboard, etc.)
   const showSidebar = user && !['/', '/login', '/signup', '/features', '/install', '/how-it-works', '/security', '/pricing', '/docs'].includes(location.pathname);
 
   return (

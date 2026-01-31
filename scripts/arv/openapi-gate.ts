@@ -167,7 +167,8 @@ function validateResponseSchemas(spec: OpenApiSpec): ValidationResult {
           if (response.$ref) continue;
 
           // Only check success responses (2xx) for missing schemas
-          if (statusCode.startsWith('2') && !response.content) {
+          // Skip 204 No Content - by HTTP spec it should NOT have content
+          if (statusCode.startsWith('2') && statusCode !== '204' && !response.content) {
             // Binary responses (like tarballs) may not have schema
             if (!operation.operationId?.includes('Tarball')) {
               missingSchemas.push(`${method.toUpperCase()} ${path} (${statusCode})`);
