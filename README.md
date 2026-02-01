@@ -2,7 +2,7 @@
 
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
-**Version:** 0.5.1 | **Status:** Active development
+**Version:** 0.6.0 | **Status:** Active development
 
 ---
 
@@ -467,6 +467,118 @@ gwi explain HEAD~3
 ```
 
 > **Roadmap:** `gwi simulate` (world model simulation) is planned for Phase 35.
+
+---
+
+## Developer Tools & Debugging
+
+### Code Analysis
+
+```bash
+# AI-powered PR diff analysis with conflict detection
+gwi diff https://github.com/owner/repo/pull/123
+
+# Diff with verbose output
+gwi diff --verbose
+
+# JSON output for scripting
+gwi diff --json
+```
+
+### Audit & Compliance
+
+```bash
+# Verify audit log integrity
+gwi audit verify --tenant my-team
+
+# Export audit logs
+gwi audit export --format json --output audit.json
+gwi audit export --format csv --output audit.csv
+
+# Verify specific sequence range
+gwi audit verify --start-sequence 100 --end-sequence 200
+```
+
+### Forensics (Feature Flag: GWI_FORENSICS_ENABLED=1)
+
+```bash
+# Check forensics feature status
+gwi forensics status
+
+# Replay a forensic bundle
+gwi forensics replay .gwi/runs/<run-id>/bundle.json
+
+# View event timeline
+gwi forensics timeline .gwi/runs/<run-id>/bundle.json
+
+# Validate bundle integrity
+gwi forensics validate .gwi/runs/<run-id>/bundle.json
+
+# Dead letter queue management
+gwi forensics dlq list
+gwi forensics dlq replay <item-id>
+```
+
+### Environment Health
+
+```bash
+# Check environment health and configuration
+gwi doctor
+
+# Verbose output with detailed checks
+gwi doctor --verbose
+
+# JSON output for CI/CD
+gwi doctor --json
+```
+
+### Run Diagnostics
+
+```bash
+# Diagnose a specific run
+gwi diagnose <run-id>
+
+# Show last 10 audit events
+gwi diagnose <run-id> --limit 10
+
+# Verbose with error details
+gwi diagnose <run-id> --verbose
+```
+
+### Status & Monitoring
+
+```bash
+# Show agent status and recent activity
+gwi status
+
+# Filter by specific agent
+gwi status --agent resolver
+
+# JSON output
+gwi status --json
+```
+
+### Connector Management
+
+```bash
+# Search registry for connectors
+gwi connector search github
+
+# Get connector details
+gwi connector info github-connector
+
+# Install a connector
+gwi connector install github-connector@1.0.0
+
+# List installed connectors
+gwi connector list
+
+# Check for updates
+gwi connector outdated
+
+# Update connector
+gwi connector update github-connector
+```
 
 ---
 
