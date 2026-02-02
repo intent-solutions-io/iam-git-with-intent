@@ -21,6 +21,10 @@ import {
   type RiskEvaluationResult,
   evaluateRisk,
 } from './risk-tiers.js';
+import {
+  scanForSecrets as scanForSecretsImpl,
+  type SecretScanResult,
+} from '../security/secrets.js';
 
 // =============================================================================
 // Gate Types
@@ -269,18 +273,14 @@ export class ApprovalGate implements PolicyGate {
 
 /**
  * Secret Scan Gate - scans content for secrets before proceeding
+ *
+ * Uses existing @gwi/core/security/secrets scanner directly.
+ * No callback indirection needed - we have a production scanner.
  */
 export class SecretScanGate implements PolicyGate {
   readonly id = 'secret-scan-gate';
   readonly type = 'secret_scan' as const;
   readonly description = 'Scans content for secrets and credentials';
-
-  constructor(
-    private readonly scanForSecrets: (content: string) => Promise<{
-      hasSecrets: boolean;
-      findings: Array<{ type: string; location: string; redacted: string }>;
-    }>
-  ) {}
 
   async check(context: RiskContext, riskEval: RiskEvaluationResult): Promise<GateResult> {
     const startTime = Date.now();
@@ -310,8 +310,10 @@ export class SecretScanGate implements PolicyGate {
       };
     }
 
-    // Scan for secrets
-    const scanResult = await this.scanForSecrets(content);
+    // Use existing security/secrets scanner directly
+    const scanResult: SecretScanResult = scanForSecretsImpl(content, {
+      includeLineNumbers: true,
+    });
 
     if (scanResult.hasSecrets) {
       return {
@@ -327,11 +329,12 @@ export class SecretScanGate implements PolicyGate {
         ],
         evidence: {
           findingsCount: scanResult.findings.length,
+          summary: scanResult.summary,
           findings: scanResult.findings.map((f) => ({
-            type: f.type,
-            location: f.location,
-            // Show redacted version only
-            sample: f.redacted,
+            type: f.patternName,
+            severity: f.severity,
+            line: f.line,
+            preview: f.preview,
           })),
         },
         durationMs: Date.now() - startTime,
@@ -624,18 +627,11 @@ export class CorrectnessGate implements PolicyGate {
 
 /**
  * Create default gate runner with standard gates
+ *
+ * Note: SecretScanGate uses @gwi/core/security/secrets directly - no callback needed.
  */
 export function createDefaultGateRunner(options: {
-  getApprovals: ApprovalGate['check'] extends (
-    ctx: RiskContext,
-    eval_: RiskEvaluationResult
-  ) => Promise<GateResult>
-    ? never
-    : (ctx: RiskContext) => Promise<{ approved: boolean; approvers: string[]; scopes: string[] }>;
-  scanForSecrets: (content: string) => Promise<{
-    hasSecrets: boolean;
-    findings: Array<{ type: string; location: string; redacted: string }>;
-  }>;
+  getApprovals: (ctx: RiskContext) => Promise<{ approved: boolean; approvers: string[]; scopes: string[] }>;
   getOverride: (ctx: RiskContext) => Promise<{
     hasOverride: boolean;
     overrideReason?: string;
@@ -647,7 +643,7 @@ export function createDefaultGateRunner(options: {
   // Add gates in order of execution
   runner.addGate(new RiskTierGate());
   runner.addGate(new ApprovalGate(options.getApprovals));
-  runner.addGate(new SecretScanGate(options.scanForSecrets));
+  runner.addGate(new SecretScanGate()); // Uses existing security/secrets scanner
   runner.addGate(new SafetyGate(options.getOverride));
 
   return runner;
