@@ -754,15 +754,9 @@ async function calculateChecksum(content: unknown): Promise<string> {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // Fallback for environments without Web Crypto
-  // Use a simple hash for testing - in production, always use crypto.subtle
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return `fallback-${Math.abs(hash).toString(16).padStart(16, '0')}`;
+  // In production, crypto.subtle should always be available.
+  // Throw an error if it's not, to avoid generating insecure checksums.
+  throw new Error('Web Crypto API (crypto.subtle) is not available. Cannot generate secure checksum.');
 }
 
 /**
@@ -786,7 +780,7 @@ export class EvidenceBundleGenerator {
     content: unknown,
     source: string
   ): Promise<EvidenceArtifact> {
-    const id = `artifact_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const id = `artifact_${crypto.randomUUID()}`;
     const checksum = await calculateChecksum(content);
 
     return {

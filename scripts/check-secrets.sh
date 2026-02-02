@@ -59,7 +59,7 @@ FOUND_SECRETS=0
 SKIP_BASE64_FILES="package-lock.json|pnpm-lock.yaml|yarn.lock|README.md|CLAUDE.md|openapi.yaml|\.test\.ts$|\.spec\.ts$|test/.*\.ts$|examples/.*\.ts$|apps/.*/src/.*\.ts$"
 
 # Files that legitimately contain secret detection patterns (not actual secrets)
-SECRET_PATTERN_DEFINITION_FILES="packages/core/src/security/secrets\.ts|packages/core/src/compliance/secret-detector\.ts|scripts/check-secrets\.sh"
+SECRET_PATTERN_DEFINITION_FILES="packages/core/src/security/secrets\.ts|scripts/check-secrets\.sh"
 
 for pattern in "${SECRET_PATTERNS[@]}"; do
   # Check each staged file for the pattern
