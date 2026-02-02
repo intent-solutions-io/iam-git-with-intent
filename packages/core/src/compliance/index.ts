@@ -2,11 +2,25 @@
  * Compliance & Audit Utilities
  *
  * Phase 41: Compliance documentation, controls mapping, and audit export capabilities.
+ * EPIC 025: Regulated Domain Controls - Risk tiers, policy gates, and compliance enforcement
  *
  * @module @gwi/core/compliance
  */
 
 import { createLogger } from '../telemetry/index.js';
+
+// =============================================================================
+// EPIC 025: Risk Tiers & Policy Gates
+// =============================================================================
+
+// Risk tier enforcement exports
+export * from './risk-tiers.js';
+
+// Policy gate exports
+export * from './policy-gates.js';
+
+// Tamper-evident audit trail exports
+export * from './audit-trail.js';
 
 const logger = createLogger('compliance');
 

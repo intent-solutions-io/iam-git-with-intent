@@ -1,0 +1,51 @@
+# GWI MCP Server - Local Development with Docker Compose
+#
+# EPIC 024: AI Coding Assistant Integration
+#
+# Usage:
+#   # Start MCP server locally
+#   docker-compose up --build
+#
+#   # Run in background
+#   docker-compose up -d --build
+#
+#   # View logs
+#   docker-compose logs -f
+#
+#   # Stop
+#   docker-compose down
+
+version: '3.8'
+
+services:
+  mcp-server:
+    build:
+      context: ../..
+      dockerfile: apps/mcp-server/Dockerfile
+    ports:
+      - "3100:8080"
+    environment:
+      - NODE_ENV=development
+      - PORT=8080
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:-}
+      - GCP_REGION=${GCP_REGION:-us-central1}
+      - ORCHESTRATOR_ENGINE_ID=${ORCHESTRATOR_ENGINE_ID:-}
+      - TRIAGE_ENGINE_ID=${TRIAGE_ENGINE_ID:-}
+      - RESOLVER_ENGINE_ID=${RESOLVER_ENGINE_ID:-}
+      - REVIEWER_ENGINE_ID=${REVIEWER_ENGINE_ID:-}
+      # For local dev, use gcloud auth application-default login
+      - GOOGLE_APPLICATION_CREDENTIALS=/credentials/application_default_credentials.json
+    volumes:
+      # Mount ADC credentials for local development
+      - ~/.config/gcloud/application_default_credentials.json:/credentials/application_default_credentials.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+# Network for local development
+networks:
+  default:
+    name: gwi-network

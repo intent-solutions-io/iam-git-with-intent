@@ -852,3 +852,209 @@ output "gwi_worker_dlq_topic" {
   description = "GWI Worker Dead Letter Queue Topic"
   value       = var.gwi_worker_image != "" ? google_pubsub_topic.gwi_worker_dlq[0].id : "NOT_DEPLOYED"
 }
+
+# ============================================================================
+# EPIC 024: MCP Server - AI Coding Assistant Integration
+# ============================================================================
+#
+# Model Context Protocol (MCP) server for AI coding assistant integration.
+# Provides standardized tool access for:
+# - VS Code Copilot, Cursor, Windsurf, Claude Code
+# - Custom agents via MCP protocol
+#
+# Architecture (R3 Hard Mode Compliant):
+# - Cloud Run = REST proxy only (no agent Runners)
+# - Proxies requests to Vertex AI Agent Engine
+# - Uses Application Default Credentials (ADC)
+#
+# ============================================================================
+
+# MCP Server Service Account
+resource "google_service_account" "mcp_server" {
+  count        = var.mcp_server_image != "" ? 1 : 0
+  account_id   = "${var.app_name}-mcp-${var.environment}"
+  display_name = "GWI MCP Server (${var.environment})"
+  description  = "Service account for MCP Server - AI coding assistant integration"
+  project      = var.project_id
+}
+
+# MCP Server - AI Platform access (to call Agent Engine)
+resource "google_project_iam_member" "mcp_server_aiplatform" {
+  count   = var.mcp_server_image != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.mcp_server[0].email}"
+}
+
+# MCP Server - Logging
+resource "google_project_iam_member" "mcp_server_logging" {
+  count   = var.mcp_server_image != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.mcp_server[0].email}"
+}
+
+# MCP Server - Tracing
+resource "google_project_iam_member" "mcp_server_trace" {
+  count   = var.mcp_server_image != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudtrace.agent"
+  member  = "serviceAccount:${google_service_account.mcp_server[0].email}"
+}
+
+# MCP Server Cloud Run Service
+resource "google_cloud_run_service" "mcp_server" {
+  count    = var.mcp_server_image != "" ? 1 : 0
+  name     = "${var.app_name}-mcp-server-${var.environment}"
+  location = var.region
+  project  = var.project_id
+
+  template {
+    spec {
+      service_account_name = google_service_account.mcp_server[0].email
+
+      containers {
+        image = var.mcp_server_image
+
+        # Environment variables
+        env {
+          name  = "GCP_PROJECT_ID"
+          value = var.project_id
+        }
+
+        env {
+          name  = "GCP_REGION"
+          value = var.region
+        }
+
+        env {
+          name  = "ORCHESTRATOR_ENGINE_ID"
+          value = var.orchestrator_engine_id
+        }
+
+        env {
+          name  = "TRIAGE_ENGINE_ID"
+          value = var.triage_engine_id
+        }
+
+        env {
+          name  = "RESOLVER_ENGINE_ID"
+          value = var.resolver_engine_id
+        }
+
+        env {
+          name  = "REVIEWER_ENGINE_ID"
+          value = var.reviewer_engine_id
+        }
+
+        env {
+          name  = "DEPLOYMENT_ENV"
+          value = var.environment
+        }
+
+        env {
+          name  = "APP_NAME"
+          value = "${var.app_name}-mcp-server"
+        }
+
+        env {
+          name  = "APP_VERSION"
+          value = var.app_version
+        }
+
+        env {
+          name  = "NODE_ENV"
+          value = var.environment == "prod" ? "production" : "development"
+        }
+
+        # Note: PORT is set automatically by Cloud Run
+
+        # Resource limits (from service topology)
+        resources {
+          limits = {
+            cpu    = local.effective_topology.mcp_server.cpu
+            memory = local.effective_topology.mcp_server.memory
+          }
+        }
+
+        # Liveness probe
+        liveness_probe {
+          http_get {
+            path = "/health"
+          }
+          initial_delay_seconds = var.health_check_config.liveness.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.liveness.timeout_seconds
+          period_seconds        = var.health_check_config.liveness.period_seconds
+          failure_threshold     = var.health_check_config.liveness.failure_threshold
+        }
+
+        # Startup probe
+        startup_probe {
+          http_get {
+            path = "/health"
+          }
+          initial_delay_seconds = var.health_check_config.startup.initial_delay_seconds
+          timeout_seconds       = var.health_check_config.startup.timeout_seconds
+          period_seconds        = var.health_check_config.startup.period_seconds
+          failure_threshold     = var.health_check_config.startup.failure_threshold
+        }
+      }
+
+      # Scaling (from service topology)
+      container_concurrency = local.effective_topology.mcp_server.concurrency
+
+      # Timeout (from service topology)
+      timeout_seconds = local.effective_topology.mcp_server.timeout_seconds
+    }
+
+    metadata {
+      annotations = merge(
+        {
+          "autoscaling.knative.dev/minScale"     = tostring(local.effective_topology.mcp_server.min_instances)
+          "autoscaling.knative.dev/maxScale"     = tostring(local.effective_topology.mcp_server.max_instances)
+          "run.googleapis.com/cpu-throttling"    = tostring(local.effective_topology.mcp_server.cpu_throttling)
+          "run.googleapis.com/startup-cpu-boost" = tostring(local.effective_topology.mcp_server.startup_cpu_boost)
+        },
+        local.vpc_connector_annotations
+      )
+
+      labels = merge(
+        var.labels,
+        {
+          environment = var.environment
+          app         = var.app_name
+          version     = replace(var.app_version, ".", "-")
+          component   = "mcp-server"
+          epic        = "epic-024"
+        }
+      )
+    }
+  }
+
+  traffic {
+    percent         = 100
+    latest_revision = true
+  }
+
+  autogenerate_revision_name = true
+
+  depends_on = [
+    google_service_account.mcp_server,
+    google_project_iam_member.mcp_server_aiplatform,
+  ]
+}
+
+# MCP Server IAM Policy (allow unauthenticated for IDE integrations)
+resource "google_cloud_run_service_iam_member" "mcp_server_public" {
+  count    = var.mcp_server_image != "" && var.mcp_server_allow_public_access ? 1 : 0
+  service  = google_cloud_run_service.mcp_server[0].name
+  location = google_cloud_run_service.mcp_server[0].location
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Output MCP Server URL
+output "mcp_server_url" {
+  description = "GWI MCP Server Cloud Run URL (for AI coding assistant configuration)"
+  value       = var.mcp_server_image != "" ? google_cloud_run_service.mcp_server[0].status[0].url : "NOT_DEPLOYED"
+}

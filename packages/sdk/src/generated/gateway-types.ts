@@ -4,7 +4,7 @@
  * This file is auto-generated from the OpenAPI specification.
  * DO NOT EDIT MANUALLY - changes will be overwritten.
  *
- * Generated on: 2026-01-30T04:04:42.890Z
+ * Generated on: 2026-02-02T21:50:16.265Z
  * OpenAPI Spec: apps/gateway/openapi.yaml
  *
  * To regenerate:

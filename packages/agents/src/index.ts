@@ -7,6 +7,7 @@
 
 export * from './base/agent.js';
 export * from './orchestrator/index.js';
+export * from './foreman/index.js';
 export * from './triage/index.js';
 export * from './resolver/index.js';
 export * from './reviewer/index.js';

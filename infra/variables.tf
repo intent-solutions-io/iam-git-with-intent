@@ -341,6 +341,28 @@ variable "webhook_topic_prefix" {
 }
 
 # ============================================================================
+# EPIC 024: MCP Server Configuration (AI Coding Assistant Integration)
+# ============================================================================
+
+variable "mcp_server_image" {
+  description = "Docker image for GWI MCP Server (AI coding assistant integration)"
+  type        = string
+  default     = ""
+}
+
+variable "mcp_server_max_instances" {
+  description = "Max Cloud Run instances for MCP Server"
+  type        = number
+  default     = 10
+}
+
+variable "mcp_server_allow_public_access" {
+  description = "Allow unauthenticated access to MCP Server (required for IDE integrations)"
+  type        = bool
+  default     = true
+}
+
+# ============================================================================
 # Secret Management (Optional - use Vertex AI WIF instead of API keys)
 # ============================================================================
 

@@ -85,6 +85,7 @@ jobs:
       webhook_image: ${{ steps.images.outputs.webhook }}
       worker_image: ${{ steps.images.outputs.worker }}
       webhook_receiver_image: ${{ steps.images.outputs.webhook_receiver }}
+      mcp_server_image: ${{ steps.images.outputs.mcp_server }}
 
     steps:
       - name: Checkout code
@@ -189,6 +190,22 @@ jobs:
           docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
           docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
 
+      # EPIC 024: MCP Server for AI Coding Assistant Integration
+      - name: Build and push MCP Server image
+        run: |
+          IMAGE_BASE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/gwi-docker/mcp-server"
+
+          docker build -f apps/mcp-server/Dockerfile \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }} \
+            -t ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }} \
+            --build-arg VERSION=${{ needs.setup.outputs.version }} \
+            .
+
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.version_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.env_tag }}
+          docker push ${IMAGE_BASE}:${{ steps.tags.outputs.latest_tag }}
+
       - name: Set image outputs
         id: images
         run: |
@@ -200,6 +217,7 @@ jobs:
           echo "webhook=${REGISTRY}/github-webhook:${TAG}" >> $GITHUB_OUTPUT
           echo "worker=${REGISTRY}/worker:${TAG}" >> $GITHUB_OUTPUT
           echo "webhook_receiver=${REGISTRY}/webhook-receiver:${TAG}" >> $GITHUB_OUTPUT
+          echo "mcp_server=${REGISTRY}/mcp-server:${TAG}" >> $GITHUB_OUTPUT
 
   # =============================================================================
   # Deploy to Environment
@@ -247,6 +265,7 @@ jobs:
               -var="github_webhook_image=${{ needs.build-images.outputs.webhook_image }}" \
               -var="gwi_worker_image=${{ needs.build-images.outputs.worker_image }}" \
               -var="webhook_receiver_image=${{ needs.build-images.outputs.webhook_receiver_image }}" \
+              -var="mcp_server_image=${{ needs.build-images.outputs.mcp_server_image }}" \
               -out=tfplan
           else
             tofu plan \
@@ -257,6 +276,7 @@ jobs:
               -var="github_webhook_image=${{ needs.build-images.outputs.webhook_image }}" \
               -var="gwi_worker_image=${{ needs.build-images.outputs.worker_image }}" \
               -var="webhook_receiver_image=${{ needs.build-images.outputs.webhook_receiver_image }}" \
+              -var="mcp_server_image=${{ needs.build-images.outputs.mcp_server_image }}" \
               -out=tfplan
           fi
 
@@ -269,9 +289,11 @@ jobs:
         run: |
           API_URL=$(gcloud run services describe gwi-api --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
           GATEWAY_URL=$(gcloud run services describe gwi-gateway --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
+          MCP_SERVER_URL=$(gcloud run services describe git-with-intent-mcp-server-${{ needs.setup.outputs.environment }} --region=${{ env.REGION }} --format='value(status.url)' 2>/dev/null || echo "")
 
           echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
           echo "gateway_url=${GATEWAY_URL}" >> $GITHUB_OUTPUT
+          echo "mcp_server_url=${MCP_SERVER_URL}" >> $GITHUB_OUTPUT
 
       - name: Health Check (API)
         if: steps.urls.outputs.api_url != ''
@@ -284,6 +306,12 @@ jobs:
         run: |
           echo "Checking Gateway health at ${{ steps.urls.outputs.gateway_url }}"
           curl -sf "${{ steps.urls.outputs.gateway_url }}/health" | jq .
+
+      - name: Health Check (MCP Server)
+        if: steps.urls.outputs.mcp_server_url != ''
+        run: |
+          echo "Checking MCP Server health at ${{ steps.urls.outputs.mcp_server_url }}"
+          curl -sf "${{ steps.urls.outputs.mcp_server_url }}/health" | jq .
 
       - name: Smoke Tests
         if: needs.setup.outputs.environment == 'staging'
@@ -299,9 +327,17 @@ jobs:
           echo "|---------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| API | ${{ steps.urls.outputs.api_url || 'Not deployed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Gateway | ${{ steps.urls.outputs.gateway_url || 'Not deployed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| MCP Server | ${{ steps.urls.outputs.mcp_server_url || 'Not deployed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ needs.setup.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ needs.setup.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### AI Coding Assistant Integration (EPIC 024)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configure your IDE to use the MCP Server URL:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.urls.outputs.mcp_server_url }}/mcp" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
   # =============================================================================
   # Deploy Firebase Hosting (Web Dashboard)

@@ -7,6 +7,9 @@
 
 import type { AgentId, ModelConfig } from '../types.js';
 
+// Export SWE Pipeline contracts (EPIC 024)
+export * from './contracts.js';
+
 /**
  * Message types for A2A communication
  */

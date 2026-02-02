@@ -1,0 +1,306 @@
+# GWI Agent Deployment Workflow
+#
+# Hard Mode R4: CI-Only Deployments
+# Deploys agents to Vertex AI Agent Engine via ADK CLI
+#
+# Workflow:
+# 1. Authenticate via Workload Identity Federation (no service account keys)
+# 2. Build agent packages
+# 3. Deploy to Agent Engine
+# 4. Capture Engine IDs
+# 5. Update Cloud Run with new Engine IDs
+#
+# Triggers:
+# - Push to main (production deploy)
+# - Push to develop (staging deploy)
+# - Manual dispatch with environment selection
+
+name: Deploy Agents
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'packages/agents/**'
+      - 'packages/core/**'
+      - '.github/workflows/deploy-agents.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      agents:
+        description: 'Agents to deploy (comma-separated, or "all")'
+        required: false
+        default: 'all'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+  GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+  ADK_STAGING_BUCKET: ${{ vars.ADK_STAGING_BUCKET }}
+
+jobs:
+  # Determine deployment environment
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      agents: ${{ steps.env.outputs.agents }}
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "agents=${{ github.event.inputs.agents }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+            echo "agents=all" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "agents=all" >> $GITHUB_OUTPUT
+          fi
+
+  # Build agent packages
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: |
+          npm run build --workspace=@gwi/core
+          npm run build --workspace=@gwi/agents
+
+      - name: Run ARV gates
+        run: npm run arv
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-build
+          path: |
+            packages/agents/dist/
+            packages/core/dist/
+          retention-days: 1
+
+  # Deploy to Agent Engine
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    environment: ${{ needs.setup.outputs.environment }}
+    strategy:
+      matrix:
+        agent: [orchestrator, foreman, triage, coder, resolver, reviewer]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-build
+          path: .
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Install ADK CLI
+        run: |
+          pip install google-adk
+
+      - name: Check if agent should be deployed
+        id: check
+        run: |
+          AGENTS="${{ needs.setup.outputs.agents }}"
+          AGENT="${{ matrix.agent }}"
+          if [ "$AGENTS" = "all" ] || echo "$AGENTS" | grep -q "$AGENT"; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy ${{ matrix.agent }} to Agent Engine
+        if: steps.check.outputs.deploy == 'true'
+        id: deploy
+        run: |
+          ENV="${{ needs.setup.outputs.environment }}"
+          AGENT="${{ matrix.agent }}"
+
+          # Deploy using ADK CLI
+          adk deploy agent_engine \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --region=${{ env.GCP_REGION }} \
+            --staging_bucket=${{ env.ADK_STAGING_BUCKET }} \
+            --service_account=git-with-intent-agent-${ENV}@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --display_name=gwi-${AGENT}-${ENV} \
+            --agent=${AGENT} \
+            --trace_to_cloud \
+            2>&1 | tee deploy.log
+
+          # Extract Engine ID from output
+          ENGINE_ID=$(grep -oP 'reasoningEngines/\K[0-9]+' deploy.log | head -1)
+          echo "engine_id=projects/${{ env.GCP_PROJECT_ID }}/locations/${{ env.GCP_REGION }}/reasoningEngines/${ENGINE_ID}" >> $GITHUB_OUTPUT
+          echo "Deployed ${AGENT} with Engine ID: ${ENGINE_ID}"
+
+      - name: Save Engine ID
+        if: steps.check.outputs.deploy == 'true'
+        run: |
+          mkdir -p engine-ids
+          echo "${{ steps.deploy.outputs.engine_id }}" > engine-ids/${{ matrix.agent }}.txt
+
+      - name: Upload Engine IDs
+        if: steps.check.outputs.deploy == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-id-${{ matrix.agent }}
+          path: engine-ids/
+          retention-days: 1
+
+  # Update Cloud Run with new Engine IDs
+  update-cloud-run:
+    runs-on: ubuntu-latest
+    needs: [setup, deploy]
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all Engine IDs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: engine-id-*
+          path: engine-ids/
+          merge-multiple: true
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.6.0'
+
+      - name: Update tfvars with Engine IDs
+        run: |
+          ENV="${{ needs.setup.outputs.environment }}"
+          TFVARS="infra/envs/${ENV}.tfvars"
+
+          # Read Engine IDs and update tfvars
+          for file in engine-ids/*.txt; do
+            AGENT=$(basename "$file" .txt)
+            ENGINE_ID=$(cat "$file")
+
+            # Update or add the variable
+            VAR_NAME="${AGENT}_engine_id"
+            if grep -q "^${VAR_NAME}" "$TFVARS"; then
+              sed -i "s|^${VAR_NAME}.*|${VAR_NAME} = \"${ENGINE_ID}\"|" "$TFVARS"
+            else
+              echo "${VAR_NAME} = \"${ENGINE_ID}\"" >> "$TFVARS"
+            fi
+          done
+
+          cat "$TFVARS"
+
+      - name: Terraform Init
+        working-directory: infra
+        run: tofu init
+
+      - name: Terraform Plan
+        working-directory: infra
+        run: |
+          ENV="${{ needs.setup.outputs.environment }}"
+          tofu plan -var-file=envs/${ENV}.tfvars -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: infra
+        run: tofu apply -auto-approve tfplan
+
+      - name: Commit updated tfvars
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(infra): update Agent Engine IDs for ${{ needs.setup.outputs.environment }}"
+          file_pattern: 'infra/envs/*.tfvars'
+
+  # Smoke test deployed agents
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: [setup, update-cloud-run]
+    environment: ${{ needs.setup.outputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get Gateway URL
+        id: gateway
+        run: |
+          ENV="${{ needs.setup.outputs.environment }}"
+          URL=$(gcloud run services describe gwi-a2a-gateway-${ENV} \
+            --region=${{ env.GCP_REGION }} \
+            --format='value(status.url)')
+          echo "url=${URL}" >> $GITHUB_OUTPUT
+
+      - name: Test health endpoint
+        run: |
+          curl -sf "${{ steps.gateway.outputs.url }}/health" | jq .
+
+      - name: Test triage agent
+        run: |
+          # Simple smoke test
+          curl -sf "${{ steps.gateway.outputs.url }}/v1/agents/triage/health" | jq .
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "✅ Agent deployment successful for ${{ needs.setup.outputs.environment }}"
+          echo "Gateway URL: ${{ steps.gateway.outputs.url }}"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Agent deployment failed for ${{ needs.setup.outputs.environment }}"
+          exit 1

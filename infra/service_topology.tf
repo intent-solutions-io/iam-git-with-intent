@@ -67,6 +67,17 @@ variable "service_topology" {
       cpu_throttling    = bool
       startup_cpu_boost = bool
     })
+    # EPIC 024: MCP Server for AI Coding Assistant Integration
+    mcp_server = object({
+      cpu               = string
+      memory            = string
+      concurrency       = number
+      timeout_seconds   = number
+      min_instances     = number
+      max_instances     = number
+      cpu_throttling    = bool
+      startup_cpu_boost = bool
+    })
   })
   default = {
     # API Service: High concurrency, fast responses
@@ -111,6 +122,18 @@ variable "service_topology" {
       min_instances     = 0
       max_instances     = 10
       cpu_throttling    = false # Keep CPU active for background work
+      startup_cpu_boost = true
+    }
+    # MCP Server: AI Coding Assistant Integration (EPIC 024)
+    # Optimized for fast MCP protocol responses to IDE assistants
+    mcp_server = {
+      cpu               = "1000m"
+      memory            = "512Mi"
+      concurrency       = 100 # High concurrency for multiple IDE connections
+      timeout_seconds   = 300 # Allow time for Agent Engine proxy calls
+      min_instances     = 0
+      max_instances     = 10
+      cpu_throttling    = true
       startup_cpu_boost = true
     }
   }
@@ -196,6 +219,9 @@ locals {
     worker = merge(var.service_topology.worker, {
       min_instances = var.environment == "prod" ? max(var.service_topology.worker.min_instances, 1) : var.service_topology.worker.min_instances
     })
+    mcp_server = merge(var.service_topology.mcp_server, {
+      min_instances = var.environment == "prod" ? max(var.service_topology.mcp_server.min_instances, 1) : var.service_topology.mcp_server.min_instances
+    })
   }
 
   # Epic B: Webhook Receiver topology (optimized for fast response <500ms)
@@ -247,6 +273,12 @@ output "service_topology_summary" {
       scaling     = "${local.effective_topology.worker.min_instances}-${local.effective_topology.worker.max_instances} instances"
       concurrency = local.effective_topology.worker.concurrency
       timeout     = "${local.effective_topology.worker.timeout_seconds}s"
+    }
+    mcp_server = {
+      resources   = "${local.effective_topology.mcp_server.cpu} CPU, ${local.effective_topology.mcp_server.memory}"
+      scaling     = "${local.effective_topology.mcp_server.min_instances}-${local.effective_topology.mcp_server.max_instances} instances"
+      concurrency = local.effective_topology.mcp_server.concurrency
+      timeout     = "${local.effective_topology.mcp_server.timeout_seconds}s"
     }
   }
 }
