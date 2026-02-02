@@ -22,6 +22,9 @@ export * from './policy-gates.js';
 // Tamper-evident audit trail exports
 export * from './audit-trail.js';
 
+// Secret detection and redaction exports
+export * from './secret-detector.js';
+
 const logger = createLogger('compliance');
 
 // =============================================================================
