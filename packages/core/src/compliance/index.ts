@@ -22,6 +22,9 @@ export * from './policy-gates.js';
 // Tamper-evident audit trail exports
 export * from './audit-trail.js';
 
+// Note: Secret detection uses existing @gwi/core/security/secrets module
+// No separate compliance secret-detector needed - avoid duplication
+
 const logger = createLogger('compliance');
 
 // =============================================================================

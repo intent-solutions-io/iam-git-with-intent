@@ -60,3 +60,13 @@ export {
   getDecisionTraceHook,
   resetDecisionTraceHook,
 } from './decision-trace-hook.js';
+
+// Risk Enforcement Hook (EPIC 025: Regulated Domain Controls)
+export {
+  RiskEnforcementHook,
+  createRiskEnforcementHook,
+  getOperationRiskTier,
+  getRoleRiskTier,
+  RiskEnforcementError,
+} from './risk-enforcement-hook.js';
+export type { RiskEnforcementConfig } from './risk-enforcement-hook.js';
