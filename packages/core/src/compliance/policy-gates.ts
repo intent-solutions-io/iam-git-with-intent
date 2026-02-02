@@ -524,6 +524,104 @@ export class PolicyGateRunner {
   }
 }
 
+// =============================================================================
+// Correctness Gate (025.6)
+// =============================================================================
+
+/**
+ * Correctness verification result
+ */
+export interface CorrectnessResult {
+  passed: boolean;
+  score: number;
+  threshold: number;
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  failures: string[];
+}
+
+/**
+ * Correctness Gate - verifies LLM output quality meets threshold
+ *
+ * Uses the existing GradingEngine from packages/core/src/scoring/grading-engine.ts
+ * to evaluate output quality before applying changes.
+ */
+export class CorrectnessGate implements PolicyGate {
+  readonly id = 'correctness-gate';
+  readonly type = 'custom' as const;
+  readonly description = 'Verifies LLM output quality meets correctness threshold';
+
+  constructor(
+    private readonly verifyCorrectness: (context: RiskContext) => Promise<CorrectnessResult>,
+    private readonly minGrade: 'A' | 'B' | 'C' | 'D' = 'C',
+    private readonly minScore: number = 70
+  ) {}
+
+  async check(context: RiskContext, _riskEval: RiskEvaluationResult): Promise<GateResult> {
+    const startTime = Date.now();
+
+    // Skip if no content to verify
+    const content = context.resource.attributes?.llmOutput as string;
+    if (!content) {
+      return {
+        gateId: this.id,
+        gateType: this.type,
+        status: 'passed',
+        message: 'No LLM output to verify',
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    // Run correctness verification
+    const result = await this.verifyCorrectness(context);
+
+    // Check grade threshold
+    const gradeOrder = { A: 4, B: 3, C: 2, D: 1, F: 0 };
+    const meetsGrade = gradeOrder[result.grade] >= gradeOrder[this.minGrade];
+    const meetsScore = result.score >= this.minScore;
+
+    if (!result.passed || !meetsGrade || !meetsScore) {
+      return {
+        gateId: this.id,
+        gateType: this.type,
+        status: 'failed',
+        message: `Correctness check failed: Grade ${result.grade} (${result.score.toFixed(1)}), requires ${this.minGrade} (${this.minScore}+)`,
+        reason: result.failures.length > 0
+          ? result.failures.join('; ')
+          : 'Output quality below threshold',
+        requiredActions: [
+          'Review and improve LLM output quality',
+          'Address identified issues before proceeding',
+          `Achieve grade ${this.minGrade} or higher (score >= ${this.minScore})`,
+        ],
+        evidence: {
+          grade: result.grade,
+          score: result.score,
+          threshold: this.minScore,
+          minGrade: this.minGrade,
+          failures: result.failures,
+        },
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
+    return {
+      gateId: this.id,
+      gateType: this.type,
+      status: 'passed',
+      message: `Correctness verified: Grade ${result.grade} (${result.score.toFixed(1)})`,
+      evidence: {
+        grade: result.grade,
+        score: result.score,
+        threshold: this.minScore,
+      },
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
 /**
  * Create default gate runner with standard gates
  */
