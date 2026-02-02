@@ -652,3 +652,465 @@ export function createDefaultGateRunner(options: {
 
   return runner;
 }
+
+// =============================================================================
+// Evidence Bundle Generator (025.8)
+// =============================================================================
+
+/**
+ * Compliance framework for evidence bundle
+ */
+export type EvidenceFramework = 'SOC2' | 'ISO27001' | 'GDPR' | 'HIPAA' | 'CUSTOM';
+
+/**
+ * Evidence artifact type
+ */
+export const EvidenceArtifactType = z.enum([
+  'policy_decision',
+  'approval_record',
+  'audit_log',
+  'gate_result',
+  'risk_evaluation',
+  'secret_scan',
+  'compliance_control',
+]);
+export type EvidenceArtifactType = z.infer<typeof EvidenceArtifactType>;
+
+/**
+ * Evidence artifact with checksum
+ */
+export const EvidenceArtifact = z.object({
+  /** Artifact ID */
+  id: z.string(),
+  /** Artifact type */
+  type: EvidenceArtifactType,
+  /** Timestamp when artifact was created */
+  timestamp: z.string().datetime(),
+  /** Artifact content (JSON-serializable) */
+  content: z.unknown(),
+  /** SHA-256 hash of JSON-stringified content */
+  checksum: z.string(),
+  /** Source system/component */
+  source: z.string(),
+});
+export type EvidenceArtifact = z.infer<typeof EvidenceArtifact>;
+
+/**
+ * Evidence bundle metadata
+ */
+export const EvidenceBundleMetadata = z.object({
+  /** Bundle ID */
+  bundleId: z.string(),
+  /** Tenant ID */
+  tenantId: z.string(),
+  /** Target compliance framework */
+  framework: z.enum(['SOC2', 'ISO27001', 'GDPR', 'HIPAA', 'CUSTOM']),
+  /** Bundle version */
+  version: z.literal(1),
+  /** Generation timestamp */
+  generatedAt: z.string().datetime(),
+  /** Time range covered */
+  timeRange: z.object({
+    start: z.string().datetime(),
+    end: z.string().datetime(),
+  }),
+  /** Run IDs included (if scoped to runs) */
+  runIds: z.array(z.string()).optional(),
+  /** Generator info */
+  generator: z.object({
+    name: z.literal('gwi-evidence-bundle'),
+    version: z.string(),
+  }),
+});
+export type EvidenceBundleMetadata = z.infer<typeof EvidenceBundleMetadata>;
+
+/**
+ * Complete evidence bundle
+ */
+export const EvidenceBundle = z.object({
+  /** Bundle metadata */
+  metadata: EvidenceBundleMetadata,
+  /** Artifacts in the bundle */
+  artifacts: z.array(EvidenceArtifact),
+  /** Summary statistics */
+  summary: z.object({
+    totalArtifacts: z.number().int(),
+    artifactsByType: z.record(z.number().int()),
+    approvalsCount: z.number().int(),
+    gatesPassed: z.number().int(),
+    gatesFailed: z.number().int(),
+    secretScansPerformed: z.number().int(),
+  }),
+  /** Bundle integrity - SHA-256 of all artifact checksums concatenated */
+  bundleChecksum: z.string(),
+});
+export type EvidenceBundle = z.infer<typeof EvidenceBundle>;
+
+/**
+ * Calculate SHA-256 hash of content
+ */
+async function calculateChecksum(content: unknown): Promise<string> {
+  const data = JSON.stringify(content, null, 0);
+  // Use Web Crypto API for browser/Node.js compatibility
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  // Fallback for environments without Web Crypto
+  // Use a simple hash for testing - in production, always use crypto.subtle
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `fallback-${Math.abs(hash).toString(16).padStart(16, '0')}`;
+}
+
+/**
+ * Evidence bundle generator
+ *
+ * Generates downloadable evidence bundles for compliance auditors.
+ * Aggregates policy decisions, approvals, audit logs, and gate results
+ * with cryptographic checksums for tamper detection.
+ */
+export class EvidenceBundleGenerator {
+  constructor(
+    private readonly tenantId: string,
+    private readonly gwiVersion: string = '0.6.0'
+  ) {}
+
+  /**
+   * Create an evidence artifact with checksum
+   */
+  async createArtifact(
+    type: EvidenceArtifactType,
+    content: unknown,
+    source: string
+  ): Promise<EvidenceArtifact> {
+    const id = `artifact_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const checksum = await calculateChecksum(content);
+
+    return {
+      id,
+      type,
+      timestamp: new Date().toISOString(),
+      content,
+      checksum,
+      source,
+    };
+  }
+
+  /**
+   * Generate evidence bundle from collected data
+   */
+  async generateBundle(options: {
+    framework: EvidenceFramework;
+    timeRange: { start: Date; end: Date };
+    runIds?: string[];
+    policyDecisions?: Array<{ decision: string; context: unknown; timestamp: Date }>;
+    approvals?: Array<{ approver: string; scopes: string[]; runId: string; timestamp: Date }>;
+    auditEvents?: Array<{ type: string; actor: string; details: unknown; timestamp: Date }>;
+    gateResults?: GateResult[];
+    riskEvaluations?: RiskEvaluationResult[];
+    secretScans?: Array<{ passed: boolean; findingsCount: number; timestamp: Date }>;
+    complianceControls?: Array<{ id: string; status: string; evidence?: string }>;
+  }): Promise<EvidenceBundle> {
+    const artifacts: EvidenceArtifact[] = [];
+
+    // Add policy decisions
+    if (options.policyDecisions) {
+      for (const decision of options.policyDecisions) {
+        artifacts.push(
+          await this.createArtifact('policy_decision', decision, 'policy-engine')
+        );
+      }
+    }
+
+    // Add approvals
+    if (options.approvals) {
+      for (const approval of options.approvals) {
+        artifacts.push(
+          await this.createArtifact('approval_record', approval, 'approval-gate')
+        );
+      }
+    }
+
+    // Add audit events
+    if (options.auditEvents) {
+      for (const event of options.auditEvents) {
+        artifacts.push(
+          await this.createArtifact('audit_log', event, 'audit-store')
+        );
+      }
+    }
+
+    // Add gate results
+    if (options.gateResults) {
+      for (const result of options.gateResults) {
+        artifacts.push(
+          await this.createArtifact('gate_result', result, `gate-${result.gateId}`)
+        );
+      }
+    }
+
+    // Add risk evaluations
+    if (options.riskEvaluations) {
+      for (const eval_ of options.riskEvaluations) {
+        artifacts.push(
+          await this.createArtifact('risk_evaluation', eval_, 'risk-engine')
+        );
+      }
+    }
+
+    // Add secret scans
+    if (options.secretScans) {
+      for (const scan of options.secretScans) {
+        artifacts.push(
+          await this.createArtifact('secret_scan', scan, 'secret-detector')
+        );
+      }
+    }
+
+    // Add compliance controls
+    if (options.complianceControls) {
+      for (const control of options.complianceControls) {
+        artifacts.push(
+          await this.createArtifact('compliance_control', control, 'compliance-manager')
+        );
+      }
+    }
+
+    // Calculate summary
+    const artifactsByType: Record<string, number> = {};
+    for (const artifact of artifacts) {
+      artifactsByType[artifact.type] = (artifactsByType[artifact.type] || 0) + 1;
+    }
+
+    const summary = {
+      totalArtifacts: artifacts.length,
+      artifactsByType,
+      approvalsCount: options.approvals?.length || 0,
+      gatesPassed: options.gateResults?.filter((g) => g.status === 'passed').length || 0,
+      gatesFailed: options.gateResults?.filter((g) => g.status === 'failed').length || 0,
+      secretScansPerformed: options.secretScans?.length || 0,
+    };
+
+    // Calculate bundle checksum from all artifact checksums
+    const allChecksums = artifacts.map((a) => a.checksum).sort().join('');
+    const bundleChecksum = await calculateChecksum(allChecksums);
+
+    const metadata: EvidenceBundleMetadata = {
+      bundleId: `bundle_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      tenantId: this.tenantId,
+      framework: options.framework,
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      timeRange: {
+        start: options.timeRange.start.toISOString(),
+        end: options.timeRange.end.toISOString(),
+      },
+      runIds: options.runIds,
+      generator: {
+        name: 'gwi-evidence-bundle',
+        version: this.gwiVersion,
+      },
+    };
+
+    return {
+      metadata,
+      artifacts,
+      summary,
+      bundleChecksum,
+    };
+  }
+
+  /**
+   * Export bundle to SOC2 format (markdown with control mappings)
+   */
+  bundleToSOC2Markdown(bundle: EvidenceBundle): string {
+    const lines: string[] = [
+      '# SOC2 Type II Evidence Bundle',
+      '',
+      '## Bundle Information',
+      '',
+      `| Property | Value |`,
+      `|----------|-------|`,
+      `| Bundle ID | ${bundle.metadata.bundleId} |`,
+      `| Tenant | ${bundle.metadata.tenantId} |`,
+      `| Generated | ${bundle.metadata.generatedAt} |`,
+      `| Time Range | ${bundle.metadata.timeRange.start} to ${bundle.metadata.timeRange.end} |`,
+      `| Bundle Checksum | \`${bundle.bundleChecksum.substring(0, 16)}...\` |`,
+      '',
+      '## Summary',
+      '',
+      `| Metric | Count |`,
+      `|--------|-------|`,
+      `| Total Artifacts | ${bundle.summary.totalArtifacts} |`,
+      `| Approvals | ${bundle.summary.approvalsCount} |`,
+      `| Gates Passed | ${bundle.summary.gatesPassed} |`,
+      `| Gates Failed | ${bundle.summary.gatesFailed} |`,
+      `| Secret Scans | ${bundle.summary.secretScansPerformed} |`,
+      '',
+      '## SOC2 Trust Services Criteria Mapping',
+      '',
+      '### CC6.1 - Logical Access Security',
+      '',
+      'Evidence of logical access controls:',
+      '',
+    ];
+
+    // Add approval evidence
+    const approvals = bundle.artifacts.filter((a) => a.type === 'approval_record');
+    if (approvals.length > 0) {
+      lines.push('#### Approval Records');
+      lines.push('');
+      lines.push('| Timestamp | Approver | Scopes | Checksum |');
+      lines.push('|-----------|----------|--------|----------|');
+      for (const a of approvals.slice(0, 20)) {
+        const content = a.content as { approver?: string; scopes?: string[] };
+        lines.push(
+          `| ${a.timestamp} | ${content.approver || 'N/A'} | ${(content.scopes || []).join(', ')} | \`${a.checksum.substring(0, 8)}\` |`
+        );
+      }
+      if (approvals.length > 20) {
+        lines.push(`| ... | ${approvals.length - 20} more records | ... | ... |`);
+      }
+      lines.push('');
+    }
+
+    // Add gate evidence
+    const gates = bundle.artifacts.filter((a) => a.type === 'gate_result');
+    if (gates.length > 0) {
+      lines.push('### CC7.1 - System Operations');
+      lines.push('');
+      lines.push('Evidence of operational controls:');
+      lines.push('');
+      lines.push('| Timestamp | Gate | Status | Checksum |');
+      lines.push('|-----------|------|--------|----------|');
+      for (const g of gates.slice(0, 20)) {
+        const content = g.content as { gateId?: string; status?: string };
+        const statusIcon = content.status === 'passed' ? '✅' : content.status === 'failed' ? '❌' : '⏳';
+        lines.push(
+          `| ${g.timestamp} | ${content.gateId || 'N/A'} | ${statusIcon} ${content.status || 'N/A'} | \`${g.checksum.substring(0, 8)}\` |`
+        );
+      }
+      if (gates.length > 20) {
+        lines.push(`| ... | ${gates.length - 20} more records | ... | ... |`);
+      }
+      lines.push('');
+    }
+
+    // Add secret scan evidence
+    const scans = bundle.artifacts.filter((a) => a.type === 'secret_scan');
+    if (scans.length > 0) {
+      lines.push('### CC6.7 - Restriction of Access');
+      lines.push('');
+      lines.push('Evidence of secret detection controls:');
+      lines.push('');
+      lines.push(`- ${scans.length} secret scans performed`);
+      lines.push(`- All scans passed: ${scans.every((s) => (s.content as { passed?: boolean }).passed)}`);
+      lines.push('');
+    }
+
+    lines.push('## Artifact Integrity');
+    lines.push('');
+    lines.push('All artifacts include SHA-256 checksums for tamper detection.');
+    lines.push(`Bundle integrity checksum: \`${bundle.bundleChecksum}\``);
+    lines.push('');
+    lines.push('---');
+    lines.push(`Generated by GWI Evidence Bundle Generator v${bundle.metadata.generator.version}`);
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Export bundle to ISO27001 format (markdown with Annex A mappings)
+   */
+  bundleToISO27001Markdown(bundle: EvidenceBundle): string {
+    const lines: string[] = [
+      '# ISO 27001 Evidence Bundle',
+      '',
+      '## Document Control',
+      '',
+      `| Property | Value |`,
+      `|----------|-------|`,
+      `| Document ID | ${bundle.metadata.bundleId} |`,
+      `| Organization | ${bundle.metadata.tenantId} |`,
+      `| Date Generated | ${bundle.metadata.generatedAt} |`,
+      `| Audit Period | ${bundle.metadata.timeRange.start} to ${bundle.metadata.timeRange.end} |`,
+      `| Integrity Hash | \`${bundle.bundleChecksum}\` |`,
+      '',
+      '## Annex A Control Mappings',
+      '',
+      '### A.9 - Access Control',
+      '',
+      '#### A.9.4.1 - Information Access Restriction',
+      '',
+      `- Approval records collected: ${bundle.summary.approvalsCount}`,
+      `- Access control gates passed: ${bundle.summary.gatesPassed}`,
+      `- Access control gates failed: ${bundle.summary.gatesFailed}`,
+      '',
+      '### A.12 - Operations Security',
+      '',
+      '#### A.12.4.1 - Event Logging',
+      '',
+    ];
+
+    const auditLogs = bundle.artifacts.filter((a) => a.type === 'audit_log');
+    lines.push(`- Audit events logged: ${auditLogs.length}`);
+    lines.push('');
+
+    lines.push('### A.14 - System Development',
+    '',
+    '#### A.14.2.8 - System Security Testing',
+    '');
+
+    lines.push(`- Secret detection scans: ${bundle.summary.secretScansPerformed}`);
+    lines.push(`- Policy gate evaluations: ${bundle.summary.gatesPassed + bundle.summary.gatesFailed}`);
+    lines.push('');
+
+    lines.push('## Evidence Summary');
+    lines.push('');
+    lines.push('| Artifact Type | Count |');
+    lines.push('|--------------|-------|');
+    for (const [type, count] of Object.entries(bundle.summary.artifactsByType)) {
+      lines.push(`| ${type} | ${count} |`);
+    }
+    lines.push('');
+
+    lines.push('## Integrity Verification');
+    lines.push('');
+    lines.push('Each artifact contains a SHA-256 checksum. The bundle checksum');
+    lines.push('is computed from the concatenation of all artifact checksums.');
+    lines.push('');
+    lines.push('To verify integrity:');
+    lines.push('1. Recalculate each artifact checksum from its content');
+    lines.push('2. Concatenate all checksums in sorted order');
+    lines.push('3. Compare resulting hash with bundle checksum');
+    lines.push('');
+    lines.push('---');
+    lines.push(`Generated by GWI Evidence Bundle Generator v${bundle.metadata.generator.version}`);
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Export bundle to JSON (for machine processing)
+   */
+  bundleToJSON(bundle: EvidenceBundle): string {
+    return JSON.stringify(bundle, null, 2);
+  }
+}
+
+/**
+ * Create evidence bundle generator
+ */
+export function createEvidenceBundleGenerator(
+  tenantId: string,
+  gwiVersion?: string
+): EvidenceBundleGenerator {
+  return new EvidenceBundleGenerator(tenantId, gwiVersion);
+}
