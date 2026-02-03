@@ -147,9 +147,6 @@ export * from './disaster-recovery/index.js';
 // Quotas exports (Phase 45: Resource Management)
 export * from './quotas/index.js';
 
-// Observability v2 exports (Phase 46: Enhanced Monitoring)
-export * from './observability-v2/index.js';
-
 // Orchestration v2 exports (Phase 47: Agent Coordination)
 export * from './orchestration-v2/index.js';
 
@@ -255,9 +252,8 @@ export {
 export * from './tenants/index.js';
 
 // SLO exports (A12: SLO Definitions + Perf Tests)
-// Explicit exports to resolve naming conflicts with observability-v2/telemetry
 export {
-  // Types (canonical definitions - prefer these over observability-v2/telemetry)
+  // Types (canonical definitions)
   type SLOCategory,
   type SLOWindow,
   type SLODefinition,
