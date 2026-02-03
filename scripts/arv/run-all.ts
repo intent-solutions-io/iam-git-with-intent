@@ -165,6 +165,11 @@ async function main(): Promise<void> {
       command: 'npx',
       args: ['tsx', join(__dirname, 'ga-readiness-gate.ts')],
     },
+    {
+      name: 'Drift Detection Gate',
+      command: 'npx',
+      args: ['tsx', join(__dirname, 'drift-gate.ts')],
+    },
   ];
 
   const results: CheckResult[] = [];
