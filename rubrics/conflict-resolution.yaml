@@ -1,0 +1,87 @@
+# Conflict Resolution Rubric
+# EPIC 003: Evaluation Harness + Golden Tasks Framework
+#
+# Evaluates quality of automated merge conflict resolution
+
+name: conflict-resolution
+version: 1.0.0
+description: Evaluates automated merge conflict resolution quality
+workflow: conflict-resolution
+
+dimensions:
+  - name: correctness
+    weight: 0.45
+    description: Semantic correctness of merged code
+    criteria:
+      - id: valid-syntax
+        description: Resolved code has valid syntax
+        type: deterministic
+        weight: 1
+        validator: valid-json
+
+      - id: preserves-intent
+        description: Preserves intent from both branches
+        type: llm-assisted
+        weight: 1
+        prompt: |
+          Evaluate if the merged code preserves the intent from both
+          the base and incoming branches. Score 0-100.
+
+      - id: no-data-loss
+        description: No unintentional data or logic loss
+        type: llm-assisted
+        weight: 1
+        prompt: |
+          Check if any code, comments, or logic was unintentionally
+          dropped during resolution. Score 0-100 (100 = nothing lost).
+
+  - name: safety
+    weight: 0.35
+    description: Resolution does not introduce bugs or vulnerabilities
+    criteria:
+      - id: no-forbidden-patterns
+        description: No dangerous patterns introduced
+        type: deterministic
+        weight: 1
+        validator: no-forbidden
+
+      - id: maintains-tests
+        description: Test coverage maintained
+        type: llm-assisted
+        weight: 1
+        prompt: |
+          Evaluate if test files are properly merged and test
+          coverage is maintained. Score 0-100.
+
+  - name: clarity
+    weight: 0.20
+    description: Explanation and documentation of resolution
+    criteria:
+      - id: explains-choices
+        description: Documents resolution choices
+        type: deterministic
+        weight: 1
+        validator: min-length
+
+      - id: code-blocks-present
+        description: Includes code examples where helpful
+        type: deterministic
+        weight: 1
+        validator: has-code-blocks
+
+gradeScale:
+  A: [90, 100]
+  B: [80, 89]
+  C: [70, 79]
+  D: [60, 69]
+  F: [0, 59]
+
+passingScore: 75
+
+metadata:
+  author: GWI Team
+  created: 2026-02-02
+  tags:
+    - conflict-resolution
+    - merge
+    - safety

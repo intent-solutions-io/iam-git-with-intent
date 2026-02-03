@@ -1,0 +1,139 @@
+# PR Review Golden Tasks
+# EPIC 003: Evaluation Harness + Golden Tasks Framework
+#
+# Tests for automated PR review quality
+
+tasks:
+  - id: pr-review-simple
+    name: Simple PR Review
+    description: Review a simple single-file change
+    workflow: pr-review
+    rubric: pr-review.yaml
+    input:
+      type: pr-diff
+      content: |
+        diff --git a/src/utils.ts b/src/utils.ts
+        index abc1234..def5678 100644
+        --- a/src/utils.ts
+        +++ b/src/utils.ts
+        @@ -10,6 +10,10 @@ export function formatDate(date: Date): string {
+           return date.toISOString();
+         }
+
+        +export function formatCurrency(amount: number): string {
+        +  return `$${amount.toFixed(2)}`;
+        +}
+        +
+         export function capitalize(str: string): string {
+           return str.charAt(0).toUpperCase() + str.slice(1);
+         }
+      metadata:
+        prNumber: 42
+        author: testuser
+    expectedOutput:
+      minScore: 70
+      requiredSections:
+        - Summary
+        - Changes
+      requiredKeywords:
+        - formatCurrency
+        - utils
+    tags:
+      - smoke
+      - pr-review
+
+  - id: pr-review-security
+    name: Security-Sensitive PR Review
+    description: Review a PR with potential security concerns
+    workflow: pr-review
+    rubric: pr-review.yaml
+    input:
+      type: pr-diff
+      content: |
+        diff --git a/src/auth.ts b/src/auth.ts
+        index abc1234..def5678 100644
+        --- a/src/auth.ts
+        +++ b/src/auth.ts
+        @@ -15,7 +15,8 @@ export async function validateToken(token: string): Promise<boolean> {
+        -  const secret = process.env.JWT_SECRET;
+        +  // TODO: Move to secure vault
+        +  const secret = "hardcoded-secret-key";
+           return jwt.verify(token, secret);
+         }
+      metadata:
+        prNumber: 43
+        author: testuser
+    expectedOutput:
+      minScore: 70
+      requiredSections:
+        - Summary
+        - Security
+      requiredKeywords:
+        - security
+        - hardcoded
+        - secret
+      forbiddenPatterns:
+        - "looks good"
+        - "lgtm"
+    tags:
+      - security
+      - pr-review
+
+  - id: pr-review-multifile
+    name: Multi-File PR Review
+    description: Review a PR with changes across multiple files
+    workflow: pr-review
+    rubric: pr-review.yaml
+    input:
+      type: pr-diff
+      content: |
+        diff --git a/src/api/routes.ts b/src/api/routes.ts
+        index abc1234..def5678 100644
+        --- a/src/api/routes.ts
+        +++ b/src/api/routes.ts
+        @@ -10,6 +10,7 @@ export const routes = [
+           { path: '/users', handler: usersHandler },
+           { path: '/posts', handler: postsHandler },
+        +  { path: '/comments', handler: commentsHandler },
+         ];
+        diff --git a/src/api/handlers/comments.ts b/src/api/handlers/comments.ts
+        new file mode 100644
+        index 0000000..abc1234
+        --- /dev/null
+        +++ b/src/api/handlers/comments.ts
+        @@ -0,0 +1,25 @@
+        +import { Handler } from '../types';
+        +
+        +export const commentsHandler: Handler = async (req, res) => {
+        +  const { postId } = req.params;
+        +  const comments = await db.comments.findByPost(postId);
+        +  return res.json(comments);
+        +};
+        diff --git a/test/comments.test.ts b/test/comments.test.ts
+        new file mode 100644
+        index 0000000..def5678
+        --- /dev/null
+        +++ b/test/comments.test.ts
+        @@ -0,0 +1,15 @@
+        +import { commentsHandler } from '../src/api/handlers/comments';
+        +
+        +describe('commentsHandler', () => {
+        +  it('returns comments for a post', async () => {
+        +    // test implementation
+        +  });
+        +});
+      metadata:
+        prNumber: 44
+        author: testuser
+    expectedOutput:
+      minScore: 70
+      requiredSections:
+        - Summary
+        - Changes
+      requiredKeywords:
+        - comments
+        - handler
+        - test
+    tags:
+      - multifile
+      - pr-review

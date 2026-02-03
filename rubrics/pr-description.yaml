@@ -1,0 +1,94 @@
+# PR Description Rubric
+# EPIC 003: Evaluation Harness + Golden Tasks Framework
+#
+# Evaluates quality of generated PR descriptions
+
+name: pr-description
+version: 1.0.0
+description: Evaluates quality of AI-generated PR descriptions
+workflow: pr-description
+
+dimensions:
+  - name: structure
+    weight: 0.25
+    description: Proper formatting and required sections
+    criteria:
+      - id: has-summary
+        description: Includes summary section
+        type: deterministic
+        weight: 1
+        validator: required-sections
+
+      - id: has-changes
+        description: Lists changes made
+        type: deterministic
+        weight: 1
+        validator: required-sections
+
+      - id: non-empty
+        description: Contains substantive content
+        type: deterministic
+        weight: 1
+        validator: non-empty
+
+  - name: content-quality
+    weight: 0.40
+    description: Accuracy and clarity of description
+    criteria:
+      - id: accurate-summary
+        description: Summary accurately reflects changes
+        type: llm-assisted
+        weight: 1
+        prompt: |
+          Compare the PR description to the actual diff. Does the
+          summary accurately capture what changed? Score 0-100.
+
+      - id: clear-language
+        description: Uses clear, professional language
+        type: llm-assisted
+        weight: 1
+        prompt: |
+          Evaluate the clarity and professionalism of the language.
+          Is it easy to understand? Score 0-100.
+
+      - id: appropriate-length
+        description: Appropriate level of detail
+        type: deterministic
+        weight: 1
+        validator: min-length
+
+  - name: completeness
+    weight: 0.35
+    description: Coverage of required information
+    criteria:
+      - id: testing-notes
+        description: Includes testing information
+        type: deterministic
+        weight: 1
+        validator: required-keywords
+
+      - id: breaking-changes
+        description: Notes breaking changes if any
+        type: llm-assisted
+        weight: 1
+        prompt: |
+          If the PR contains breaking changes, are they clearly
+          documented? Score 100 if no breaking changes or if
+          they are documented, lower if breaking changes are missed.
+
+gradeScale:
+  A: [90, 100]
+  B: [80, 89]
+  C: [70, 79]
+  D: [60, 69]
+  F: [0, 59]
+
+passingScore: 70
+
+metadata:
+  author: GWI Team
+  created: 2026-02-02
+  tags:
+    - pr-description
+    - documentation
+    - clarity

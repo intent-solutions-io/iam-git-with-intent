@@ -47,7 +47,63 @@ export {
   OpenAICompatLLMProvider,
   createOpenAIProvider,
   createOpenAICompatProvider,
+  GPT4TurboCodeProvider,
+  createGPT4TurboCodeProvider,
+  createGPT4oCodeProvider,
+  type CodeTaskType,
+  type CodeOptimizedOptions,
 } from './providers/index.js';
+
+// Re-export provider capabilities and cost metadata
+export {
+  type TokenCost,
+  type ProviderCostMetadata,
+  type ProviderCapabilities,
+  type LLMRetryPolicy,
+  type ProviderInfo,
+  PROVIDER_COSTS,
+  PROVIDER_CAPABILITIES,
+  DEFAULT_LLM_RETRY_POLICY,
+  getProviderCost,
+  getProviderCapabilities,
+  getProviderInfo,
+  calculateRequestCost,
+  calculateRetryDelay,
+  shouldRetry,
+} from './provider-capabilities.js';
+
+// Re-export selection policy
+export {
+  type ComplexityLevel,
+  type SafetyLevel,
+  type TaskType,
+  type SelectionCriteria,
+  type ProviderCandidate,
+  type SelectionResult,
+  type ProviderAvailabilityChecker,
+  ProviderSelectionPolicy,
+  createSelectionPolicy,
+  selectForTask,
+  selectionToConfig,
+} from './selection-policy.js';
+
+// Re-export evaluation hooks
+export {
+  type EvaluationHookConfig,
+  type EvaluationHookResult,
+  type EvaluationHook,
+  type EvaluationContext,
+  type LLMJsonCompletionResponseWithEval,
+  type LLMTextCompletionResponseWithEval,
+  evaluationHookRegistry,
+  wrapProviderWithEvaluation,
+  configureEvaluationHooks,
+  registerEvaluationHook,
+  evaluateOutput,
+  jsonStructureHook,
+  codeSyntaxHook,
+  createLengthHook,
+} from './evaluation-hooks.js';
 
 import type {
   LLMProvider,

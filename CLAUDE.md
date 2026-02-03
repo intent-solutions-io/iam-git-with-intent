@@ -107,13 +107,18 @@ gwi explain <run-id>     # Explain AI decisions
 
 ## Agent Architecture
 
-| Agent | Model | Purpose |
-|-------|-------|---------|
-| Orchestrator | Gemini Flash | Workflow coordination |
-| Triage | Gemini Flash | Fast complexity scoring |
-| Coder | Claude Sonnet | Code generation |
-| Resolver | Claude Sonnet/Opus | Conflict resolution (complexity-based) |
-| Reviewer | Claude Sonnet | Review summaries |
+| Agent | Model Selection | Purpose |
+|-------|-----------------|---------|
+| Orchestrator | Gemini Flash (tier 1) | Workflow coordination |
+| Triage | Gemini Flash / GPT-4o-mini (tier 1) | Fast complexity scoring |
+| Coder | Claude Sonnet 4 → Claude Opus 4 (complexity-based) | Code generation |
+| Resolver | Claude Sonnet 4 → Claude Opus 4 (complexity 7+) | Conflict resolution |
+| Reviewer | Claude Sonnet 4 | Review summaries |
+
+**Model Routing**: `packages/core/src/llm/selection-policy.ts` routes tasks to models based on:
+- Complexity (1-3 → tier 1, 4-7 → tier 3, 8-10 → tier 5)
+- Task type (code_generation, merge_resolution, reasoning, etc.)
+- Cost constraints and required capabilities
 
 **Approval gating**: Destructive operations (commit, push, merge) require explicit approval with SHA256 hash binding.
 
@@ -125,6 +130,18 @@ All agents extend `BaseAgent` from `packages/agents/src/base/agent.ts`:
 - Each agent has a SPIFFE ID: `spiffe://intent.solutions/agent/<name>`
 - In-memory state resets on restart; use Storage interfaces for persistence
 
+## LLM Providers
+
+Providers are configured via environment variables. At least one is required:
+
+| Provider | Env Variable | Models |
+|----------|--------------|--------|
+| Anthropic | `ANTHROPIC_API_KEY` | claude-sonnet-4, claude-opus-4, claude-3-5-haiku |
+| Google | `GOOGLE_AI_API_KEY` | gemini-2.0-flash, gemini-1.5-pro |
+| OpenAI | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, gpt-4-turbo, o1 |
+
+Provider capabilities and costs defined in `packages/core/src/llm/provider-capabilities.ts`.
+
 ## Storage
 
 | Backend | Usage |
@@ -133,7 +150,19 @@ All agents extend `BaseAgent` from `packages/agents/src/base/agent.ts`:
 | SQLite | Local dev with analytics |
 | In-Memory | Fast unit tests |
 
-Key interfaces in `packages/core/src/storage/interfaces.ts` - do not break these contracts.
+### Storage Architecture
+
+Production uses Firestore with multi-tenant isolation:
+
+| Store | Key Types | Purpose |
+|-------|-----------|---------|
+| TenantStore | `Tenant`, `TenantRepo` | Org installations, repos |
+| RunStore | `Run`, `SaaSRun` | Pipeline executions |
+| SignalStore | `Signal` | Inbound events (webhooks, issues) |
+| WorkItemStore | `WorkItem` | PR queue items |
+| PRCandidateStore | `PRCandidate` | Generated patches awaiting approval |
+
+All stores implement interfaces in `packages/core/src/storage/interfaces.ts` - do not break these contracts.
 
 ## Environment Variables
 
@@ -169,6 +198,19 @@ Every run creates artifacts at `.gwi/runs/<runId>/`:
 - Storage interfaces in `packages/core/src/storage/interfaces.ts` are contracts - do not break them
 - All Cloud Run deploys via GitHub Actions + OpenTofu - never `gcloud deploy` directly
 
+## Test Organization
+
+Tests are organized by purpose:
+- `packages/*/src/**/__tests__/*.test.ts` - Unit tests (co-located with source)
+- `test/contracts/*.test.ts` - Zod schema contract tests (ARV gate)
+- `test/goldens/*.golden.test.ts` - Deterministic output fixtures (ARV gate)
+- `test/e2e/*.e2e.test.ts` - End-to-end tests
+
+Golden tests ensure deterministic outputs. Update fixtures with:
+```bash
+npx tsx scripts/arv/update-goldens.ts
+```
+
 ## Debugging
 
 ```bash
@@ -179,17 +221,21 @@ cat .gwi/runs/<run-id>/audit.log
 ## ARV Gates (scripts/arv/)
 
 ARV includes specialized gates beyond lint/contracts/goldens:
-- `security-gate.ts` - Security validation
-- `identity-gate.ts` - Identity/auth checks
-- `reliability-gate.ts` - Reliability patterns
-- `observability-gate.ts` - Logging/tracing
-- `planner-gate.ts` - Plan validation
-- `openapi-gate.ts` - API schema validation
-- `connector-supply-chain.ts` - Connector trust verification
-- `marketplace-gate.ts` - Marketplace validation
-- `merge-resolver-gate.ts` - Merge resolution testing
-- `forensics-gate.ts` - Forensics/audit trail checks
-- `ga-readiness-gate.ts` - General availability readiness
+
+| Gate | What It Checks |
+|------|----------------|
+| `forbidden-patterns.ts` | No deprecated patterns, no TODO/FIXME in production |
+| `security-gate.ts` | No hardcoded secrets, proper sanitization |
+| `identity-gate.ts` | SPIFFE IDs correctly formed, auth flows valid |
+| `reliability-gate.ts` | Retry policies present, circuit breakers configured |
+| `observability-gate.ts` | Proper logging, tracing spans defined |
+| `planner-gate.ts` | Plan validation, step ordering correct |
+| `openapi-gate.ts` | API schema valid, endpoints documented |
+| `connector-supply-chain.ts` | Connector signatures verified, trust chain valid |
+| `marketplace-gate.ts` | Marketplace listings complete and valid |
+| `merge-resolver-gate.ts` | Conflict resolution produces valid patches |
+| `forensics-gate.ts` | Forensics/audit trail integrity |
+| `ga-readiness-gate.ts` | General availability readiness checklist |
 
 ## Documentation
 

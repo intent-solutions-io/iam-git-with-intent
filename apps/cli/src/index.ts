@@ -126,6 +126,11 @@ import {
   auditFormatsCommand,
 } from './commands/audit.js';
 import { registerPortfolioCommands } from './commands/portfolio-audit.js';
+import {
+  evalRunCommand,
+  evalListCommand,
+  evalValidateCommand,
+} from './commands/eval.js';
 
 const program = new Command();
 
@@ -1618,6 +1623,40 @@ Environment:
 // =============================================================================
 
 registerPortfolioCommands(program);
+
+// =============================================================================
+// Evaluation Commands (EPIC 003)
+// =============================================================================
+
+const evalCmd = program
+  .command('eval')
+  .description('Evaluation harness for agentic workflows');
+
+evalCmd
+  .command('run')
+  .description('Run golden task evaluation')
+  .option('-w, --workflow <type>', 'Filter by workflow type')
+  .option('-t, --tag <tags...>', 'Filter by tags')
+  .option('--rubrics-dir <path>', 'Rubrics directory')
+  .option('--tasks-dir <path>', 'Golden tasks directory')
+  .option('-v, --verbose', 'Verbose output')
+  .option('--fail-fast', 'Stop on first failure')
+  .option('--json', 'Output as JSON')
+  .option('--ci', 'CI mode (exit code reflects pass/fail)')
+  .action(evalRunCommand);
+
+evalCmd
+  .command('list')
+  .description('List available rubrics')
+  .option('--rubrics-dir <path>', 'Rubrics directory')
+  .option('--json', 'Output as JSON')
+  .action(evalListCommand);
+
+evalCmd
+  .command('validate <rubric>')
+  .description('Validate a rubric file')
+  .option('--json', 'Output as JSON')
+  .action(evalValidateCommand);
 
 // Parse and execute
 program.parse();

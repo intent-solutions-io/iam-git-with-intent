@@ -481,3 +481,6 @@ export {
   getSimulator,
   resetSimulator,
 } from './context-graph/index.js';
+
+// Evaluation exports (EPIC 003: Evaluation Harness + Golden Tasks Framework)
+export * from './evaluation/index.js';
