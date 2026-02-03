@@ -4,39 +4,100 @@
  * Phase 11: Approval records for runs with destructive actions.
  * Immutable - once created, approvals cannot be modified.
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage
  */
 
-import { getFirestoreClient, COLLECTIONS } from './firestore-client.js';
-import type { ApprovalStore, RunApproval, ApprovalDecision } from './interfaces.js';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+} from './base-firestore-repository.js';
+import type { ApprovalStore, RunApproval, ApprovalDecision, ProposedChange } from './interfaces.js';
+
+// =============================================================================
+// Firestore Document Type
+// =============================================================================
+
+interface ApprovalDoc extends DocumentData {
+  id: string;
+  runId: string;
+  tenantId: string;
+  decision: string;
+  decidedBy: string;
+  decidedAt: Timestamp;
+  reason?: string;
+  proposedChangesSnapshot?: ProposedChange[];
+}
+
+// =============================================================================
+// Conversion Functions
+// =============================================================================
+
+function approvalDocToModel(doc: ApprovalDoc, id: string): RunApproval {
+  return {
+    id,
+    runId: doc.runId,
+    tenantId: doc.tenantId,
+    decision: doc.decision as ApprovalDecision,
+    decidedBy: doc.decidedBy,
+    decidedAt: timestampToDate(doc.decidedAt) ?? new Date(),
+    reason: doc.reason,
+    proposedChangesSnapshot: doc.proposedChangesSnapshot,
+  };
+}
+
+function approvalModelToDoc(approval: RunApproval): ApprovalDoc {
+  return {
+    id: approval.id,
+    runId: approval.runId,
+    tenantId: approval.tenantId,
+    decision: approval.decision,
+    decidedBy: approval.decidedBy,
+    decidedAt: dateToTimestamp(approval.decidedAt) as Timestamp,
+    reason: approval.reason,
+    proposedChangesSnapshot: approval.proposedChangesSnapshot,
+  };
+}
+
+// =============================================================================
+// Firestore Approval Store Implementation
+// =============================================================================
 
 /**
- * Firestore implementation of ApprovalStore
+ * Firestore implementation of ApprovalStore using BaseFirestoreRepository
  */
-export class FirestoreApprovalStore implements ApprovalStore {
-  private get db() {
-    return getFirestoreClient();
-  }
-
-  private get collection() {
-    return this.db.collection(COLLECTIONS.APPROVALS);
+export class FirestoreApprovalStore
+  extends BaseFirestoreRepository<RunApproval, ApprovalDoc>
+  implements ApprovalStore
+{
+  constructor(db?: Firestore) {
+    super(db, {
+      collection: COLLECTIONS.APPROVALS,
+      idPrefix: 'apv',
+      timestampFields: ['decidedAt'],
+      docToModel: approvalDocToModel,
+      modelToDoc: approvalModelToDoc,
+    });
   }
 
   /**
    * Create a new approval record
    */
   async createApproval(approval: Omit<RunApproval, 'id'>): Promise<RunApproval> {
-    const id = `apv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = this.generateId();
 
     const record: RunApproval = {
       ...approval,
       id,
     };
 
-    await this.collection.doc(id).set({
-      ...record,
-      decidedAt: record.decidedAt,
-    });
+    const doc = this.toDocument(record);
+    await this.getDocRef(id).set(doc);
 
     console.log(JSON.stringify({
       type: 'approval_created',
@@ -54,39 +115,14 @@ export class FirestoreApprovalStore implements ApprovalStore {
    * Get approval by ID
    */
   async getApproval(approvalId: string): Promise<RunApproval | null> {
-    const doc = await this.collection.doc(approvalId).get();
-    if (!doc.exists) {
-      return null;
-    }
-
-    const data = doc.data()!;
-    return {
-      ...data,
-      id: doc.id,
-      decidedAt: data.decidedAt?.toDate?.() || new Date(data.decidedAt),
-    } as RunApproval;
+    return this.getDocument(approvalId);
   }
 
   /**
    * Get approval for a specific run
    */
   async getApprovalByRunId(runId: string): Promise<RunApproval | null> {
-    const snapshot = await this.collection
-      .where('runId', '==', runId)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    return {
-      ...data,
-      id: doc.id,
-      decidedAt: data.decidedAt?.toDate?.() || new Date(data.decidedAt),
-    } as RunApproval;
+    return this.findByField('runId', runId);
   }
 
   /**
@@ -100,32 +136,25 @@ export class FirestoreApprovalStore implements ApprovalStore {
       limit?: number;
     }
   ): Promise<RunApproval[]> {
-    let query = this.collection.where('tenantId', '==', tenantId);
+    const conditions = [
+      { field: 'tenantId', operator: '==' as const, value: tenantId },
+    ];
 
     if (filter?.runId) {
-      query = query.where('runId', '==', filter.runId);
+      conditions.push({ field: 'runId', operator: '==', value: filter.runId });
     }
 
     if (filter?.decision) {
-      query = query.where('decision', '==', filter.decision);
+      conditions.push({ field: 'decision', operator: '==', value: filter.decision });
     }
 
-    query = query.orderBy('decidedAt', 'desc');
-
-    if (filter?.limit) {
-      query = query.limit(filter.limit);
-    }
-
-    const snapshot = await query.get();
-
-    return snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        decidedAt: data.decidedAt?.toDate?.() || new Date(data.decidedAt),
-      } as RunApproval;
-    });
+    return this.listDocuments(
+      conditions,
+      { limit: filter?.limit },
+      undefined,
+      'decidedAt',
+      'desc'
+    );
   }
 }
 
