@@ -124,6 +124,7 @@ import {
   auditExportCommand,
   auditFormatsCommand,
 } from './commands/audit.js';
+import { registerPortfolioCommands } from './commands/portfolio-audit.js';
 
 const program = new Command();
 
@@ -1592,6 +1593,12 @@ Environment:
   GWI_TENANT_ID  Default tenant ID for SaaS mode
   GITHUB_TOKEN   GitHub API token (or use gh auth)
 `);
+
+// =============================================================================
+// Portfolio Commands (EPIC 024.7)
+// =============================================================================
+
+registerPortfolioCommands(program);
 
 // Parse and execute
 program.parse();
