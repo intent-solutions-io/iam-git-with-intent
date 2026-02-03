@@ -2,7 +2,7 @@
 
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
-**Version:** 0.6.0 | **Status:** Active development
+**Version:** 0.7.0 | **Status:** Active development
 
 ---
 
@@ -13,6 +13,9 @@ CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from
 - Want to turn GitHub issues into working PRs with one command
 - Need audit trails for AI-assisted code changes
 - Want AI help but don't trust fully autonomous commits
+- Require SOC2/SOX compliance automation and audit trails
+- Track engineering metrics like DORA (deployment frequency, lead time, MTTR)
+- Need AI governance policies with approval workflows
 
 **Not for teams that:**
 - Need a web dashboard first (CLI-only for now)
@@ -77,6 +80,63 @@ flowchart LR
 - Review and summarize PRs
 - Full autopilot: triage → resolve → review → commit
 - **Local review before PR**: Review staged/unstaged changes locally
+
+---
+
+## Platform Features
+
+```mermaid
+flowchart TB
+    subgraph "Developer Interface"
+        CLI[gwi CLI]
+        IDE[IDE Plugins]
+        Dashboard[Web Dashboard]
+    end
+
+    subgraph "Core Engine"
+        Agents[AI Agents]
+        Engine[Workflow Engine]
+        RAG[Knowledge Base]
+    end
+
+    subgraph "Platform Services"
+        Security[Security Scanning]
+        Governance[AI Governance]
+        Compliance[Compliance Tracking]
+        Analytics[Developer Analytics]
+    end
+
+    subgraph "Integrations"
+        GitHub
+        Jira
+        Slack
+        Observability
+    end
+
+    CLI --> Agents
+    IDE --> Agents
+    Dashboard --> Engine
+    Agents --> Engine
+    Engine --> RAG
+    Engine --> Security
+    Engine --> Governance
+    Engine --> Compliance
+    Engine --> Analytics
+    Security --> GitHub
+    Governance --> Jira
+    Compliance --> Slack
+    Analytics --> Observability
+```
+
+**Platform capabilities (v0.7.0):**
+
+| Category | Features |
+|----------|----------|
+| **Security Scanning** | SAST/DAST integration, vulnerability detection, security policy enforcement |
+| **AI Governance** | Model usage policies, approval workflows, cost controls, audit trails |
+| **Compliance Tracking** | SOC2/SOX evidence collection, control mapping, automated reporting |
+| **Developer Analytics** | DORA metrics, cycle time, deployment frequency, change failure rate |
+| **Knowledge Base** | RAG-powered search, codebase understanding, documentation generation |
 
 ---
 
@@ -614,18 +674,29 @@ npm run arv:smoke     # Boot test
 
 ## Epic Status
 
-| Epic | Status | Focus |
-|------|--------|-------|
-| A | Active | Core infrastructure |
-| B | Active | Data connectors |
-| C | Active | Workflow engine |
-| D | Active | Policy & audit |
-| E | Complete | RBAC & governance |
-| F | Active | Web dashboard |
-| G | Planned | Slack integration |
-| H | Active | Infrastructure |
-| I | Active | Forecasting & ML |
-| J | **Complete** | **Local dev review** |
+| Category | Status | Epics Completed |
+|----------|--------|-----------------|
+| **Core Automation** | ✅ Complete | PR triage, conflict resolution, code review, autopilot |
+| **Security & Governance** | ✅ Complete | SAST/DAST scanning (EPIC 016), AI governance (EPIC 020) |
+| **Compliance & Analytics** | ✅ Complete | SOC2/SOX tracking (EPIC 021), DORA metrics (EPIC 022) |
+| **Developer Experience** | ✅ Complete | DevEx dashboard (EPIC 009), onboarding automation (EPIC 010) |
+| **Integrations** | ✅ Complete | GitHub, Jira, Linear, Slack connectors |
+| **Knowledge & AI** | ✅ Complete | RAG search (EPIC 023), documentation generation (EPIC 012) |
+| **Infrastructure** | ✅ Complete | CI/CD golden paths (EPIC 007), observability (EPIC 014), cost optimization (EPIC 013) |
+
+```mermaid
+gantt
+    title GWI Platform Completion
+    dateFormat YYYY-MM
+    section Core
+    PR Automation       :done, 2025-01, 2025-06
+    Local Review        :done, 2025-07, 2025-09
+    section Platform
+    Security & Governance :done, 2025-10, 2026-01
+    Compliance & Analytics :done, 2026-01, 2026-02
+    section Knowledge
+    RAG & Enterprise    :active, 2026-02, 2026-06
+```
 
 ---
 
@@ -713,27 +784,34 @@ Replay, audit, or debug any run from these artifacts.
 
 ```mermaid
 gantt
-    title Development Phases
-    dateFormat  YYYY-MM
-    section Phase 1
-    PR Automation     :done, 2025-01, 2025-06
-    section Phase 2
-    Data Ingestion    :active, 2025-06, 2025-09
-    section Phase 3
-    Repo Analysis     :active, 2025-07, 2025-10
-    section Phase 4
-    Forecasting       :2025-10, 2026-01
-    section Phase 5
-    Platform          :2026-01, 2026-06
+    title GWI Development Roadmap
+    dateFormat YYYY-MM
+    section Phase 1: Core
+    PR Automation       :done, p1, 2025-01, 2025-06
+    Conflict Resolution :done, p1b, 2025-03, 2025-06
+    section Phase 2: Connectors
+    GitHub Connector    :done, p2, 2025-06, 2025-08
+    Jira/Linear         :done, p2b, 2025-07, 2025-09
+    section Phase 3: Local Dev
+    Local Review        :done, p3, 2025-07, 2025-09
+    Pre-commit Gates    :done, p3b, 2025-08, 2025-09
+    section Phase 4: Platform
+    Security Scanning   :done, p4, 2025-10, 2026-01
+    AI Governance       :done, p4b, 2025-11, 2026-01
+    Compliance (SOC2)   :done, p4c, 2026-01, 2026-02
+    DORA Analytics      :done, p4d, 2026-01, 2026-02
+    section Phase 5: Enterprise
+    Knowledge Base/RAG  :active, p5, 2026-02, 2026-04
+    Enterprise Features :milestone, p5b, 2026-04, 2026-06
 ```
 
 | Phase | Status | Features |
 |-------|--------|----------|
-| 1. PR Automation | Shipped | Triage, resolve, review, autopilot |
-| 2. Data Ingestion | In Progress | GitHub connector, storage layer |
-| 3. Repo Analysis | In Progress | Single/multi-repo patterns |
-| 4. Forecasting | Planned | TimeGPT integration |
-| 5. Platform | Planned | GitHub App, Slack, dashboard |
+| 1. Core Automation | ✅ Complete | Triage, resolve, review, autopilot, approval gates |
+| 2. Connectors | ✅ Complete | GitHub, Jira, Linear, Slack integrations |
+| 3. Local Development | ✅ Complete | Local review, pre-commit hooks, `gwi gate` |
+| 4. Platform Services | ✅ Complete | Security scanning, AI governance, compliance, analytics |
+| 5. Enterprise | 🚧 In Progress | RAG knowledge base, enterprise auth, advanced reporting |
 
 ---
 
