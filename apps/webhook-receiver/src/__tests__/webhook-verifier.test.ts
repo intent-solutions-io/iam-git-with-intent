@@ -18,6 +18,7 @@ const mockLogger: ILogger = {
   warn: vi.fn(),
   error: vi.fn(),
   debug: vi.fn(),
+  child: vi.fn().mockReturnThis(),
 };
 
 // Mock secret manager

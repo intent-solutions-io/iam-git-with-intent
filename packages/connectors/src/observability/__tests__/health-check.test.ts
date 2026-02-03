@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { HealthCheckRunner, HealthCheckAPI } from '../health-check.js';
 import { IAuthStrategy, AuthState, AuthConfig, AuthResult } from '../../auth/IAuthStrategy.js';
 import { IMetrics } from '../IMetrics.js';
-import { ILogger } from '../ILogger.js';
+import type { ILogger } from '../../core/base-connector.js';
 
 describe('HealthCheckRunner', () => {
   let mockAuth: IAuthStrategy;

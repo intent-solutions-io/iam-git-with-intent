@@ -8,7 +8,7 @@ import {
 } from './IAuthStrategy.js';
 import { AuthenticationError } from '../errors/index.js';
 import { ISecretManager } from '../secrets/ISecretManager.js';
-import { ILogger } from '../observability/ILogger.js';
+import type { ILogger } from '../core/base-connector.js';
 
 /**
  * Bearer Token authentication strategy

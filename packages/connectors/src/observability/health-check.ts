@@ -1,6 +1,6 @@
 import { IAuthStrategy } from '../auth/IAuthStrategy.js';
 import { IMetrics } from './IMetrics.js';
-import { ILogger } from './ILogger.js';
+import type { ILogger } from '../core/base-connector.js';
 
 /**
  * Health check status

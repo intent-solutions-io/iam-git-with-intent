@@ -37,7 +37,7 @@ import {
 import { WebhookVerifier, extractEventId, extractEventType, extractSignature } from './webhook/WebhookVerifier.js';
 import { WebhookRouter } from './pubsub/WebhookRouter.js';
 import { getRateLimiter } from './ratelimit/RateLimiter.js';
-import { createLogger } from './logger.js';
+import { createLogger } from '@gwi/core';
 import { createSecretManager } from './secrets.js';
 import {
   createHealthRouter,
@@ -85,7 +85,9 @@ if (config.environment === 'prod') {
 // Service Initialization
 // =============================================================================
 
-const logger = createLogger({ env: config.environment });
+const logger = createLogger('webhook-receiver', {
+  defaultFields: { env: config.environment },
+});
 const secretManager = createSecretManager();
 const verifier = new WebhookVerifier(secretManager, logger);
 const rateLimiter = getRateLimiter({
@@ -320,8 +322,7 @@ function createWebhookHandler(source: WebhookSource) {
       }
 
       // Log error without leaking details
-      reqLogger.error('Webhook processing failed', {
-        error: error instanceof Error ? error.message : String(error),
+      reqLogger.error('Webhook processing failed', error instanceof Error ? error : undefined, {
         durationMs: duration,
       });
 
@@ -392,10 +393,7 @@ app.use((_req: Request, res: Response) => {
 
 // Global error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  logger.error('Unhandled error', {
-    error: err.message,
-    stack: err.stack,
-  });
+  logger.error('Unhandled error', err);
 
   res.status(500).json({
     status: 'error',

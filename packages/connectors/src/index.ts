@@ -18,8 +18,8 @@ export * from './secrets/index.js';
 
 // Observability (logging, metrics, health)
 export { HealthCheckRunner, HealthCheckAPI } from './observability/health-check.js';
-export { StructuredLogger } from './observability/ILogger.js';
 export { PrometheusMetrics } from './observability/IMetrics.js';
+// Note: ILogger and ConsoleLogger are exported from core/base-connector.js above
 
 // Error types
 export * from './errors/index.js';
