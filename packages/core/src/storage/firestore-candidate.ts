@@ -7,11 +7,21 @@
  * Collection Structure:
  * - gwi_tenants/{tenantId}/pr_candidates/{candidateId}
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage/firestore
  */
 
-import type { Firestore, DocumentReference, Query, CollectionReference } from 'firebase-admin/firestore';
-import { Timestamp, FieldValue } from 'firebase-admin/firestore';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+  type TenantScopedEntity,
+} from './base-firestore-repository.js';
 import type {
   PRCandidateStore,
   PRCandidate,
@@ -22,19 +32,12 @@ import type {
   CandidateApproval,
   CandidateIntentReceipt,
 } from './interfaces.js';
-import {
-  getFirestoreClient,
-  COLLECTIONS,
-  timestampToDate,
-  dateToTimestamp,
-  generateFirestoreId,
-} from './firestore-client.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface CandidateDoc {
+interface CandidateDoc extends DocumentData {
   id: string;
   workItemId: string;
   tenantId: string;
@@ -62,9 +65,9 @@ interface CandidateDoc {
 // Conversion Functions
 // =============================================================================
 
-function candidateDocToModel(doc: CandidateDoc): PRCandidate {
+function candidateDocToModel(doc: CandidateDoc, id: string): PRCandidate {
   return {
-    id: doc.id,
+    id,
     workItemId: doc.workItemId,
     tenantId: doc.tenantId,
     status: doc.status as PRCandidateStatus,
@@ -127,38 +130,28 @@ function candidateModelToDoc(candidate: PRCandidate): CandidateDoc {
  * - Approval tracking
  * - Status filtering
  */
-export class FirestorePRCandidateStore implements PRCandidateStore {
-  private db: Firestore;
-
+export class FirestorePRCandidateStore
+  extends BaseFirestoreRepository<PRCandidate & TenantScopedEntity, CandidateDoc>
+  implements PRCandidateStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
+    super(db, {
+      tenantScoped: {
+        parentCollection: COLLECTIONS.TENANTS,
+        subcollection: COLLECTIONS.PR_CANDIDATES,
+      },
+      idPrefix: 'prc',
+      timestampFields: ['createdAt', 'updatedAt', 'appliedAt'],
+      docToModel: candidateDocToModel,
+      modelToDoc: candidateModelToDoc,
+    });
   }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private tenantsRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.TENANTS);
-  }
-
-  private candidatesRef(tenantId: string): CollectionReference {
-    return this.tenantsRef().doc(tenantId).collection(COLLECTIONS.PR_CANDIDATES);
-  }
-
-  private candidateDoc(tenantId: string, candidateId: string): DocumentReference {
-    return this.candidatesRef(tenantId).doc(candidateId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // PR Candidate CRUD
-  // ---------------------------------------------------------------------------
 
   async createCandidate(
     candidate: Omit<PRCandidate, 'id' | 'createdAt' | 'updatedAt' | 'approvals'>
   ): Promise<PRCandidate> {
     const now = new Date();
-    const candidateId = generateFirestoreId('prc');
+    const candidateId = this.generateId();
 
     const fullCandidate: PRCandidate = {
       ...candidate,
@@ -168,42 +161,18 @@ export class FirestorePRCandidateStore implements PRCandidateStore {
       updatedAt: now,
     };
 
-    const doc = candidateModelToDoc(fullCandidate);
-    await this.candidateDoc(candidate.tenantId, candidateId).set(doc);
+    const doc = this.toDocument(fullCandidate);
+    await this.getDocRef(candidateId, candidate.tenantId).set(doc);
 
     return fullCandidate;
   }
 
   async getCandidate(candidateId: string): Promise<PRCandidate | null> {
-    // We need to search across all tenants since we only have candidateId
-    const tenantsSnapshot = await this.tenantsRef().get();
-
-    for (const tenantDoc of tenantsSnapshot.docs) {
-      const candidateSnapshot = await this.candidatesRef(tenantDoc.id).doc(candidateId).get();
-      if (candidateSnapshot.exists) {
-        return candidateDocToModel(candidateSnapshot.data() as CandidateDoc);
-      }
-    }
-
-    return null;
+    return this.getDocumentAcrossTenants(candidateId);
   }
 
   async getCandidateByWorkItemId(workItemId: string): Promise<PRCandidate | null> {
-    // Search across all tenants for the work item's candidate
-    const tenantsSnapshot = await this.tenantsRef().get();
-
-    for (const tenantDoc of tenantsSnapshot.docs) {
-      const snapshot = await this.candidatesRef(tenantDoc.id)
-        .where('workItemId', '==', workItemId)
-        .limit(1)
-        .get();
-
-      if (!snapshot.empty) {
-        return candidateDocToModel(snapshot.docs[0].data() as CandidateDoc);
-      }
-    }
-
-    return null;
+    return this.findByFieldAcrossTenants('workItemId', workItemId);
   }
 
   async listCandidates(
@@ -215,38 +184,34 @@ export class FirestorePRCandidateStore implements PRCandidateStore {
       offset?: number;
     }
   ): Promise<PRCandidate[]> {
-    let query: Query = this.candidatesRef(tenantId);
+    const conditions: Array<{ field: string; operator: '==' | '>=' | '<' | '>' | '<=' | '!=' | 'in' | 'array-contains'; value: unknown }> = [];
 
-    // Note: Firestore doesn't support array 'in' queries with other where clauses easily
+    // Handle status array
     const statusArray = filter?.status
       ? (Array.isArray(filter.status) ? filter.status : [filter.status])
       : null;
 
     if (statusArray && statusArray.length === 1) {
-      query = query.where('status', '==', statusArray[0]);
+      conditions.push({ field: 'status', operator: '==', value: statusArray[0] });
     }
     if (filter?.workItemId) {
-      query = query.where('workItemId', '==', filter.workItemId);
+      conditions.push({ field: 'workItemId', operator: '==', value: filter.workItemId });
     }
 
-    query = query.orderBy('createdAt', 'desc');
+    let candidates = await this.listDocuments(
+      conditions,
+      { limit: filter?.limit, offset: filter?.offset },
+      tenantId,
+      'createdAt',
+      'desc'
+    );
 
-    const limit = filter?.limit ?? 100;
-    const offset = filter?.offset ?? 0;
-
-    // Apply limit with offset padding
-    query = query.limit(limit + offset);
-
-    const snapshot = await query.get();
-    let candidates = snapshot.docs.map(doc => candidateDocToModel(doc.data() as CandidateDoc));
-
-    // Apply client-side filters
+    // Apply client-side filters for multiple statuses
     if (statusArray && statusArray.length > 1) {
       candidates = candidates.filter(c => statusArray.includes(c.status));
     }
 
-    // Apply offset
-    return candidates.slice(offset, offset + limit);
+    return candidates;
   }
 
   async updateCandidate(
@@ -274,13 +239,12 @@ export class FirestorePRCandidateStore implements PRCandidateStore {
     if (update.resultingPRUrl !== undefined) updateData.resultingPRUrl = update.resultingPRUrl;
     if (update.runId !== undefined) updateData.runId = update.runId;
     if (update.appliedAt !== undefined) updateData.appliedAt = dateToTimestamp(update.appliedAt);
-    // Phase 19: Support plan/risk/confidence/intentReceipt updates
     if (update.plan !== undefined) updateData.plan = update.plan;
     if (update.risk !== undefined) updateData.risk = update.risk;
     if (update.confidence !== undefined) updateData.confidence = update.confidence;
     if (update.intentReceipt !== undefined) updateData.intentReceipt = update.intentReceipt;
 
-    await this.candidateDoc(existing.tenantId, candidateId).update(updateData);
+    await this.getDocRef(candidateId, existing.tenantId).update(updateData);
 
     return updated;
   }
@@ -299,9 +263,9 @@ export class FirestorePRCandidateStore implements PRCandidateStore {
     };
 
     // Add approval and update status in a transaction
-    const candidateRef = this.candidateDoc(existing.tenantId, candidateId);
+    const candidateRef = this.getDocRef(candidateId, existing.tenantId);
 
-    await this.db.runTransaction(async (transaction) => {
+    await this.runTransaction(async (transaction) => {
       const docSnapshot = await transaction.get(candidateRef);
       const data = docSnapshot.data() as CandidateDoc;
 

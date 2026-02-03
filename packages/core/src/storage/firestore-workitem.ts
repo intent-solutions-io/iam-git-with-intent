@@ -7,11 +7,21 @@
  * Collection Structure:
  * - gwi_tenants/{tenantId}/work_items/{itemId}
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage/firestore
  */
 
-import type { Firestore, DocumentReference, Query, CollectionReference } from 'firebase-admin/firestore';
-import { Timestamp, FieldValue } from 'firebase-admin/firestore';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+  type TenantScopedEntity,
+} from './base-firestore-repository.js';
 import type {
   WorkItemStore,
   WorkItem,
@@ -20,19 +30,12 @@ import type {
   ScoreBreakdown,
   WorkItemEvidence,
 } from './interfaces.js';
-import {
-  getFirestoreClient,
-  COLLECTIONS,
-  timestampToDate,
-  dateToTimestamp,
-  generateFirestoreId,
-} from './firestore-client.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface WorkItemDoc {
+interface WorkItemDoc extends DocumentData {
   id: string;
   tenantId: string;
   type: string;
@@ -62,9 +65,9 @@ interface WorkItemDoc {
 // Conversion Functions
 // =============================================================================
 
-function workItemDocToModel(doc: WorkItemDoc): WorkItem {
+function workItemDocToModel(doc: WorkItemDoc, id: string): WorkItem {
   return {
-    id: doc.id,
+    id,
     tenantId: doc.tenantId,
     type: doc.type as WorkItemType,
     title: doc.title,
@@ -123,36 +126,26 @@ function workItemModelToDoc(item: WorkItem): WorkItemDoc {
  * - Score-based sorting for PR queue
  * - Status filtering and statistics
  */
-export class FirestoreWorkItemStore implements WorkItemStore {
-  private db: Firestore;
-
+export class FirestoreWorkItemStore
+  extends BaseFirestoreRepository<WorkItem & TenantScopedEntity, WorkItemDoc>
+  implements WorkItemStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
+    super(db, {
+      tenantScoped: {
+        parentCollection: COLLECTIONS.TENANTS,
+        subcollection: COLLECTIONS.WORK_ITEMS,
+      },
+      idPrefix: 'wi',
+      timestampFields: ['createdAt', 'updatedAt', 'dueAt'],
+      docToModel: workItemDocToModel,
+      modelToDoc: workItemModelToDoc,
+    });
   }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private tenantsRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.TENANTS);
-  }
-
-  private workItemsRef(tenantId: string): CollectionReference {
-    return this.tenantsRef().doc(tenantId).collection(COLLECTIONS.WORK_ITEMS);
-  }
-
-  private workItemDoc(tenantId: string, itemId: string): DocumentReference {
-    return this.workItemsRef(tenantId).doc(itemId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Work Item CRUD
-  // ---------------------------------------------------------------------------
 
   async createWorkItem(item: Omit<WorkItem, 'id' | 'createdAt' | 'updatedAt'>): Promise<WorkItem> {
     const now = new Date();
-    const itemId = generateFirestoreId('wi');
+    const itemId = this.generateId();
 
     const fullItem: WorkItem = {
       ...item,
@@ -161,37 +154,18 @@ export class FirestoreWorkItemStore implements WorkItemStore {
       updatedAt: now,
     };
 
-    const doc = workItemModelToDoc(fullItem);
-    await this.workItemDoc(item.tenantId, itemId).set(doc);
+    const doc = this.toDocument(fullItem);
+    await this.getDocRef(itemId, item.tenantId).set(doc);
 
     return fullItem;
   }
 
   async getWorkItem(itemId: string): Promise<WorkItem | null> {
-    // We need to search across all tenants since we only have itemId
-    const tenantsSnapshot = await this.tenantsRef().get();
-
-    for (const tenantDoc of tenantsSnapshot.docs) {
-      const itemSnapshot = await this.workItemsRef(tenantDoc.id).doc(itemId).get();
-      if (itemSnapshot.exists) {
-        return workItemDocToModel(itemSnapshot.data() as WorkItemDoc);
-      }
-    }
-
-    return null;
+    return this.getDocumentAcrossTenants(itemId);
   }
 
   async getWorkItemByDedupeKey(tenantId: string, dedupeKey: string): Promise<WorkItem | null> {
-    const snapshot = await this.workItemsRef(tenantId)
-      .where('dedupeKey', '==', dedupeKey)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    return workItemDocToModel(snapshot.docs[0].data() as WorkItemDoc);
+    return this.findByField('dedupeKey', dedupeKey, tenantId);
   }
 
   async listWorkItems(
@@ -206,38 +180,33 @@ export class FirestoreWorkItemStore implements WorkItemStore {
       offset?: number;
     }
   ): Promise<WorkItem[]> {
-    let query: Query = this.workItemsRef(tenantId);
+    const conditions: Array<{ field: string; operator: '==' | '>=' | '<' | '>' | '<=' | '!=' | 'in' | 'array-contains'; value: unknown }> = [];
 
-    // Note: Firestore doesn't support array 'in' queries with other where clauses easily
-    // For status array, we'll filter client-side if needed
+    // Handle status array - Firestore doesn't support 'in' with other conditions easily
     const statusArray = filter?.status
       ? (Array.isArray(filter.status) ? filter.status : [filter.status])
       : null;
 
     if (statusArray && statusArray.length === 1) {
-      query = query.where('status', '==', statusArray[0]);
+      conditions.push({ field: 'status', operator: '==', value: statusArray[0] });
     }
     if (filter?.type) {
-      query = query.where('type', '==', filter.type);
+      conditions.push({ field: 'type', operator: '==', value: filter.type });
     }
     if (filter?.assignedTo) {
-      query = query.where('assignedTo', '==', filter.assignedTo);
+      conditions.push({ field: 'assignedTo', operator: '==', value: filter.assignedTo });
     }
     if (filter?.minScore !== undefined) {
-      query = query.where('score', '>=', filter.minScore);
+      conditions.push({ field: 'score', operator: '>=', value: filter.minScore });
     }
 
-    // Sort by score descending
-    query = query.orderBy('score', 'desc');
-
-    const limit = filter?.limit ?? 100;
-    const offset = filter?.offset ?? 0;
-
-    // Apply limit with offset padding
-    query = query.limit(limit + offset);
-
-    const snapshot = await query.get();
-    let items = snapshot.docs.map(doc => workItemDocToModel(doc.data() as WorkItemDoc));
+    let items = await this.listDocuments(
+      conditions,
+      { limit: filter?.limit, offset: filter?.offset },
+      tenantId,
+      'score',
+      'desc'
+    );
 
     // Apply client-side filters
     if (statusArray && statusArray.length > 1) {
@@ -247,8 +216,7 @@ export class FirestoreWorkItemStore implements WorkItemStore {
       items = items.filter(i => i.repo?.fullName === filter.repo);
     }
 
-    // Apply offset
-    return items.slice(offset, offset + limit);
+    return items;
   }
 
   async updateWorkItem(
@@ -277,7 +245,7 @@ export class FirestoreWorkItemStore implements WorkItemStore {
     if (update.score !== undefined) updateData.score = update.score;
     if (update.scoreBreakdown !== undefined) updateData.scoreBreakdown = update.scoreBreakdown;
 
-    await this.workItemDoc(existing.tenantId, itemId).update(updateData);
+    await this.getDocRef(itemId, existing.tenantId).update(updateData);
 
     return updated;
   }
@@ -288,7 +256,7 @@ export class FirestoreWorkItemStore implements WorkItemStore {
       throw new Error(`Work item not found: ${itemId}`);
     }
 
-    await this.workItemDoc(existing.tenantId, itemId).update({
+    await this.getDocRef(itemId, existing.tenantId).update({
       signalIds: FieldValue.arrayUnion(signalId),
       updatedAt: Timestamp.now(),
     });
@@ -299,18 +267,17 @@ export class FirestoreWorkItemStore implements WorkItemStore {
   }
 
   async countWorkItems(tenantId: string, status?: WorkItemStatus | WorkItemStatus[]): Promise<number> {
-    let query: Query = this.workItemsRef(tenantId);
+    const conditions: Array<{ field: string; operator: '==' | '>=' | '<' | '>' | '<=' | '!=' | 'in' | 'array-contains'; value: unknown }> = [];
 
     if (status) {
       const statuses = Array.isArray(status) ? status : [status];
       if (statuses.length === 1) {
-        query = query.where('status', '==', statuses[0]);
+        conditions.push({ field: 'status', operator: '==', value: statuses[0] });
       }
-      // For multiple statuses, we count all and filter
+      // For multiple statuses, count is less accurate - we count all and filter would be needed
     }
 
-    const snapshot = await query.count().get();
-    return snapshot.data().count;
+    return this.countDocuments(conditions, tenantId);
   }
 
   async getQueueStats(tenantId: string): Promise<{
@@ -320,9 +287,7 @@ export class FirestoreWorkItemStore implements WorkItemStore {
     avgScore: number;
   }> {
     // Fetch all items for stats calculation
-    // In production, consider using aggregation or maintaining counters
-    const snapshot = await this.workItemsRef(tenantId).get();
-    const items = snapshot.docs.map(doc => workItemDocToModel(doc.data() as WorkItemDoc));
+    const items = await this.listDocuments([], { limit: 10000 }, tenantId);
 
     const byStatus: Record<WorkItemStatus, number> = {
       queued: 0,
