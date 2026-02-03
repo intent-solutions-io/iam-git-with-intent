@@ -55,7 +55,6 @@ test-results/
 
 # Internal documentation (strategy, security, runbooks, planning)
 # These contain operational details not meant for public consumption
-000-docs/
 
 # Workspace (internal dev/ops - ephemeral artifacts, planning, evidence)
 # This entire directory is local-only, never committed
