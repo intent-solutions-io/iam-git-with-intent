@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-02-03
+
+### Added
+
+#### Documentation Epics
+- **EPIC 006**: AI Coding Assistant Enablement
+  - Claude Code integration guide with MCP server support
+  - GWI CLI workflows and agent configuration
+  - IDC mode settings and quality gates
+
+- **EPIC 007**: CI/CD Golden Paths
+  - CI/CD baseline metrics and optimization targets
+  - Caching strategies (Turbo, Docker BuildKit, TypeScript incremental)
+  - Test sharding and parallelization playbook
+  - Automated release workflow templates
+
+- **EPIC 008**: Incident Response Enhancement
+  - Comprehensive incident response runbook (SEV1-4)
+  - Failure context pages specification
+  - Error response format with actionable links
+
+- **EPIC 009**: DevEx Dashboard (IDP Portal)
+  - 7-view dashboard specification
+  - Run Explorer, SDLC Metrics, Golden Tasks, Provider Usage
+  - Team health and approval queue monitoring
+
+- **EPIC 015**: Observability Export + AI Workload Tuning
+  - Prometheus, Datadog, OpenTelemetry export specs
+  - AI performance metrics (P50/P95/P99 latency, token usage)
+  - Grafana dashboard templates (5 dashboards)
+
+#### Connector Framework
+- Airbyte CDK architecture analysis (010)
+- Production connector patterns (011)
+- IConnector interface design (014-015)
+- Authentication strategy (016)
+- Webhook receiver design (017)
+- Connector registry (018)
+
+### Changed
+
+#### Code Quality
+- Removed 2,735 lines of dead code (openapi module)
+- Consolidated logger implementations
+- Refactored webhook-receiver to use @gwi/connectors
+- Added BaseFirestoreRepository to reduce code duplication
+
+### Fixed
+- Security: removed duplicate generateAuditEventId
+- Fixed pre-commit script path issues
+- Resolved dead observability-v2 and run-prediction modules
+
+### Security
+- Added beads task tracking for AI agent workflows
+- Stop hook enforcement for bead closure
+
 ## [0.6.0] - 2026-01-30
 
 ### Added
@@ -145,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic CLI commands
 - Project template and monorepo structure
 
+[0.7.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.4.0...v0.5.0

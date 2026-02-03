@@ -1,6 +1,6 @@
 {
   "name": "@gwi/mcp-server",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "MCP Server for Git With Intent - provides AI coding assistant integration",
   "type": "module",
   "main": "dist/index.js",

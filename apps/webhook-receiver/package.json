@@ -1,6 +1,6 @@
 {
   "name": "@gwi/webhook-receiver",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Multi-source webhook receiver for Git With Intent connector framework (GitHub, GitLab, Linear, Slack)",
   "type": "module",
   "main": "./dist/index.js",
