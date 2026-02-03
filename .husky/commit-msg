@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Enforce bead ID in commit messages for tracking
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Skip merge commits, fixup commits, and revert commits
+if echo "$COMMIT_MSG" | grep -qE '^(Merge|fixup!|squash!|Revert)'; then
+  exit 0
+fi
+
+# Skip if commit message contains Co-Authored-By (automated commits)
+if echo "$COMMIT_MSG" | grep -qE '^Co-Authored-By:'; then
+  exit 0
+fi
+
+# Check for bead ID pattern: [git-with-intent-XXX] or closes #XXX or refs #XXX
+if ! echo "$COMMIT_MSG" | grep -qiE '\[git-with-intent-[a-z0-9]+\]|closes #[0-9]+|refs #[0-9]+|fixes #[0-9]+'; then
+  echo ""
+  echo "WARNING: Commit message has no bead ID reference"
+  echo ""
+  echo "Consider adding a bead ID for tracking:"
+  echo "  Format: [git-with-intent-XXX] where XXX is the bead ID"
+  echo "  Example: feat(connectors): add Slack webhook [git-with-intent-19o]"
+  echo ""
+  echo "To find your bead ID: bd list --status in_progress"
+  echo "To create a new bead: bd create \"Title\" -t task"
+  echo ""
+  echo "Proceeding anyway... (use --no-verify to skip this warning)"
+  echo ""
+fi
+
+exit 0

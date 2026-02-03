@@ -1,0 +1,71 @@
+name: Auto-Close Beads on PR Merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  autoclose-beads:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: beads-sync
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install beads CLI
+        run: |
+          # Install beads via cargo (rust package)
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source "$HOME/.cargo/env"
+          cargo install beads-cli
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Extract bead IDs from PR commits
+        id: extract-beads
+        run: |
+          # Get all commits in the merged PR
+          COMMITS=$(git log --format=%B ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.merge_commit_sha }} 2>/dev/null || echo "")
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits found in PR"
+            echo "bead_ids=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Extract bead IDs (git-with-intent-XXX pattern)
+          BEAD_IDS=$(echo "$COMMITS" | grep -oE 'git-with-intent-[a-z0-9]+' | sort -u | tr '\n' ' ' || echo "")
+
+          echo "Found bead IDs: $BEAD_IDS"
+          echo "bead_ids=$BEAD_IDS" >> $GITHUB_OUTPUT
+
+      - name: Close referenced beads
+        if: steps.extract-beads.outputs.bead_ids != ''
+        run: |
+          source "$HOME/.cargo/env"
+
+          for ID in ${{ steps.extract-beads.outputs.bead_ids }}; do
+            echo "Closing bead: $ID"
+            bd close "$ID" -r "Auto-closed: PR #${{ github.event.pull_request.number }} merged" || echo "Failed to close $ID (may already be closed)"
+          done
+
+      - name: Sync and push beads changes
+        if: steps.extract-beads.outputs.bead_ids != ''
+        run: |
+          source "$HOME/.cargo/env"
+          bd sync || echo "Sync completed"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Push any changes to beads-sync branch
+          git push origin beads-sync || echo "No changes to push"
