@@ -136,7 +136,7 @@ describe('API Integration Tests', () => {
         .expect(200);
 
       expect(response.body).toHaveProperty('version');
-      expect(response.body).toHaveProperty('app');
+      expect(response.body).toHaveProperty('service');
     });
   });
 
