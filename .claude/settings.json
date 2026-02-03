@@ -9,5 +9,13 @@
       "000-docs/003-AA-AUDT-appaudit-devops-playbook.md"
     ],
     "message": "IMPORTANT: Before working on this repository, review the devops rules."
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "command": "bash .claude/hooks/stop-beads-check.sh"
+      }
+    ]
   }
 }
