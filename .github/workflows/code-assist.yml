@@ -10,113 +10,181 @@ permissions:
   pull-requests: write
   id-token: write  # Required for WIF
 
+env:
+  REGION: us-central1
+  MODEL: gemini-2.0-flash-exp
+
 jobs:
   gemini-code-review:
-    name: Gemini Code Assist Full Codebase Review
+    name: Gemini Code Assist PR Review
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout PR code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for better context
+          fetch-depth: 0
 
       - name: Authenticate to Google Cloud (WIF)
+        id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.WIF_PROVIDER }}
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+          token_format: access_token
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Collect Codebase Context
+      - name: Collect Changed Files
         id: collect
         run: |
-          # Get changed files for context
-          git diff origin/main...HEAD --name-only > changed_files.txt
+          # Get changed files (source code only)
+          git diff origin/main...HEAD --name-only | \
+            grep -E '\.(ts|tsx|js|jsx|py|go|rs|yaml|yml|json)$' | \
+            grep -v -E '(package-lock|pnpm-lock|yarn\.lock|\.d\.ts$)' \
+            > changed_files.txt || true
 
-          # Get all TypeScript source files
-          find packages apps -name "*.ts" -not -path "*/node_modules/*" -not -path "*/dist/*" > all_files.txt
+          CHANGED_COUNT=$(wc -l < changed_files.txt | tr -d ' ')
+          echo "changed_count=$CHANGED_COUNT" >> $GITHUB_OUTPUT
 
-          echo "changed_count=$(wc -l < changed_files.txt)" >> $GITHUB_OUTPUT
-          echo "total_count=$(wc -l < all_files.txt)" >> $GITHUB_OUTPUT
+          if [ "$CHANGED_COUNT" -eq 0 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "No reviewable files changed"
+            exit 0
+          fi
 
-      - name: Run Gemini Code Review
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "Reviewing $CHANGED_COUNT files"
+
+      - name: Build Review Context
+        if: steps.collect.outputs.skip != 'true'
         run: |
-          # Create review prompt
-          cat > review_prompt.txt <<'EOF'
-          You are reviewing code for Git With Intent, an AI-powered PR automation tool.
+          # Collect diffs (more useful than full files for review)
+          echo "# Pull Request Code Review Context" > context.txt
+          echo "" >> context.txt
+          echo "## Changed Files Diff" >> context.txt
+          echo "" >> context.txt
 
-          This is a FULL CODEBASE REVIEW for PR #$PR_NUMBER.
-
-          Key focus areas:
-          1. **Security**: Secrets leakage, SQL injection, XSS, auth bypass
-          2. **Multi-agent patterns**: Agent routing, approval gating, hash binding
-          3. **Storage abstraction**: Interface contracts, Firestore/SQLite consistency
-          4. **Error handling**: Proper error propagation, logging, user-facing messages
-          5. **Testing**: Test coverage, edge cases, golden tests
-          6. **TypeScript strict mode**: Type safety, no implicit any
-          7. **Epic B (SQLite)**: Analytics queries, backup utilities, migration system
-
-          Review the entire codebase context below and provide:
-          - Critical issues (security, data loss, breaking changes)
-          - Important improvements (performance, maintainability)
-          - Best practice suggestions
-
-          Be thorough but concise. Use bullet points.
-          EOF
-
-          # Collect all source code into context
-          echo "=== CHANGED FILES ===" > codebase_context.txt
+          # Get the actual diff (truncate large diffs per file)
           while read -r file; do
             if [ -f "$file" ]; then
-              echo "--- $file ---" >> codebase_context.txt
-              cat "$file" >> codebase_context.txt
-              echo "" >> codebase_context.txt
+              echo "### $file" >> context.txt
+              echo '```' >> context.txt
+              git diff origin/main...HEAD -- "$file" | head -200 >> context.txt
+              echo '```' >> context.txt
+              echo "" >> context.txt
             fi
           done < changed_files.txt
 
-          # Sample of full codebase (max 100 files to avoid token limits)
-          echo "=== FULL CODEBASE SAMPLE ===" >> codebase_context.txt
-          head -100 all_files.txt | while read -r file; do
-            if [ -f "$file" ]; then
-              echo "--- $file ---" >> codebase_context.txt
-              head -50 "$file" >> codebase_context.txt  # First 50 lines of each file
-              echo "" >> codebase_context.txt
-            fi
-          done
+          # Truncate total context to ~100KB (safe for Gemini token limits)
+          head -c 100000 context.txt > context_truncated.txt
+          mv context_truncated.txt context.txt
 
-          # Call Gemini API via gcloud
-          gcloud ai generative-language models generate-text \
-            --model=gemini-2.0-flash-exp \
-            --prompt="$(cat review_prompt.txt && cat codebase_context.txt)" \
-            --temperature=0.1 \
-            --max-output-tokens=4096 \
-            > gemini_review.txt 2>&1 || echo "Review completed with warnings"
+          echo "Context size: $(wc -c < context.txt) bytes"
 
-          # Extract review content
+      - name: Run Gemini Review via Vertex AI
+        if: steps.collect.outputs.skip != 'true'
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # Build the prompt
+          PROMPT=$(cat <<'PROMPT_EOF'
+          You are a senior code reviewer for Git With Intent, an AI-powered PR automation platform.
+
+          Review this PR and provide actionable feedback. Focus on:
+
+          1. **Security** - Secrets, injection, auth bypass, data exposure
+          2. **Correctness** - Logic errors, edge cases, type safety
+          3. **Architecture** - Design patterns, separation of concerns
+          4. **Performance** - Inefficiencies, N+1 queries, memory leaks
+          5. **Maintainability** - Code clarity, naming, documentation
+
+          Format your response as:
+          ## Summary
+          [1-2 sentence overview]
+
+          ## Critical Issues 🔴
+          [Security/correctness issues that must be fixed]
+
+          ## Suggestions 🟡
+          [Improvements that should be considered]
+
+          ## Good Practices ✅
+          [What was done well]
+
+          Be specific. Reference file names and line numbers when possible.
+          If no issues found, say so briefly.
+          PROMPT_EOF
+          )
+
+          # Read context and escape for JSON
+          CONTEXT=$(cat context.txt)
+
+          # Build JSON request body using jq (proper escaping)
+          jq -n \
+            --arg prompt "$PROMPT" \
+            --arg context "$CONTEXT" \
+            --arg pr_num "$PR_NUMBER" \
+            --arg pr_title "$PR_TITLE" \
+            '{
+              contents: [{
+                role: "user",
+                parts: [{
+                  text: ($prompt + "\n\n## PR #" + $pr_num + ": " + $pr_title + "\n\n" + $context)
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 4096,
+                topP: 0.95
+              },
+              safetySettings: [
+                {category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE"},
+                {category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE"},
+                {category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE"},
+                {category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE"}
+              ]
+            }' > request.json
+
+          # Call Vertex AI Gemini API
+          ENDPOINT="https://${REGION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/publishers/google/models/${MODEL}:generateContent"
+
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o response.json \
+            -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d @request.json)
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "API returned HTTP $HTTP_CODE"
+            cat response.json
+            echo "API call failed" > gemini_review.txt
+          else
+            # Extract the text response
+            jq -r '.candidates[0].content.parts[0].text // "No response generated"' response.json > gemini_review.txt
+          fi
+
+          echo "=== Review Output ==="
           cat gemini_review.txt
 
       - name: Post Review Comment
+        if: steps.collect.outputs.skip != 'true'
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
             const review = fs.readFileSync('gemini_review.txt', 'utf8');
+            const changedCount = '${{ steps.collect.outputs.changed_count }}';
 
-            const comment = `## 🤖 Gemini Code Assist - Full Codebase Review
+            const comment = `## 🤖 Gemini Code Review
 
-            **Files Changed:** ${{ steps.collect.outputs.changed_count }}
-            **Total Files Reviewed:** ${{ steps.collect.outputs.total_count }}
+            **Files Reviewed:** ${changedCount}
 
             ${review}
 
             ---
-            *Powered by Gemini 2.0 Flash via WIF tokenless auth*`;
+            <sub>Powered by Gemini 2.0 Flash via Vertex AI | [Re-run](/gemini review)</sub>`;
 
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -124,3 +192,7 @@ jobs:
               repo: context.repo.repo,
               body: comment
             });
+
+      - name: Skip Notice
+        if: steps.collect.outputs.skip == 'true'
+        run: echo "No reviewable source files changed - skipping Gemini review"
