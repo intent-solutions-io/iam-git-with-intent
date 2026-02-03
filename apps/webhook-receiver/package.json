@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@google-cloud/pubsub": "^4.4.0",
+    "@gwi/connectors": "*",
     "@gwi/core": "*",
     "express": "^4.18.2",
     "helmet": "^7.1.0",

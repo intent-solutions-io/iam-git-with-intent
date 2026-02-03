@@ -4,28 +4,29 @@
  * Epic B: Data Ingestion & Connector Framework
  * Task B3.4: Add webhook receiver service
  *
- * Adapts the @gwi/core secret provider for webhook receiver use.
+ * Adapts the @gwi/connectors secret manager for webhook receiver use.
+ * Uses @gwi/connectors implementation instead of duplicating code.
  *
  * @module @gwi/webhook-receiver/secrets
  */
 
+import {
+  GCPSecretManager as ConnectorsSecretManager,
+  type ISecretManager as ConnectorsISecretManager,
+} from '@gwi/connectors';
 import type { ISecretManager } from './types.js';
 
 /**
- * Environment-based secret manager
- *
- * In production, secrets are accessed via Secret Manager through the
- * @gwi/core provider. In development, falls back to environment variables.
+ * Environment-based secret manager for development
  *
  * Secret naming convention:
  * - Env var: GWI_WEBHOOK_SECRET_GITHUB
- * - Secret Manager: gwi-webhook-secret-github
+ * - Key: webhook-secret-github
  */
 export class EnvSecretManager implements ISecretManager {
   private readonly cache: Map<string, string> = new Map();
 
   async getSecret(tenantId: string, secretKey: string): Promise<string | null> {
-    // For now, use global secrets (multi-tenant secrets TBD)
     // Cache key includes tenant for future multi-tenant support
     const cacheKey = `${tenantId}:${secretKey}`;
 
@@ -59,36 +60,18 @@ export class EnvSecretManager implements ISecretManager {
 /**
  * GCP Secret Manager adapter
  *
- * Retrieves secrets from Google Cloud Secret Manager.
+ * Wraps @gwi/connectors GCPSecretManager to return null instead of throwing
+ * when a secret is not found.
  */
 export class GCPSecretManager implements ISecretManager {
-  private readonly projectId: string;
+  private readonly connectorManager: ConnectorsISecretManager;
   private readonly cache: Map<string, string> = new Map();
-  private client: unknown | null = null;
 
   constructor(projectId: string) {
-    this.projectId = projectId;
-  }
-
-  private async getClient(): Promise<unknown> {
-    if (!this.client) {
-      try {
-        // Dynamic import for optional dependency
-        const secretManager = await import('@google-cloud/secret-manager' as string);
-        const SecretManagerServiceClient = secretManager.SecretManagerServiceClient;
-        this.client = new SecretManagerServiceClient();
-      } catch {
-        throw new Error(
-          'GCP Secret Manager client not available. ' +
-          'Install @google-cloud/secret-manager or use EnvSecretManager for development.'
-        );
-      }
-    }
-    return this.client;
+    this.connectorManager = new ConnectorsSecretManager(projectId);
   }
 
   async getSecret(tenantId: string, secretKey: string): Promise<string | null> {
-    // For now, use global secrets (multi-tenant secrets TBD)
     const cacheKey = `${tenantId}:${secretKey}`;
 
     // Check cache first
@@ -96,32 +79,15 @@ export class GCPSecretManager implements ISecretManager {
       return this.cache.get(cacheKey) || null;
     }
 
-    // Convert webhook-secret-github to gwi-webhook-secret-github
-    const secretName = `gwi-${secretKey}`;
-    const secretPath = `projects/${this.projectId}/secrets/${secretName}/versions/latest`;
-
     try {
-      const client = await this.getClient() as {
-        accessSecretVersion: (request: { name: string }) => Promise<[{ payload?: { data?: Uint8Array | string } }]>;
-      };
-
-      const [response] = await client.accessSecretVersion({ name: secretPath });
-      const payload = response.payload?.data;
-
-      if (!payload) {
-        return null;
-      }
-
-      const value = typeof payload === 'string'
-        ? payload
-        : new TextDecoder().decode(payload);
-
+      // Use connectors secret manager - it throws on not found
+      const value = await this.connectorManager.getSecret(tenantId, secretKey);
       this.cache.set(cacheKey, value);
       return value;
     } catch (error) {
-      const err = error as { code?: number };
-      if (err.code === 5) {
-        // NOT_FOUND
+      // Return null for not found, re-throw other errors
+      const errMsg = error instanceof Error ? error.message : String(error);
+      if (errMsg.includes('NOT_FOUND') || errMsg.includes('not found')) {
         return null;
       }
       throw error;
