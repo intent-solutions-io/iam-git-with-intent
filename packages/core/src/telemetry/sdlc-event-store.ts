@@ -11,13 +11,13 @@
  * @module @gwi/core/telemetry/sdlc-event-store
  */
 
-import type {
-  SDLCEvent,
-  SDLCEventStore,
-  SDLCEventQueryOptions,
-  StageTimingsOptions,
-  StageTimings,
+import {
   SDLCStage,
+  type SDLCEvent,
+  type SDLCEventStore,
+  type SDLCEventQueryOptions,
+  type StageTimingsOptions,
+  type StageTimings,
 } from './sdlc-events.js';
 import { info, warn } from './logger.js';
 
@@ -46,34 +46,22 @@ export class InMemorySDLCEventStore implements SDLCEventStore {
   }
 
   async query(options: SDLCEventQueryOptions): Promise<SDLCEvent[]> {
-    let filtered = this.events;
+    // Pre-compute timestamp thresholds for efficiency
+    const sinceTs = options.since?.getTime();
+    const untilTs = options.until?.getTime();
 
-    if (options.tenantId) {
-      filtered = filtered.filter((e) => e.tenantId === options.tenantId);
-    }
-    if (options.stage) {
-      filtered = filtered.filter((e) => e.stage === options.stage);
-    }
-    if (options.action) {
-      filtered = filtered.filter((e) => e.action === options.action);
-    }
-    if (options.runId) {
-      filtered = filtered.filter((e) => e.runId === options.runId);
-    }
-    if (options.prNumber) {
-      filtered = filtered.filter((e) => e.prNumber === options.prNumber);
-    }
-    if (options.repository) {
-      filtered = filtered.filter((e) => e.repository === options.repository);
-    }
-    if (options.since) {
-      const sinceTs = options.since.getTime();
-      filtered = filtered.filter((e) => new Date(e.timestamp).getTime() >= sinceTs);
-    }
-    if (options.until) {
-      const untilTs = options.until.getTime();
-      filtered = filtered.filter((e) => new Date(e.timestamp).getTime() <= untilTs);
-    }
+    // Single-pass filter for better performance with large event lists
+    let filtered = this.events.filter((e) => {
+      if (options.tenantId && e.tenantId !== options.tenantId) return false;
+      if (options.stage && e.stage !== options.stage) return false;
+      if (options.action && e.action !== options.action) return false;
+      if (options.runId && e.runId !== options.runId) return false;
+      if (options.prNumber && e.prNumber !== options.prNumber) return false;
+      if (options.repository && e.repository !== options.repository) return false;
+      if (sinceTs && new Date(e.timestamp).getTime() < sinceTs) return false;
+      if (untilTs && new Date(e.timestamp).getTime() > untilTs) return false;
+      return true;
+    });
 
     // Sort by timestamp descending
     filtered.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -87,53 +75,13 @@ export class InMemorySDLCEventStore implements SDLCEventStore {
   }
 
   async getStageTimings(options: StageTimingsOptions): Promise<StageTimings[]> {
-    let events = await this.query({
+    const events = await this.query({
       tenantId: options.tenantId,
       since: options.since,
       until: options.until,
     });
 
-    // Filter to completed/failed events with duration
-    events = events.filter(
-      (e) => (e.action === 'completed' || e.action === 'failed') && e.durationMs !== undefined
-    );
-
-    if (options.repository) {
-      events = events.filter((e) => e.repository === options.repository);
-    }
-
-    // Group by stage
-    const stages: SDLCStage[] = ['planning', 'coding', 'review', 'testing', 'release', 'incident', 'onboarding'];
-    const timings: StageTimings[] = [];
-
-    for (const stage of stages) {
-      const stageEvents = events.filter((e) => e.stage === stage);
-      if (stageEvents.length === 0) continue;
-
-      const durations = stageEvents
-        .map((e) => e.durationMs!)
-        .filter((d) => d !== undefined)
-        .sort((a, b) => a - b);
-
-      if (durations.length === 0) continue;
-
-      const completedCount = stageEvents.filter((e) => e.action === 'completed').length;
-      const failedCount = stageEvents.filter((e) => e.action === 'failed').length;
-      const sum = durations.reduce((a, b) => a + b, 0);
-
-      timings.push({
-        stage,
-        count: stageEvents.length,
-        completedCount,
-        failedCount,
-        avgDurationMs: Math.round(sum / durations.length),
-        p50DurationMs: percentile(durations, 50),
-        p95DurationMs: percentile(durations, 95),
-        p99DurationMs: percentile(durations, 99),
-      });
-    }
-
-    return timings;
+    return aggregateStageTimings(events, options);
   }
 
   /**
@@ -158,6 +106,59 @@ function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+}
+
+/**
+ * Aggregate stage timings from an array of events
+ *
+ * Extracted as a helper to be used by both in-memory and Firestore stores,
+ * avoiding redundant instantiation patterns.
+ */
+function aggregateStageTimings(
+  events: SDLCEvent[],
+  options: StageTimingsOptions
+): StageTimings[] {
+  // Filter to completed/failed events with duration
+  let filtered = events.filter(
+    (e) => (e.action === 'completed' || e.action === 'failed') && e.durationMs !== undefined
+  );
+
+  if (options.repository) {
+    filtered = filtered.filter((e) => e.repository === options.repository);
+  }
+
+  // Group by stage - use Zod enum options for consistency
+  const stages = SDLCStage.options;
+  const timings: StageTimings[] = [];
+
+  for (const stage of stages) {
+    const stageEvents = filtered.filter((e) => e.stage === stage);
+    if (stageEvents.length === 0) continue;
+
+    const durations = stageEvents
+      .map((e) => e.durationMs!)
+      .filter((d) => d !== undefined)
+      .sort((a, b) => a - b);
+
+    if (durations.length === 0) continue;
+
+    const completedCount = stageEvents.filter((e) => e.action === 'completed').length;
+    const failedCount = stageEvents.filter((e) => e.action === 'failed').length;
+    const sum = durations.reduce((a, b) => a + b, 0);
+
+    timings.push({
+      stage,
+      count: stageEvents.length,
+      completedCount,
+      failedCount,
+      avgDurationMs: Math.round(sum / durations.length),
+      p50DurationMs: percentile(durations, 50),
+      p95DurationMs: percentile(durations, 95),
+      p99DurationMs: percentile(durations, 99),
+    });
+  }
+
+  return timings;
 }
 
 // =============================================================================
@@ -255,12 +256,8 @@ export class FirestoreSDLCEventStore implements SDLCEventStore {
       until: options.until,
     });
 
-    // Use same aggregation logic as in-memory store
-    const inMemory = new InMemorySDLCEventStore();
-    for (const event of events) {
-      await inMemory.store(event);
-    }
-    return inMemory.getStageTimings(options);
+    // Use shared aggregation helper for efficiency
+    return aggregateStageTimings(events, options);
   }
 }
 

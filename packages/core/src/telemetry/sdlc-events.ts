@@ -368,11 +368,17 @@ export function startStageTimer(
     ...options,
   });
 
+  // Track active timers
+  const metrics = getSDLCMetrics();
+  const timerKey = `${stage}:${options?.runId ?? 'default'}`;
+
   const timer: StageTimer = {
     stage,
     startTime,
     stop: (outcome, stopOptions) => {
       const durationMs = Date.now() - startTime;
+      // Remove from active stages to prevent memory leak
+      metrics.activeStages.delete(timerKey);
       return emitSDLCEvent({
         stage,
         action: outcome,
@@ -384,9 +390,6 @@ export function startStageTimer(
     },
   };
 
-  // Track active timers
-  const metrics = getSDLCMetrics();
-  const timerKey = `${stage}:${options?.runId ?? 'default'}`;
   metrics.activeStages.set(timerKey, timer);
 
   return timer;

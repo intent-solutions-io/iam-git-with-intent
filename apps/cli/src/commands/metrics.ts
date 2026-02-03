@@ -167,7 +167,9 @@ export async function metricsCommand(options: MetricsOptions): Promise<void> {
       timing.stage.padEnd(12),
       String(timing.count).padStart(7),
       successRate.padStart(9),
-      (timing.failedCount > 0 ? chalk.red(failureRate) : failureRate).padStart(8),
+      timing.failedCount > 0
+        ? ' '.repeat(Math.max(0, 8 - failureRate.length)) + chalk.red(failureRate)
+        : failureRate.padStart(8),
       formatDuration(timing.avgDurationMs).padStart(10),
       formatDuration(timing.p50DurationMs).padStart(10),
       formatDuration(timing.p95DurationMs).padStart(10),
@@ -251,7 +253,7 @@ export async function metricsSummaryCommand(): Promise<{
   return {
     stageCount: timings.length,
     totalEvents,
-    successRate: totalEvents > 0 ? (totalSuccess / totalEvents) * 100 : 100,
+    successRate: totalEvents > 0 ? (totalSuccess / totalEvents) * 100 : 0,
     bottleneck: bottleneck?.stage ?? null,
   };
 }
