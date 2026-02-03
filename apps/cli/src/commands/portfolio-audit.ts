@@ -291,13 +291,13 @@ async function runDriftGate(
     });
 
     let stdout = '';
-    let stderr = '';
+    let _stderr = '';
 
     proc.stdout?.on('data', (data) => {
       stdout += data.toString();
     });
     proc.stderr?.on('data', (data) => {
-      stderr += data.toString();
+      _stderr += data.toString();
     });
 
     proc.on('close', () => {
