@@ -7,26 +7,27 @@
  * Collection Structure:
  * - gwi_memberships/{membershipId} - User membership in a tenant
  *   - membershipId format: {userId}_{tenantId}
- * - gwi_users/{userId}/memberships/{tenantId} - Reverse index for user lookups
+ *
+ * Refactored to use BaseFirestoreRepository.
  *
  * @module @gwi/core/storage/firestore-membership
  */
 
-import type { Firestore, CollectionReference, DocumentReference } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase-admin/firestore';
-import type { MembershipStore, Membership, TenantRole, MembershipStatus } from './interfaces.js';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
 import {
-  getFirestoreClient,
+  BaseFirestoreRepository,
   COLLECTIONS,
+  Timestamp,
   timestampToDate,
   dateToTimestamp,
-} from './firestore-client.js';
+} from './base-firestore-repository.js';
+import type { MembershipStore, Membership, TenantRole, MembershipStatus } from './interfaces.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface MembershipDoc {
+interface MembershipDoc extends DocumentData {
   id: string;
   userId: string;
   tenantId: string;
@@ -44,9 +45,9 @@ interface MembershipDoc {
 // Conversion Functions
 // =============================================================================
 
-function membershipDocToModel(doc: MembershipDoc): Membership {
+function membershipDocToModel(doc: MembershipDoc, id: string): Membership {
   return {
-    id: doc.id,
+    id,
     userId: doc.userId,
     tenantId: doc.tenantId,
     role: doc.role as TenantRole,
@@ -88,23 +89,18 @@ function membershipModelToDoc(membership: Membership): MembershipDoc {
  * - Role-based access queries
  * - Both user-centric and tenant-centric lookups
  */
-export class FirestoreMembershipStore implements MembershipStore {
-  private db: Firestore;
-
+export class FirestoreMembershipStore
+  extends BaseFirestoreRepository<Membership, MembershipDoc>
+  implements MembershipStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private membershipsRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.MEMBERSHIPS);
-  }
-
-  private membershipDoc(membershipId: string): DocumentReference {
-    return this.membershipsRef().doc(membershipId);
+    super(db, {
+      collection: COLLECTIONS.MEMBERSHIPS,
+      idPrefix: 'mem',
+      timestampFields: ['invitedAt', 'acceptedAt', 'createdAt', 'updatedAt'],
+      docToModel: membershipDocToModel,
+      modelToDoc: membershipModelToDoc,
+    });
   }
 
   /**
@@ -113,10 +109,6 @@ export class FirestoreMembershipStore implements MembershipStore {
   private getMembershipId(userId: string, tenantId: string): string {
     return `${userId}_${tenantId}`;
   }
-
-  // ---------------------------------------------------------------------------
-  // MembershipStore Implementation
-  // ---------------------------------------------------------------------------
 
   async createMembership(
     membership: Omit<Membership, 'createdAt' | 'updatedAt'>
@@ -137,51 +129,49 @@ export class FirestoreMembershipStore implements MembershipStore {
       updatedAt: now,
     };
 
-    const doc = membershipModelToDoc(fullMembership);
-    await this.membershipDoc(membershipId).set(doc);
+    const doc = this.toDocument(fullMembership);
+    await this.getDocRef(membershipId).set(doc);
 
     return fullMembership;
   }
 
   async getMembership(userId: string, tenantId: string): Promise<Membership | null> {
     const membershipId = this.getMembershipId(userId, tenantId);
-    const snapshot = await this.membershipDoc(membershipId).get();
-
-    if (!snapshot.exists) {
-      return null;
-    }
-
-    return membershipDocToModel(snapshot.data() as MembershipDoc);
+    return this.getDocument(membershipId);
   }
 
   async listUserMemberships(userId: string): Promise<Membership[]> {
-    const query = this.membershipsRef()
-      .where('userId', '==', userId)
-      .where('status', '==', 'active');
-
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => membershipDocToModel(doc.data() as MembershipDoc));
+    return this.listDocuments(
+      [
+        { field: 'userId', operator: '==', value: userId },
+        { field: 'status', operator: '==', value: 'active' },
+      ],
+      undefined,
+      undefined,
+      'createdAt',
+      'desc'
+    );
   }
 
   async listTenantMembers(tenantId: string): Promise<Membership[]> {
-    const query = this.membershipsRef()
-      .where('tenantId', '==', tenantId);
-
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => membershipDocToModel(doc.data() as MembershipDoc));
+    return this.listDocuments(
+      [{ field: 'tenantId', operator: '==', value: tenantId }],
+      undefined,
+      undefined,
+      'createdAt',
+      'desc'
+    );
   }
 
   async updateMembership(
     membershipId: string,
     update: Partial<Membership>
   ): Promise<Membership> {
-    const snapshot = await this.membershipDoc(membershipId).get();
+    const existing = await this.getDocument(membershipId);
 
-    if (!snapshot.exists) {
+    if (!existing) {
       throw new Error(`Membership not found: ${membershipId}`);
     }
-
-    const existing = membershipDocToModel(snapshot.data() as MembershipDoc);
 
     const updated: Membership = {
       ...existing,
@@ -193,19 +183,15 @@ export class FirestoreMembershipStore implements MembershipStore {
       updatedAt: new Date(),
     };
 
-    const doc = membershipModelToDoc(updated);
-    await this.membershipDoc(membershipId).set(doc, { merge: true });
+    const doc = this.toDocument(updated);
+    await this.getDocRef(membershipId).set(doc, { merge: true });
 
     return updated;
   }
 
   async deleteMembership(membershipId: string): Promise<void> {
-    await this.membershipDoc(membershipId).delete();
+    await this.deleteDocument(membershipId);
   }
-
-  // ---------------------------------------------------------------------------
-  // Extended Methods for RBAC
-  // ---------------------------------------------------------------------------
 
   /**
    * Check if a user has access to a tenant with at least the specified role
@@ -252,25 +238,27 @@ export class FirestoreMembershipStore implements MembershipStore {
    * Count active members in a tenant
    */
   async countTenantMembers(tenantId: string): Promise<number> {
-    const query = this.membershipsRef()
-      .where('tenantId', '==', tenantId)
-      .where('status', '==', 'active');
-
-    const snapshot = await query.count().get();
-    return snapshot.data().count;
+    return this.countDocuments([
+      { field: 'tenantId', operator: '==', value: tenantId },
+      { field: 'status', operator: '==', value: 'active' },
+    ]);
   }
 
   /**
    * List tenant members by role
    */
   async listTenantMembersByRole(tenantId: string, role: TenantRole): Promise<Membership[]> {
-    const query = this.membershipsRef()
-      .where('tenantId', '==', tenantId)
-      .where('role', '==', role)
-      .where('status', '==', 'active');
-
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => membershipDocToModel(doc.data() as MembershipDoc));
+    return this.listDocuments(
+      [
+        { field: 'tenantId', operator: '==', value: tenantId },
+        { field: 'role', operator: '==', value: role },
+        { field: 'status', operator: '==', value: 'active' },
+      ],
+      undefined,
+      undefined,
+      'createdAt',
+      'desc'
+    );
   }
 }
 

@@ -7,28 +7,30 @@
  * Collection Structure:
  * - gwi_tenants/{tenantId}/schedules/{scheduleId}
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage/firestore
  */
 
-import type { Firestore, DocumentReference, Query, CollectionReference } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase-admin/firestore';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+  type TenantScopedEntity,
+} from './base-firestore-repository.js';
 import type {
   ScheduleStore,
   WorkflowSchedule,
 } from './interfaces.js';
-import {
-  getFirestoreClient,
-  COLLECTIONS,
-  timestampToDate,
-  dateToTimestamp,
-  generateFirestoreId,
-} from './firestore-client.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface ScheduleDoc {
+interface ScheduleDoc extends DocumentData {
   id: string;
   instanceId: string;
   tenantId: string;
@@ -46,9 +48,9 @@ interface ScheduleDoc {
 // Conversion Functions
 // =============================================================================
 
-function scheduleDocToModel(doc: ScheduleDoc): WorkflowSchedule {
+function scheduleDocToModel(doc: ScheduleDoc, id: string): WorkflowSchedule {
   return {
-    id: doc.id,
+    id,
     instanceId: doc.instanceId,
     tenantId: doc.tenantId,
     cronExpression: doc.cronExpression,
@@ -90,38 +92,28 @@ function scheduleModelToDoc(schedule: WorkflowSchedule): ScheduleDoc {
  * - Cron expression and timezone tracking
  * - Due schedule queries for scheduler processing
  */
-export class FirestoreScheduleStore implements ScheduleStore {
-  private db: Firestore;
-
+export class FirestoreScheduleStore
+  extends BaseFirestoreRepository<WorkflowSchedule & TenantScopedEntity, ScheduleDoc>
+  implements ScheduleStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
+    super(db, {
+      tenantScoped: {
+        parentCollection: COLLECTIONS.TENANTS,
+        subcollection: COLLECTIONS.SCHEDULES,
+      },
+      idPrefix: 'sched',
+      timestampFields: ['createdAt', 'updatedAt', 'lastTriggeredAt', 'nextTriggerAt'],
+      docToModel: scheduleDocToModel,
+      modelToDoc: scheduleModelToDoc,
+    });
   }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private tenantsRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.TENANTS);
-  }
-
-  private schedulesRef(tenantId: string): CollectionReference {
-    return this.tenantsRef().doc(tenantId).collection(COLLECTIONS.SCHEDULES);
-  }
-
-  private scheduleDoc(tenantId: string, scheduleId: string): DocumentReference {
-    return this.schedulesRef(tenantId).doc(scheduleId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Schedule CRUD
-  // ---------------------------------------------------------------------------
 
   async createSchedule(
     schedule: Omit<WorkflowSchedule, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<WorkflowSchedule> {
     const now = new Date();
-    const scheduleId = generateFirestoreId('sched');
+    const scheduleId = this.generateId();
 
     const fullSchedule: WorkflowSchedule = {
       ...schedule,
@@ -130,39 +122,31 @@ export class FirestoreScheduleStore implements ScheduleStore {
       updatedAt: now,
     };
 
-    const doc = scheduleModelToDoc(fullSchedule);
-    await this.scheduleDoc(schedule.tenantId, scheduleId).set(doc);
+    const doc = this.toDocument(fullSchedule);
+    await this.getDocRef(scheduleId, schedule.tenantId).set(doc);
 
     return fullSchedule;
   }
 
   async getSchedule(scheduleId: string): Promise<WorkflowSchedule | null> {
-    // We need to search across all tenants since we only have scheduleId
-    // This is inefficient but matches the interface contract
-    const tenantsSnapshot = await this.tenantsRef().get();
-
-    for (const tenantDoc of tenantsSnapshot.docs) {
-      const scheduleSnapshot = await this.schedulesRef(tenantDoc.id).doc(scheduleId).get();
-      if (scheduleSnapshot.exists) {
-        return scheduleDocToModel(scheduleSnapshot.data() as ScheduleDoc);
-      }
-    }
-
-    return null;
+    return this.getDocumentAcrossTenants(scheduleId);
   }
 
   async listSchedules(instanceId: string): Promise<WorkflowSchedule[]> {
-    // We need to find the tenant for this instance first
-    const tenantsSnapshot = await this.tenantsRef().get();
+    // Search across all tenants for schedules with this instanceId
+    const tenantsSnapshot = await this.getParentCollection().get();
 
     for (const tenantDoc of tenantsSnapshot.docs) {
-      const snapshot = await this.schedulesRef(tenantDoc.id)
-        .where('instanceId', '==', instanceId)
-        .orderBy('createdAt', 'desc')
-        .get();
+      const schedules = await this.listDocuments(
+        [{ field: 'instanceId', operator: '==', value: instanceId }],
+        undefined,
+        tenantDoc.id,
+        'createdAt',
+        'desc'
+      );
 
-      if (!snapshot.empty) {
-        return snapshot.docs.map(doc => scheduleDocToModel(doc.data() as ScheduleDoc));
+      if (schedules.length > 0) {
+        return schedules;
       }
     }
 
@@ -176,37 +160,37 @@ export class FirestoreScheduleStore implements ScheduleStore {
       limit?: number;
     }
   ): Promise<WorkflowSchedule[]> {
-    let query: Query = this.schedulesRef(tenantId);
+    const conditions: Array<{ field: string; operator: '==' | '>=' | '<' | '>' | '<=' | '!=' | 'in' | 'array-contains'; value: unknown }> = [];
 
     if (filter?.enabled !== undefined) {
-      query = query.where('enabled', '==', filter.enabled);
+      conditions.push({ field: 'enabled', operator: '==', value: filter.enabled });
     }
 
-    query = query.orderBy('createdAt', 'desc');
-
-    if (filter?.limit) {
-      query = query.limit(filter.limit);
-    }
-
-    const snapshot = await query.get();
-    return snapshot.docs.map(doc => scheduleDocToModel(doc.data() as ScheduleDoc));
+    return this.listDocuments(
+      conditions,
+      { limit: filter?.limit },
+      tenantId,
+      'createdAt',
+      'desc'
+    );
   }
 
   async listDueSchedules(beforeTime: Date): Promise<WorkflowSchedule[]> {
     // Query across all tenants for due schedules
-    // In production, consider using a top-level schedules collection with composite index
-    const tenantsSnapshot = await this.tenantsRef().get();
+    const tenantsSnapshot = await this.getParentCollection().get();
     const dueSchedules: WorkflowSchedule[] = [];
 
     for (const tenantDoc of tenantsSnapshot.docs) {
-      const snapshot = await this.schedulesRef(tenantDoc.id)
-        .where('enabled', '==', true)
-        .where('nextTriggerAt', '<=', Timestamp.fromDate(beforeTime))
-        .get();
+      const schedules = await this.listDocuments(
+        [
+          { field: 'enabled', operator: '==', value: true },
+          { field: 'nextTriggerAt', operator: '<=', value: Timestamp.fromDate(beforeTime) },
+        ],
+        undefined,
+        tenantDoc.id
+      );
 
-      for (const doc of snapshot.docs) {
-        dueSchedules.push(scheduleDocToModel(doc.data() as ScheduleDoc));
-      }
+      dueSchedules.push(...schedules);
     }
 
     return dueSchedules;
@@ -228,8 +212,8 @@ export class FirestoreScheduleStore implements ScheduleStore {
       updatedAt: new Date(),
     };
 
-    const doc = scheduleModelToDoc(updated);
-    await this.scheduleDoc(existing.tenantId, scheduleId).set(doc, { merge: true });
+    const doc = this.toDocument(updated);
+    await this.getDocRef(scheduleId, existing.tenantId).set(doc, { merge: true });
 
     return updated;
   }
@@ -240,7 +224,7 @@ export class FirestoreScheduleStore implements ScheduleStore {
       throw new Error(`Schedule not found: ${scheduleId}`);
     }
 
-    await this.scheduleDoc(existing.tenantId, scheduleId).update({
+    await this.getDocRef(scheduleId, existing.tenantId).update({
       lastTriggeredAt: dateToTimestamp(triggeredAt),
       nextTriggerAt: dateToTimestamp(nextTriggerAt),
       updatedAt: Timestamp.now(),
@@ -248,12 +232,11 @@ export class FirestoreScheduleStore implements ScheduleStore {
   }
 
   async deleteSchedule(scheduleId: string): Promise<void> {
-    // Find the schedule first to get tenantId
     const existing = await this.getSchedule(scheduleId);
     if (!existing) {
       throw new Error(`Schedule not found: ${scheduleId}`);
     }
 
-    await this.scheduleDoc(existing.tenantId, scheduleId).delete();
+    await this.deleteDocument(scheduleId, existing.tenantId);
   }
 }
