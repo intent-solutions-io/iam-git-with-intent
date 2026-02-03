@@ -246,8 +246,10 @@ export const DEFAULT_VALIDATORS: Record<string, ValidatorFn> = {
 
   /**
    * Check for actionable items (e.g., "TODO", "Action:", bullet points)
+   * Configurable via data.minItems (default: 2)
    */
-  'has-actionable-items': (output, _data, criterion) => {
+  'has-actionable-items': (output, data, criterion) => {
+    const minItems = (data as { minItems?: number })?.minItems ?? 2;
     const actionPatterns = [
       /\bTODO\b/gi,
       /\bAction\s*:/gi,
@@ -259,12 +261,13 @@ export const DEFAULT_VALIDATORS: Record<string, ValidatorFn> = {
       const matches = output.match(pattern) || [];
       totalMatches += matches.length;
     }
-    const passed = totalMatches >= 2; // At least 2 actionable items
+    const passed = totalMatches >= minItems;
+    const scorePerItem = Math.floor(100 / minItems);
     return {
       criterionId: criterion.id,
-      score: passed ? 100 : Math.min(100, totalMatches * 50),
+      score: passed ? 100 : Math.min(100, totalMatches * scorePerItem),
       passed,
-      explanation: `Found ${totalMatches} actionable item indicator(s)`,
+      explanation: `Found ${totalMatches} actionable item indicator(s), required ${minItems}`,
       evaluationType: 'deterministic',
     };
   },

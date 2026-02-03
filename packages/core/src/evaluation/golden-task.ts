@@ -14,6 +14,29 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'yaml';
 import { z } from 'zod';
+
+/**
+ * Recursively find all files matching a predicate in a directory
+ * Type-safe alternative to fs.readdirSync with recursive option
+ */
+function findFilesRecursive(dir: string, predicate: (filename: string) => boolean): string[] {
+  const results: string[] = [];
+
+  function walk(currentDir: string): void {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.isFile() && predicate(entry.name)) {
+        results.push(fullPath);
+      }
+    }
+  }
+
+  walk(dir);
+  return results;
+}
 import {
   type Rubric,
   type EvaluationResult,
@@ -168,6 +191,7 @@ export class GoldenTaskRunner {
 
   /**
    * Discover all golden task files in directory
+   * Uses type-safe recursive directory walking
    */
   discoverTaskFiles(): string[] {
     const tasksDir = this.config.tasksDir;
@@ -175,10 +199,10 @@ export class GoldenTaskRunner {
       return [];
     }
 
-    const files = fs.readdirSync(tasksDir, { recursive: true }) as string[];
-    return files
-      .filter(f => f.endsWith('.golden.yaml') || f.endsWith('.golden.yml'))
-      .map(f => path.join(tasksDir, f));
+    return findFilesRecursive(
+      tasksDir,
+      (filename) => filename.endsWith('.golden.yaml') || filename.endsWith('.golden.yml')
+    );
   }
 
   /**

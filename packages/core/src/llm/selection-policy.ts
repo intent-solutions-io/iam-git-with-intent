@@ -14,6 +14,7 @@ import type { LLMProviderType, LLMProviderConfig } from './types.js';
 import {
   getProviderCost,
   getProviderCapabilities,
+  PROVIDER_CAPABILITIES,
   type ProviderCapabilities,
   type ProviderCostMetadata,
 } from './provider-capabilities.js';
@@ -306,17 +307,12 @@ export class ProviderSelectionPolicy {
 
   /**
    * Get fallback models not in preferred list
+   * Dynamically generated from PROVIDER_CAPABILITIES to stay in sync
    */
   private getFallbackModels(_criteria: SelectionCriteria, preferredModels: string[]): string[] {
     const preferredSet = new Set(preferredModels);
-    const allModels = [
-      'google:gemini-2.0-flash',
-      'openai:gpt-4o-mini',
-      'anthropic:claude-3-5-haiku-20241022',
-      'anthropic:claude-sonnet-4-20250514',
-      'openai:gpt-4o',
-      'openai:gpt-4-turbo',
-    ];
+    // Dynamically get all models from PROVIDER_CAPABILITIES
+    const allModels = Object.keys(PROVIDER_CAPABILITIES);
 
     return allModels.filter((m) => !preferredSet.has(m));
   }

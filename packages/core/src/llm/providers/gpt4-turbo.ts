@@ -115,19 +115,32 @@ export class GPT4TurboCodeProvider implements LLMProvider {
     const latencyMs = Date.now() - startTime;
     const raw = data.choices[0]?.message?.content || '';
 
-    // Parse JSON with error handling
+    // Parse JSON with error handling and recovery
     let json: unknown;
     try {
       json = JSON.parse(raw);
-    } catch {
-      // Try to extract JSON from markdown
+    } catch (parseError) {
+      // Try to extract JSON from markdown code fence
       const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {
-        json = JSON.parse(jsonMatch[1]);
+        try {
+          json = JSON.parse(jsonMatch[1]);
+        } catch (fenceError) {
+          throw new Error(
+            `Failed to parse JSON from code fence: ${fenceError instanceof Error ? fenceError.message : String(fenceError)}`
+          );
+        }
       } else {
+        // Try to extract raw JSON object
         const objMatch = raw.match(/\{[\s\S]*\}/);
         if (objMatch) {
-          json = JSON.parse(objMatch[0]);
+          try {
+            json = JSON.parse(objMatch[0]);
+          } catch (objError) {
+            throw new Error(
+              `Failed to parse extracted JSON object: ${objError instanceof Error ? objError.message : String(objError)}`
+            );
+          }
         } else {
           throw new Error(`Failed to parse JSON response: ${raw.slice(0, 200)}`);
         }

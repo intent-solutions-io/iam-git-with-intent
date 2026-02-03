@@ -1643,41 +1643,20 @@ evalCmd
   .option('--fail-fast', 'Stop on first failure')
   .option('--json', 'Output as JSON')
   .option('--ci', 'CI mode (exit code reflects pass/fail)')
-  .action(async (options) => {
-    try {
-      await evalRunCommand(options);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
+  .action(evalRunCommand);
 
 evalCmd
   .command('list')
   .description('List available rubrics')
   .option('--rubrics-dir <path>', 'Rubrics directory')
   .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    try {
-      await evalListCommand(options);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
+  .action(evalListCommand);
 
 evalCmd
   .command('validate <rubric>')
   .description('Validate a rubric file')
   .option('--json', 'Output as JSON')
-  .action(async (rubric, options) => {
-    try {
-      await evalValidateCommand(rubric, options);
-    } catch (error) {
-      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
-  });
+  .action(evalValidateCommand);
 
 // Parse and execute
 program.parse();

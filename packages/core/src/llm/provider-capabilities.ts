@@ -403,10 +403,17 @@ function getErrorStatusCode(error: unknown): number | undefined {
     if (typeof anyError.statusCode === 'number') {
       return anyError.statusCode;
     }
-    // Check message for status code
-    const match = error.message.match(/\b(4\d\d|5\d\d)\b/);
+    // Check message for status code with context to avoid false positives
+    // Matches patterns like "status 404", "status: 500", "HTTP 502", "error 503"
+    const match = error.message.match(
+      /(?:status(?:\s+code)?|http|error)[\s:]+(\d{3})\b/i
+    );
     if (match) {
-      return parseInt(match[1], 10);
+      const code = parseInt(match[1], 10);
+      // Only return if it's a valid HTTP error status code (4xx or 5xx)
+      if (code >= 400 && code < 600) {
+        return code;
+      }
     }
   }
   return undefined;
