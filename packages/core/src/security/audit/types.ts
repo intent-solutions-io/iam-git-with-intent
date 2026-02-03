@@ -9,6 +9,10 @@
  * @module @gwi/core/security/audit/types
  */
 
+// Import and re-export generateAuditEventId from schema.ts to avoid duplication
+import { generateAuditEventId } from './schema.js';
+export { generateAuditEventId };
+
 // =============================================================================
 // Security Audit Event Types
 // =============================================================================
@@ -176,13 +180,6 @@ export type CreateSecurityAuditEvent = Omit<SecurityAuditEvent, 'id' | 'timestam
 // =============================================================================
 // Event Builders
 // =============================================================================
-
-/**
- * Generate a unique audit event ID
- */
-export function generateAuditEventId(): string {
-  return `saud-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
 
 /**
  * Create a security audit event
