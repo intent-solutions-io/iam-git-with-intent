@@ -486,14 +486,14 @@ describe('Integration: Cancellation with Compensation', () => {
         critical: false,
       });
 
-      // Simulate some work
-      await new Promise(resolve => setTimeout(resolve, 10));
+      // Simulate some work - use longer delay to ensure cancellation fires first
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Check cancellation (this would be at a phase boundary)
       ctx.token.throwIfCancelled();
     };
 
-    // Start work and cancel after a delay
+    // Start work and cancel after a delay - use shorter delay to ensure it fires before work completes
     const workPromise = simulateWork();
     setTimeout(() => {
       ctx.token.cancel({
@@ -501,7 +501,7 @@ describe('Integration: Cancellation with Compensation', () => {
         reason: 'User cancelled',
         requestedAt: new Date(),
       });
-    }, 5);
+    }, 10);
 
     // Work should be cancelled
     await expect(workPromise).rejects.toThrow(CancelledError);
