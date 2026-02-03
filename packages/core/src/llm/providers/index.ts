@@ -12,3 +12,10 @@ export {
   createOpenAIProvider,
   createOpenAICompatProvider,
 } from './openai-compat.js';
+export {
+  GPT4TurboCodeProvider,
+  createGPT4TurboCodeProvider,
+  createGPT4oCodeProvider,
+  type CodeTaskType,
+  type CodeOptimizedOptions,
+} from './gpt4-turbo.js';
