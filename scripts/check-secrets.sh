@@ -12,8 +12,8 @@ NC='\033[0m' # No Color
 
 echo "🔍 Scanning for secrets in staged files..."
 
-# Get list of staged files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -v "scripts/check-secrets.sh")
+# Get list of staged files (add || true to handle case when no files match)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -v "scripts/check-secrets.sh" || true)
 
 if [ -z "$STAGED_FILES" ]; then
   echo -e "${GREEN}✓ No files staged for commit${NC}"
