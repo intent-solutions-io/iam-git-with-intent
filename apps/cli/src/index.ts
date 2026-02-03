@@ -84,6 +84,7 @@ import {
 import { registerForensicsCommands } from './commands/forensics.js';
 import { doctorCommand } from './commands/doctor.js';
 import { diagnoseCommand } from './commands/diagnose.js';
+import { metricsCommand } from './commands/metrics.js';
 import {
   connectorSearchCommand,
   connectorInfoCommand,
@@ -1184,6 +1185,24 @@ program
   .action(async (runId, options) => {
     try {
       await diagnoseCommand(runId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Metrics command - SDLC telemetry and bottleneck analysis (EPIC 002)
+program
+  .command('metrics')
+  .description('View SDLC stage timings and bottleneck analysis')
+  .option('-v, --verbose', 'Show recommendations')
+  .option('--json', 'Output as JSON')
+  .option('--since <date>', 'Time range (ISO date or relative: 7d, 30d)')
+  .option('--stage <stage>', 'Filter by SDLC stage (planning, coding, review, testing, release, incident, onboarding)')
+  .option('--repository <repo>', 'Filter by repository (owner/repo)')
+  .action(async (options) => {
+    try {
+      await metricsCommand(options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);

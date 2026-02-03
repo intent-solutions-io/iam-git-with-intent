@@ -210,3 +210,55 @@ export {
   getMetricsRegistry as getTelemetryMetricsRegistry,
   setMetricsRegistry as setTelemetryMetricsRegistry,
 } from './metrics.js';
+
+// =============================================================================
+// SDLC Events (EPIC 002)
+// =============================================================================
+
+export {
+  // Types
+  type SDLCStage,
+  type SDLCAction,
+  type SDLCEvent,
+  type SDLCEventInput,
+  type StageTimer,
+  type SDLCEventStore,
+  type SDLCEventQueryOptions,
+  type StageTimingsOptions,
+  type StageTimings,
+  type SDLCMetrics,
+  type DORAMetrics,
+
+  // Schemas
+  SDLCStage as SDLCStageEnum,
+  SDLCAction as SDLCActionEnum,
+  SDLCEventSchema,
+
+  // Event Emission
+  emitSDLCEvent,
+  onSDLCEvent,
+
+  // Stage Timing
+  startStageTimer,
+  withStageTracking,
+
+  // Metrics
+  getSDLCMetrics,
+
+  // Helpers
+  workflowToStage,
+  inferStageFromContext,
+  calculateDORAMetrics,
+} from './sdlc-events.js';
+
+// SDLC Event Storage
+export {
+  // Stores
+  InMemorySDLCEventStore,
+  FirestoreSDLCEventStore,
+
+  // Factory
+  getSDLCEventStore,
+  setSDLCEventStore,
+  createSDLCEventStore,
+} from './sdlc-event-store.js';
