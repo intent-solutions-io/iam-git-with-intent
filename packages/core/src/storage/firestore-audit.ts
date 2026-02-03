@@ -4,29 +4,105 @@
  * Phase 11: Immutable audit trail for all run actions.
  * Events cannot be modified once created.
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage
  */
 
-import { getFirestoreClient, COLLECTIONS } from './firestore-client.js';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+} from './base-firestore-repository.js';
 import type { AuditStore, AuditEvent, AuditEventType } from './interfaces.js';
 
-/**
- * Firestore implementation of AuditStore
- */
-export class FirestoreAuditStore implements AuditStore {
-  private get db() {
-    return getFirestoreClient();
-  }
+// =============================================================================
+// Firestore Document Type
+// =============================================================================
 
-  private get collection() {
-    return this.db.collection(COLLECTIONS.AUDIT_EVENTS);
+interface AuditDoc extends DocumentData {
+  id: string;
+  runId: string;
+  tenantId: string;
+  eventType: string;
+  timestamp: Timestamp;
+  actor?: string;
+  details: Record<string, unknown>;
+  // Intent Receipt fields
+  intent?: string;
+  changeSummary?: string;
+  scope?: string;
+  policyApproval?: string;
+  evidenceText?: string;
+}
+
+// =============================================================================
+// Conversion Functions
+// =============================================================================
+
+function auditDocToModel(doc: AuditDoc, id: string): AuditEvent {
+  return {
+    id,
+    runId: doc.runId,
+    tenantId: doc.tenantId,
+    eventType: doc.eventType as AuditEventType,
+    timestamp: timestampToDate(doc.timestamp) ?? new Date(),
+    actor: doc.actor,
+    details: doc.details,
+    intent: doc.intent,
+    changeSummary: doc.changeSummary,
+    scope: doc.scope,
+    policyApproval: doc.policyApproval,
+    evidenceText: doc.evidenceText,
+  };
+}
+
+function auditModelToDoc(event: AuditEvent): AuditDoc {
+  return {
+    id: event.id,
+    runId: event.runId,
+    tenantId: event.tenantId,
+    eventType: event.eventType,
+    timestamp: dateToTimestamp(event.timestamp) as Timestamp,
+    actor: event.actor,
+    details: event.details,
+    intent: event.intent,
+    changeSummary: event.changeSummary,
+    scope: event.scope,
+    policyApproval: event.policyApproval,
+    evidenceText: event.evidenceText,
+  };
+}
+
+// =============================================================================
+// Firestore Audit Store Implementation
+// =============================================================================
+
+/**
+ * Firestore implementation of AuditStore using BaseFirestoreRepository
+ */
+export class FirestoreAuditStore
+  extends BaseFirestoreRepository<AuditEvent, AuditDoc>
+  implements AuditStore
+{
+  constructor(db?: Firestore) {
+    super(db, {
+      collection: COLLECTIONS.AUDIT_EVENTS,
+      idPrefix: 'aud',
+      timestampFields: ['timestamp'],
+      docToModel: auditDocToModel,
+      modelToDoc: auditModelToDoc,
+    });
   }
 
   /**
    * Create a new audit event
    */
   async createEvent(event: Omit<AuditEvent, 'id'>): Promise<AuditEvent> {
-    const id = `aud-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = this.generateId();
 
     const record: AuditEvent = {
       ...event,
@@ -34,10 +110,8 @@ export class FirestoreAuditStore implements AuditStore {
       timestamp: event.timestamp || new Date(),
     };
 
-    await this.collection.doc(id).set({
-      ...record,
-      timestamp: record.timestamp,
-    });
+    const doc = this.toDocument(record);
+    await this.getDocRef(id).set(doc);
 
     return record;
   }
@@ -46,17 +120,7 @@ export class FirestoreAuditStore implements AuditStore {
    * Get audit event by ID
    */
   async getEvent(eventId: string): Promise<AuditEvent | null> {
-    const doc = await this.collection.doc(eventId).get();
-    if (!doc.exists) {
-      return null;
-    }
-
-    const data = doc.data()!;
-    return {
-      ...data,
-      id: doc.id,
-      timestamp: data.timestamp?.toDate?.() || new Date(data.timestamp),
-    } as AuditEvent;
+    return this.getDocument(eventId);
   }
 
   /**
@@ -70,35 +134,21 @@ export class FirestoreAuditStore implements AuditStore {
       offset?: number;
     }
   ): Promise<AuditEvent[]> {
-    let query = this.collection.where('runId', '==', runId);
+    const conditions = [
+      { field: 'runId', operator: '==' as const, value: runId },
+    ];
 
     if (filter?.eventType) {
-      query = query.where('eventType', '==', filter.eventType);
+      conditions.push({ field: 'eventType', operator: '==', value: filter.eventType });
     }
 
-    query = query.orderBy('timestamp', 'asc');
-
-    if (filter?.limit) {
-      query = query.limit(filter.limit + (filter?.offset || 0));
-    }
-
-    const snapshot = await query.get();
-
-    let results = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        timestamp: data.timestamp?.toDate?.() || new Date(data.timestamp),
-      } as AuditEvent;
-    });
-
-    // Handle offset (Firestore doesn't have native offset support)
-    if (filter?.offset) {
-      results = results.slice(filter.offset);
-    }
-
-    return results;
+    return this.listDocuments(
+      conditions,
+      { limit: filter?.limit, offset: filter?.offset },
+      undefined,
+      'timestamp',
+      'asc' // Run events sorted ascending (chronological)
+    );
   }
 
   /**
@@ -112,34 +162,21 @@ export class FirestoreAuditStore implements AuditStore {
       offset?: number;
     }
   ): Promise<AuditEvent[]> {
-    let query = this.collection.where('tenantId', '==', tenantId);
+    const conditions = [
+      { field: 'tenantId', operator: '==' as const, value: tenantId },
+    ];
 
     if (filter?.eventType) {
-      query = query.where('eventType', '==', filter.eventType);
+      conditions.push({ field: 'eventType', operator: '==', value: filter.eventType });
     }
 
-    query = query.orderBy('timestamp', 'desc');
-
-    if (filter?.limit) {
-      query = query.limit(filter.limit + (filter?.offset || 0));
-    }
-
-    const snapshot = await query.get();
-
-    let results = snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        timestamp: data.timestamp?.toDate?.() || new Date(data.timestamp),
-      } as AuditEvent;
-    });
-
-    if (filter?.offset) {
-      results = results.slice(filter.offset);
-    }
-
-    return results;
+    return this.listDocuments(
+      conditions,
+      { limit: filter?.limit, offset: filter?.offset },
+      undefined,
+      'timestamp',
+      'desc' // Tenant view sorted descending (most recent first)
+    );
   }
 }
 

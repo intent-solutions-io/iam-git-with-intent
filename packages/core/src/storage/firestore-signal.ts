@@ -7,11 +7,20 @@
  * Collection Structure:
  * - gwi_tenants/{tenantId}/signals/{signalId}
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage/firestore
  */
 
-import type { Firestore, DocumentReference, Query, CollectionReference } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase-admin/firestore';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+  type TenantScopedEntity,
+} from './base-firestore-repository.js';
 import type {
   SignalStore,
   Signal,
@@ -19,19 +28,12 @@ import type {
   SignalStatus,
   SignalContext,
 } from './interfaces.js';
-import {
-  getFirestoreClient,
-  COLLECTIONS,
-  timestampToDate,
-  dateToTimestamp,
-  generateFirestoreId,
-} from './firestore-client.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface SignalDoc {
+interface SignalDoc extends DocumentData {
   id: string;
   tenantId: string;
   source: string;
@@ -53,9 +55,9 @@ interface SignalDoc {
 // Conversion Functions
 // =============================================================================
 
-function signalDocToModel(doc: SignalDoc): Signal {
+function signalDocToModel(doc: SignalDoc, id: string): Signal {
   return {
-    id: doc.id,
+    id,
     tenantId: doc.tenantId,
     source: doc.source as SignalSource,
     externalId: doc.externalId,
@@ -65,7 +67,7 @@ function signalDocToModel(doc: SignalDoc): Signal {
     payload: doc.payload,
     context: doc.context,
     processingMeta: doc.processingMeta ? {
-      processedAt: timestampToDate(doc.processingMeta.processedAt),
+      processedAt: timestampToDate(doc.processingMeta.processedAt as Timestamp),
       workItemId: doc.processingMeta.workItemId,
       ignoredReason: doc.processingMeta.ignoredReason,
       errorMessage: doc.processingMeta.errorMessage,
@@ -106,36 +108,26 @@ function signalModelToDoc(signal: Signal): SignalDoc {
  * - Status-based filtering
  * - Pending signal queries for processing
  */
-export class FirestoreSignalStore implements SignalStore {
-  private db: Firestore;
-
+export class FirestoreSignalStore
+  extends BaseFirestoreRepository<Signal & TenantScopedEntity, SignalDoc>
+  implements SignalStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
+    super(db, {
+      tenantScoped: {
+        parentCollection: COLLECTIONS.TENANTS,
+        subcollection: COLLECTIONS.SIGNALS,
+      },
+      idPrefix: 'sig',
+      timestampFields: ['occurredAt', 'receivedAt'],
+      docToModel: signalDocToModel,
+      modelToDoc: signalModelToDoc,
+    });
   }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private tenantsRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.TENANTS);
-  }
-
-  private signalsRef(tenantId: string): CollectionReference {
-    return this.tenantsRef().doc(tenantId).collection(COLLECTIONS.SIGNALS);
-  }
-
-  private signalDoc(tenantId: string, signalId: string): DocumentReference {
-    return this.signalsRef(tenantId).doc(signalId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Signal CRUD
-  // ---------------------------------------------------------------------------
 
   async createSignal(signal: Omit<Signal, 'id' | 'receivedAt'>): Promise<Signal> {
     const now = new Date();
-    const signalId = generateFirestoreId('sig');
+    const signalId = this.generateId();
 
     const fullSignal: Signal = {
       ...signal,
@@ -143,24 +135,14 @@ export class FirestoreSignalStore implements SignalStore {
       receivedAt: now,
     };
 
-    const doc = signalModelToDoc(fullSignal);
-    await this.signalDoc(signal.tenantId, signalId).set(doc);
+    const doc = this.toDocument(fullSignal);
+    await this.getDocRef(signalId, signal.tenantId).set(doc);
 
     return fullSignal;
   }
 
   async getSignal(signalId: string): Promise<Signal | null> {
-    // We need to search across all tenants since we only have signalId
-    const tenantsSnapshot = await this.tenantsRef().get();
-
-    for (const tenantDoc of tenantsSnapshot.docs) {
-      const signalSnapshot = await this.signalsRef(tenantDoc.id).doc(signalId).get();
-      if (signalSnapshot.exists) {
-        return signalDocToModel(signalSnapshot.data() as SignalDoc);
-      }
-    }
-
-    return null;
+    return this.getDocumentAcrossTenants(signalId);
   }
 
   async getSignalByExternalId(
@@ -168,17 +150,15 @@ export class FirestoreSignalStore implements SignalStore {
     source: SignalSource,
     externalId: string
   ): Promise<Signal | null> {
-    const snapshot = await this.signalsRef(tenantId)
-      .where('source', '==', source)
-      .where('externalId', '==', externalId)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    return signalDocToModel(snapshot.docs[0].data() as SignalDoc);
+    const results = await this.listDocuments(
+      [
+        { field: 'source', operator: '==', value: source },
+        { field: 'externalId', operator: '==', value: externalId },
+      ],
+      { limit: 1 },
+      tenantId
+    );
+    return results[0] ?? null;
   }
 
   async listSignals(
@@ -191,31 +171,25 @@ export class FirestoreSignalStore implements SignalStore {
       offset?: number;
     }
   ): Promise<Signal[]> {
-    let query: Query = this.signalsRef(tenantId);
+    const conditions: Array<{ field: string; operator: '==' | '>=' | '<' | '>' | '<=' | '!=' | 'in' | 'array-contains'; value: unknown }> = [];
 
     if (filter?.source) {
-      query = query.where('source', '==', filter.source);
+      conditions.push({ field: 'source', operator: '==', value: filter.source });
     }
     if (filter?.status) {
-      query = query.where('status', '==', filter.status);
+      conditions.push({ field: 'status', operator: '==', value: filter.status });
     }
     if (filter?.since) {
-      query = query.where('receivedAt', '>=', Timestamp.fromDate(filter.since));
+      conditions.push({ field: 'receivedAt', operator: '>=', value: Timestamp.fromDate(filter.since) });
     }
 
-    query = query.orderBy('receivedAt', 'desc');
-
-    const limit = filter?.limit ?? 100;
-    const offset = filter?.offset ?? 0;
-
-    // Apply limit with offset padding
-    query = query.limit(limit + offset);
-
-    const snapshot = await query.get();
-    const signals = snapshot.docs.map(doc => signalDocToModel(doc.data() as SignalDoc));
-
-    // Apply offset
-    return signals.slice(offset, offset + limit);
+    return this.listDocuments(
+      conditions,
+      { limit: filter?.limit, offset: filter?.offset },
+      tenantId,
+      'receivedAt',
+      'desc'
+    );
   }
 
   async updateSignal(
@@ -249,7 +223,7 @@ export class FirestoreSignalStore implements SignalStore {
       };
     }
 
-    await this.signalDoc(existing.tenantId, signalId).update(updateData);
+    await this.getDocRef(signalId, existing.tenantId).update(updateData);
 
     return updated;
   }

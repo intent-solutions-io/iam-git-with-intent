@@ -7,28 +7,30 @@
  * Collection Structure:
  * - gwi_tenants/{tenantId}/instances/{instanceId}
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage/firestore
  */
 
-import type { Firestore, DocumentReference, Query, CollectionReference } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase-admin/firestore';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
+import {
+  BaseFirestoreRepository,
+  COLLECTIONS,
+  Timestamp,
+  timestampToDate,
+  dateToTimestamp,
+  type TenantScopedEntity,
+} from './base-firestore-repository.js';
 import type {
   InstanceStore,
   WorkflowInstance,
 } from './interfaces.js';
-import {
-  getFirestoreClient,
-  COLLECTIONS,
-  timestampToDate,
-  dateToTimestamp,
-  generateFirestoreId,
-} from './firestore-client.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface InstanceDoc {
+interface InstanceDoc extends DocumentData {
   id: string;
   tenantId: string;
   templateRef: string;
@@ -51,9 +53,9 @@ interface InstanceDoc {
 // Conversion Functions
 // =============================================================================
 
-function instanceDocToModel(doc: InstanceDoc): WorkflowInstance {
+function instanceDocToModel(doc: InstanceDoc, id: string): WorkflowInstance {
   return {
-    id: doc.id,
+    id,
     tenantId: doc.tenantId,
     templateRef: doc.templateRef,
     name: doc.name,
@@ -99,38 +101,28 @@ function instanceModelToDoc(instance: WorkflowInstance): InstanceDoc {
  * - Template reference tracking
  * - Run count and last run tracking
  */
-export class FirestoreInstanceStore implements InstanceStore {
-  private db: Firestore;
-
+export class FirestoreInstanceStore
+  extends BaseFirestoreRepository<WorkflowInstance & TenantScopedEntity, InstanceDoc>
+  implements InstanceStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
+    super(db, {
+      tenantScoped: {
+        parentCollection: COLLECTIONS.TENANTS,
+        subcollection: COLLECTIONS.INSTANCES,
+      },
+      idPrefix: 'inst',
+      timestampFields: ['createdAt', 'updatedAt', 'lastRunAt'],
+      docToModel: instanceDocToModel,
+      modelToDoc: instanceModelToDoc,
+    });
   }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private tenantsRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.TENANTS);
-  }
-
-  private instancesRef(tenantId: string): CollectionReference {
-    return this.tenantsRef().doc(tenantId).collection(COLLECTIONS.INSTANCES);
-  }
-
-  private instanceDoc(tenantId: string, instanceId: string): DocumentReference {
-    return this.instancesRef(tenantId).doc(instanceId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Instance CRUD
-  // ---------------------------------------------------------------------------
 
   async createInstance(
     instance: Omit<WorkflowInstance, 'id' | 'createdAt' | 'updatedAt' | 'runCount'>
   ): Promise<WorkflowInstance> {
     const now = new Date();
-    const instanceId = generateFirestoreId('inst');
+    const instanceId = this.generateId();
 
     const fullInstance: WorkflowInstance = {
       ...instance,
@@ -140,26 +132,14 @@ export class FirestoreInstanceStore implements InstanceStore {
       runCount: 0,
     };
 
-    const doc = instanceModelToDoc(fullInstance);
-    await this.instanceDoc(instance.tenantId, instanceId).set(doc);
+    const doc = this.toDocument(fullInstance);
+    await this.getDocRef(instanceId, instance.tenantId).set(doc);
 
     return fullInstance;
   }
 
   async getInstance(instanceId: string): Promise<WorkflowInstance | null> {
-    // We need to search across all tenants since we only have instanceId
-    // This is inefficient but matches the interface contract
-    // In production, consider adding tenantId to the interface
-    const tenantsSnapshot = await this.tenantsRef().get();
-
-    for (const tenantDoc of tenantsSnapshot.docs) {
-      const instanceSnapshot = await this.instancesRef(tenantDoc.id).doc(instanceId).get();
-      if (instanceSnapshot.exists) {
-        return instanceDocToModel(instanceSnapshot.data() as InstanceDoc);
-      }
-    }
-
-    return null;
+    return this.getDocumentAcrossTenants(instanceId);
   }
 
   async listInstances(
@@ -171,29 +151,22 @@ export class FirestoreInstanceStore implements InstanceStore {
       offset?: number;
     }
   ): Promise<WorkflowInstance[]> {
-    let query: Query = this.instancesRef(tenantId);
+    const conditions: Array<{ field: string; operator: '==' | '>=' | '<' | '>' | '<=' | '!=' | 'in' | 'array-contains'; value: unknown }> = [];
 
     if (filter?.templateRef) {
-      query = query.where('templateRef', '==', filter.templateRef);
+      conditions.push({ field: 'templateRef', operator: '==', value: filter.templateRef });
     }
     if (filter?.enabled !== undefined) {
-      query = query.where('enabled', '==', filter.enabled);
+      conditions.push({ field: 'enabled', operator: '==', value: filter.enabled });
     }
 
-    query = query.orderBy('createdAt', 'desc');
-
-    const limit = filter?.limit ?? 100;
-    const offset = filter?.offset ?? 0;
-
-    // Firestore doesn't support offset directly, so we need to use limit
-    // For production, consider cursor-based pagination
-    query = query.limit(limit + offset);
-
-    const snapshot = await query.get();
-    const instances = snapshot.docs.map(doc => instanceDocToModel(doc.data() as InstanceDoc));
-
-    // Apply offset
-    return instances.slice(offset, offset + limit);
+    return this.listDocuments(
+      conditions,
+      { limit: filter?.limit, offset: filter?.offset },
+      tenantId,
+      'createdAt',
+      'desc'
+    );
   }
 
   async updateInstance(
@@ -212,20 +185,19 @@ export class FirestoreInstanceStore implements InstanceStore {
       updatedAt: new Date(),
     };
 
-    const doc = instanceModelToDoc(updated);
-    await this.instanceDoc(existing.tenantId, instanceId).set(doc, { merge: true });
+    const doc = this.toDocument(updated);
+    await this.getDocRef(instanceId, existing.tenantId).set(doc, { merge: true });
 
     return updated;
   }
 
   async deleteInstance(instanceId: string): Promise<void> {
-    // Find the instance first to get tenantId
     const existing = await this.getInstance(instanceId);
     if (!existing) {
       throw new Error(`Instance not found: ${instanceId}`);
     }
 
-    await this.instanceDoc(existing.tenantId, instanceId).delete();
+    await this.deleteDocument(instanceId, existing.tenantId);
   }
 
   async incrementRunCount(instanceId: string): Promise<void> {
@@ -234,7 +206,7 @@ export class FirestoreInstanceStore implements InstanceStore {
       throw new Error(`Instance not found: ${instanceId}`);
     }
 
-    await this.instanceDoc(existing.tenantId, instanceId).update({
+    await this.getDocRef(instanceId, existing.tenantId).update({
       runCount: existing.runCount + 1,
       updatedAt: Timestamp.now(),
     });
@@ -246,7 +218,7 @@ export class FirestoreInstanceStore implements InstanceStore {
       throw new Error(`Instance not found: ${instanceId}`);
     }
 
-    await this.instanceDoc(existing.tenantId, instanceId).update({
+    await this.getDocRef(instanceId, existing.tenantId).update({
       lastRunAt: dateToTimestamp(runAt),
       updatedAt: Timestamp.now(),
     });

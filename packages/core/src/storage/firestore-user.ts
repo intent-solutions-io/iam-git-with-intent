@@ -7,24 +7,26 @@
  * Collection Structure:
  * - gwi_users/{userId} - User profile document
  *
+ * Refactored to use BaseFirestoreRepository.
+ *
  * @module @gwi/core/storage/firestore-user
  */
 
-import type { Firestore, CollectionReference, DocumentReference } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase-admin/firestore';
-import type { UserStore, User, UserPreferences } from './interfaces.js';
+import type { Firestore, DocumentData } from 'firebase-admin/firestore';
 import {
-  getFirestoreClient,
+  BaseFirestoreRepository,
   COLLECTIONS,
+  Timestamp,
   timestampToDate,
   dateToTimestamp,
-} from './firestore-client.js';
+} from './base-firestore-repository.js';
+import type { UserStore, User, UserPreferences } from './interfaces.js';
 
 // =============================================================================
 // Firestore Document Types
 // =============================================================================
 
-interface UserDoc {
+interface UserDoc extends DocumentData {
   id: string;
   githubUserId: number;
   githubLogin: string;
@@ -45,9 +47,9 @@ interface UserDoc {
 // Conversion Functions
 // =============================================================================
 
-function userDocToModel(doc: UserDoc): User {
+function userDocToModel(doc: UserDoc, id: string): User {
   return {
-    id: doc.id,
+    id,
     githubUserId: doc.githubUserId,
     githubLogin: doc.githubLogin,
     githubAvatarUrl: doc.githubAvatarUrl,
@@ -87,28 +89,19 @@ function userModelToDoc(user: User): UserDoc {
  * - Lookup by GitHub ID
  * - Email lookup
  */
-export class FirestoreUserStore implements UserStore {
-  private db: Firestore;
-
+export class FirestoreUserStore
+  extends BaseFirestoreRepository<User, UserDoc>
+  implements UserStore
+{
   constructor(db?: Firestore) {
-    this.db = db ?? getFirestoreClient();
+    super(db, {
+      collection: COLLECTIONS.USERS,
+      idPrefix: 'usr',
+      timestampFields: ['createdAt', 'lastLoginAt', 'updatedAt'],
+      docToModel: userDocToModel,
+      modelToDoc: userModelToDoc,
+    });
   }
-
-  // ---------------------------------------------------------------------------
-  // Private Helpers
-  // ---------------------------------------------------------------------------
-
-  private usersRef(): CollectionReference {
-    return this.db.collection(COLLECTIONS.USERS);
-  }
-
-  private userDoc(userId: string): DocumentReference {
-    return this.usersRef().doc(userId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // UserStore Implementation
-  // ---------------------------------------------------------------------------
 
   async createUser(user: Omit<User, 'createdAt' | 'updatedAt'>): Promise<User> {
     const now = new Date();
@@ -131,42 +124,22 @@ export class FirestoreUserStore implements UserStore {
       updatedAt: now,
     };
 
-    const doc = userModelToDoc(fullUser);
-    await this.userDoc(user.id).set(doc);
+    const doc = this.toDocument(fullUser);
+    await this.getDocRef(user.id).set(doc);
 
     return fullUser;
   }
 
   async getUser(userId: string): Promise<User | null> {
-    const snapshot = await this.userDoc(userId).get();
-
-    if (!snapshot.exists) {
-      return null;
-    }
-
-    return userDocToModel(snapshot.data() as UserDoc);
+    return this.getDocument(userId);
   }
 
   async getUserByGitHubId(githubUserId: number): Promise<User | null> {
-    const query = this.usersRef().where('githubUserId', '==', githubUserId).limit(1);
-    const snapshot = await query.get();
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    return userDocToModel(snapshot.docs[0].data() as UserDoc);
+    return this.findByField('githubUserId', githubUserId);
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    const query = this.usersRef().where('email', '==', email).limit(1);
-    const snapshot = await query.get();
-
-    if (snapshot.empty) {
-      return null;
-    }
-
-    return userDocToModel(snapshot.docs[0].data() as UserDoc);
+    return this.findByField('email', email);
   }
 
   async updateUser(userId: string, update: Partial<User>): Promise<User> {
@@ -183,25 +156,21 @@ export class FirestoreUserStore implements UserStore {
       updatedAt: new Date(),
     };
 
-    const doc = userModelToDoc(updated);
-    await this.userDoc(userId).set(doc, { merge: true });
+    const doc = this.toDocument(updated);
+    await this.getDocRef(userId).set(doc, { merge: true });
 
     return updated;
   }
 
   async deleteUser(userId: string): Promise<void> {
-    await this.userDoc(userId).delete();
+    await this.deleteDocument(userId);
   }
-
-  // ---------------------------------------------------------------------------
-  // Extended Methods
-  // ---------------------------------------------------------------------------
 
   /**
    * Update user's last login timestamp
    */
   async recordLogin(userId: string): Promise<void> {
-    await this.userDoc(userId).update({
+    await this.getDocRef(userId).update({
       lastLoginAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
