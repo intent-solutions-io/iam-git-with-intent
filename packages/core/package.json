@@ -1,6 +1,6 @@
 {
   "name": "@gwi/core",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Core utilities for Git With Intent: Storage, A2A, Models",
   "type": "module",
   "main": "./dist/index.js",

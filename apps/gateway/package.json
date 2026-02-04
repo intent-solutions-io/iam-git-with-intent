@@ -1,6 +1,6 @@
 {
   "name": "@gwi/gateway",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "A2A Gateway for Git With Intent - R3 compliant proxy to Agent Engine",
   "type": "module",
   "main": "./dist/index.js",

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-02-03
+
+### Fixed
+- Fix npm audit vulnerabilities - upgrade vite, vitest, firebase-admin, firebase (#68)
+- Fix ARV warnings and update default model names to current versions
+- Reduce ARV warnings from 571 to 80 (86% reduction)
+
+### Changed
+- Replace unstructured console.log with structured logging across 22 files (#69)
+- Update forbidden-patterns to exclude test files from console.log warnings
+- Update drift-gate to accept npm workspace `*` protocol (not just pnpm `workspace:*`)
+
+### Added
+- Add 12 new specification documents:
+  - Developer onboarding automation (onboarding)
+  - AST-based code migration framework (migrations)
+  - Documentation generation framework (docgen)
+  - Cost optimization and budget alerts (billing)
+  - Service catalog specification (catalog)
+  - Feature flags integration (flags)
+  - SAST/DAST security scanning (security)
+  - AI governance framework (governance)
+  - SOC2/SOX compliance tracking (compliance)
+  - Developer analytics and DORA metrics (analytics)
+  - RAG knowledge base specification (knowledge)
+
 ## [0.7.0] - 2026-02-03
 
 ### Added

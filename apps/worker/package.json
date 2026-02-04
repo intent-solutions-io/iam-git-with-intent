@@ -1,6 +1,6 @@
 {
   "name": "@gwi/worker",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Git With Intent - Background Worker Service",
   "type": "module",
   "main": "dist/index.js",
