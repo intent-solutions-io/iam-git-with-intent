@@ -7,6 +7,7 @@
  * @module @gwi/engine/approval
  */
 
+import { getLogger } from '@gwi/core';
 import type {
   ApprovalRequest,
   ApprovalGateResult,
@@ -19,6 +20,8 @@ import type { ApprovalStore } from './approval-store.js';
 import { getApprovalStore } from './approval-store.js';
 import { performEscalation, checkEscalation } from './escalation.js';
 import { getNotifier, createApprovalRequestNotification } from './notifier.js';
+
+const logger = getLogger('approval-gate');
 
 // =============================================================================
 // Approval Gate Configuration
@@ -197,7 +200,7 @@ export class ApprovalGate {
 
     // Only allow decisions on pending or escalated requests
     if (!['pending', 'escalated'].includes(this.request.status)) {
-      console.warn(`Cannot approve request with status "${this.request.status}". Ignoring.`);
+      logger.warn('Cannot approve request with current status, ignoring', { requestId: this.request.id, status: this.request.status });
       return;
     }
 
@@ -234,7 +237,7 @@ export class ApprovalGate {
 
     // Only allow decisions on pending or escalated requests
     if (!['pending', 'escalated'].includes(this.request.status)) {
-      console.warn(`Cannot reject request with status "${this.request.status}". Ignoring.`);
+      logger.warn('Cannot reject request with current status, ignoring', { requestId: this.request.id, status: this.request.status });
       return;
     }
 

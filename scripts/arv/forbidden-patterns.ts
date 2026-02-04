@@ -25,10 +25,15 @@ const MODEL_CONFIG_PATHS = [
   'test/goldens/',
 ];
 
-// CLI paths where console.log is expected
-const CLI_PATHS = [
+// CLI and test paths where console.log is expected
+const CLI_AND_TEST_PATHS = [
   'apps/cli/',
   'scripts/',
+  '__tests__/',
+  '__fixtures__/',
+  'test/',
+  '.test.ts',
+  '.spec.ts',
 ];
 
 const FORBIDDEN_PATTERNS: ForbiddenPattern[] = [
@@ -78,12 +83,12 @@ const FORBIDDEN_PATTERNS: ForbiddenPattern[] = [
   },
 
   // Unstructured console logging in production code
-  // Excludes CLI and scripts where console.log is expected for user output
+  // Excludes CLI, scripts, and tests where console.log is expected
   {
     pattern: /console\.log\s*\(\s*`[^`]*\$\{/g,
     message: 'Unstructured console.log with template - use structured logging',
     severity: 'warning',
-    excludePaths: CLI_PATHS,
+    excludePaths: CLI_AND_TEST_PATHS,
   },
 ];
 

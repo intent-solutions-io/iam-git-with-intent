@@ -6,12 +6,15 @@
  * @module @gwi/engine/executor
  */
 
+import { getLogger } from '@gwi/core';
 import type {
   WorkflowDefinition,
   StepDefinition,
   ExecutionPlan,
   StepExecution,
 } from './types.js';
+
+const logger = getLogger('dependency-resolver');
 
 /**
  * Error thrown when DAG has cycles
@@ -447,7 +450,7 @@ export function evaluateCondition(
     return result === true;
   } catch (error) {
     // If condition evaluation fails, default to false (don't execute)
-    console.warn(`Failed to evaluate condition "${condition}":`, error);
+    logger.warn('Failed to evaluate condition', { condition, error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }

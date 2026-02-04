@@ -31,6 +31,9 @@ import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { createHash, verify, createPublicKey } from 'crypto';
+import { createLogger } from '@gwi/core';
+
+const logger = createLogger('registry');
 
 // =============================================================================
 // Configuration
@@ -123,7 +126,7 @@ function verifyEd25519Signature(
 
     return verify(null, Buffer.from(messageBytes), keyObject, Buffer.from(signatureBytes));
   } catch (error) {
-    console.error('Signature verification error:', error);
+    logger.error('Signature verification error', { error });
     return false;
   }
 }
@@ -140,7 +143,7 @@ function verifyPublishSignature(
   if (!trustedKey) {
     // If no trusted keys configured, allow any signature (dev mode)
     if (TRUSTED_KEYS.length === 0) {
-      console.warn(`Warning: No trusted keys configured, skipping signature verification`);
+      logger.warn('No trusted keys configured, skipping signature verification');
       return { valid: true };
     }
     return { valid: false, error: `Unknown signing key: ${signature.keyId}` };
@@ -466,7 +469,7 @@ async function handlePublish(
   registryIndex.connectors.set(connectorId, existingVersions);
   await saveIndex();
 
-  console.log(`Published ${connectorId}@${version} (key: ${keyId || 'none'})`);
+  logger.info('Published connector', { connectorId, version, keyId: keyId || 'none' });
 
   return { success: true, version, warnings: warnings.length > 0 ? warnings : undefined };
 }
@@ -488,7 +491,7 @@ async function main(): Promise<void> {
   await ensureDataDir();
   await loadIndex();
 
-  console.log(`Loaded ${registryIndex.connectors.size} connector(s) from ${DATA_DIR}`);
+  logger.info('Loaded connectors from data directory', { count: registryIndex.connectors.size, dataDir: DATA_DIR });
 
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
@@ -656,33 +659,34 @@ async function main(): Promise<void> {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
     } catch (error) {
-      console.error('Request error:', error);
+      logger.error('Request error', { error });
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Internal server error' }));
     }
   });
 
   server.listen(PORT, () => {
-    console.log(`\nGWI Connector Registry Server (Phase 21)`);
-    console.log(`=========================================`);
-    console.log(`Listening on http://localhost:${PORT}`);
-    console.log(`Data directory: ${DATA_DIR}`);
-    console.log(`Signature required: ${REQUIRE_SIGNATURE}`);
-    console.log(`Trusted keys: ${TRUSTED_KEYS.length} configured`);
-    console.log(`\nEndpoints:`);
-    console.log(`  GET  /v1/search?q={query}`);
-    console.log(`  GET  /v1/connectors/{id}`);
-    console.log(`  GET  /v1/connectors/{id}/{version}`);
-    console.log(`  GET  /v1/connectors/{id}/{version}/tarball`);
-    console.log(`  GET  /v1/connectors/{id}/{version}/signature`);
-    console.log(`  POST /v1/publish (requires X-API-Key header)`);
-    console.log(`  GET  /v1/stats`);
-    console.log(`  GET  /health`);
-    console.log(`\nPress Ctrl+C to stop\n`);
+    logger.info('GWI Connector Registry Server started', {
+      phase: 21,
+      port: PORT,
+      dataDir: DATA_DIR,
+      signatureRequired: REQUIRE_SIGNATURE,
+      trustedKeysCount: TRUSTED_KEYS.length,
+      endpoints: [
+        'GET  /v1/search?q={query}',
+        'GET  /v1/connectors/{id}',
+        'GET  /v1/connectors/{id}/{version}',
+        'GET  /v1/connectors/{id}/{version}/tarball',
+        'GET  /v1/connectors/{id}/{version}/signature',
+        'POST /v1/publish (requires X-API-Key header)',
+        'GET  /v1/stats',
+        'GET  /health',
+      ],
+    });
   });
 }
 
 main().catch((err) => {
-  console.error('Failed to start server:', err);
+  logger.error('Failed to start server', { error: err });
   process.exit(1);
 });

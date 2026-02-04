@@ -12,6 +12,9 @@
  */
 
 import type { ScheduleStore, InstanceStore, WorkflowSchedule } from '../storage/interfaces.js';
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('scheduler');
 
 // =============================================================================
 // Cron Utilities
@@ -227,7 +230,7 @@ export class SchedulerService {
         return 0;
       }
 
-      this.log(`Found ${dueSchedules.length} due schedules`);
+      this.log('Found due schedules', { count: dueSchedules.length });
 
       // Limit triggers per check
       const toTrigger = dueSchedules.slice(0, this.config.maxTriggersPerCheck);
@@ -238,7 +241,7 @@ export class SchedulerService {
           // Verify instance exists and is enabled
           const instance = await this.instanceStore.getInstance(schedule.instanceId);
           if (!instance || !instance.enabled) {
-            this.log(`Skipping schedule ${schedule.id}: instance not found or disabled`);
+            this.log('Skipping schedule: instance not found or disabled', { scheduleId: schedule.id });
             continue;
           }
 
@@ -252,9 +255,9 @@ export class SchedulerService {
           }
 
           triggered++;
-          this.log(`Triggered schedule ${schedule.id} for instance ${schedule.instanceId}`);
+          this.log('Triggered schedule', { scheduleId: schedule.id, instanceId: schedule.instanceId });
         } catch (error) {
-          console.error(`Failed to trigger schedule ${schedule.id}:`, error);
+          logger.error('Failed to trigger schedule', { scheduleId: schedule.id, error });
         }
       }
 
@@ -280,9 +283,9 @@ export class SchedulerService {
     };
   }
 
-  private log(message: string): void {
+  private log(message: string, data?: Record<string, unknown>): void {
     if (this.config.debug) {
-      console.log(`[Scheduler] ${message}`);
+      logger.debug(message, data);
     }
   }
 }

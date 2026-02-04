@@ -15,6 +15,9 @@ import type {
 } from './types.js';
 import { DEFAULT_PLANS, getPlanById } from './types.js';
 import { createFirestoreMeteringEventStorage } from './firestore-storage.js';
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('metering');
 
 // =============================================================================
 // Types
@@ -147,7 +150,7 @@ export class MeteringService {
     await this.storage.recordEvent(event);
 
     if (this.config.debug) {
-      console.log(`[Metering] Recorded LLM usage: ${params.provider}/${params.model}`);
+      logger.debug('Recorded LLM usage', { provider: params.provider, model: params.model });
     }
 
     return event;
@@ -180,7 +183,7 @@ export class MeteringService {
     await this.storage.recordEvent(event);
 
     if (this.config.debug) {
-      console.log(`[Metering] Recorded tool usage: ${params.toolName}`);
+      logger.debug('Recorded tool usage', { toolName: params.toolName });
     }
 
     return event;
@@ -217,7 +220,7 @@ export class MeteringService {
     await this.storage.recordEvent(event);
 
     if (this.config.debug) {
-      console.log(`[Metering] Recorded run event: ${params.runType} (${params.status})`);
+      logger.debug('Recorded run event', { runType: params.runType, status: params.status });
     }
 
     return event;

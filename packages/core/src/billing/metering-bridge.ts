@@ -9,6 +9,9 @@
 
 import type { WebhookHandlerDeps, SubscriptionStateUpdate } from './stripe-webhooks.js';
 import { MeteringService, getMeteringService, isMeteringEnabled } from '../metering/index.js';
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('billing:metering-bridge');
 
 // =============================================================================
 // Types
@@ -130,7 +133,7 @@ export class MeteringBridge {
         // In metering, usage is computed from events - no explicit reset needed
         // The aggregate is recomputed for each new billing period
         if (isMeteringEnabled()) {
-          console.log(`[MeteringBridge] Usage reset triggered for ${tenantId} (${resetType})`);
+          logger.debug('Usage reset triggered', { tenantId, resetType });
         }
       },
 
@@ -154,7 +157,7 @@ export class MeteringBridge {
           (this.storage as InMemoryBillingStateStorage).logWebhookEvent(log);
         }
 
-        console.log(`[MeteringBridge] Webhook ${eventType}: ${result.action} (tenant: ${tenantId || 'unknown'})`);
+        logger.info('Webhook processed', { eventType, action: result.action, tenantId: tenantId || 'unknown' });
       },
     };
   }
@@ -185,7 +188,7 @@ export class MeteringBridge {
       const meteringPlanId = this.mapPlanIdToMeteringPlan(update.planId);
       this.meteringService.setTenantPlan(update.tenantId, meteringPlanId);
 
-      console.log(`[MeteringBridge] Synced tenant ${update.tenantId} to plan ${meteringPlanId}`);
+      logger.info('Synced tenant to plan', { tenantId: update.tenantId, meteringPlanId });
     }
   }
 

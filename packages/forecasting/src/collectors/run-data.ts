@@ -5,11 +5,12 @@
  * for use in time series forecasting with TimeGPT.
  */
 
-import type {
-  Run,
-  RunStore,
-  SaaSRun,
-  TenantStore,
+import {
+  getLogger,
+  type Run,
+  type RunStore,
+  type SaaSRun,
+  type TenantStore,
 } from '@gwi/core';
 import {
   HistoricalRunData,
@@ -19,6 +20,8 @@ import {
   toTimeSeriesSuccessRate,
   calculateRunStatistics,
 } from '../models/index.js';
+
+const logger = getLogger('run-data-collector');
 
 // =============================================================================
 // Types
@@ -258,7 +261,7 @@ export class RunDataCollector {
 
       // This is a limitation of the current RunStore interface
       // TODO: Add listAllRuns method to RunStore for forecasting use case
-      console.warn('RunStore.listRuns requires prId. Consider using TenantStore for forecasting.');
+      logger.warn('RunStore.listRuns requires prId, consider using TenantStore for forecasting');
       return [];
     }
 
