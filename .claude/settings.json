@@ -13,8 +13,13 @@
   "hooks": {
     "Stop": [
       {
-        "matcher": "",
-        "command": "bash .claude/hooks/stop-beads-check.sh"
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-beads-check.sh"
+          }
+        ]
       }
     ]
   }
