@@ -43,6 +43,9 @@ import {
   loadRubric,
 } from './rubric.js';
 import { EvaluationHarness, type EvaluationInput, type EvaluationHarnessConfig } from './harness.js';
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('golden-task');
 
 // ============================================================================
 // Types
@@ -316,15 +319,14 @@ export class GoldenTaskRunner {
 
     for (const task of filteredTasks) {
       if (this.config.verbose) {
-        console.log(`  Running: ${task.name}...`);
+        logger.debug('Running task', { taskName: task.name });
       }
 
       const result = await this.runTask(task);
       results.push(result);
 
       if (this.config.verbose) {
-        const status = result.passed ? '✓' : '✗';
-        console.log(`    ${status} ${result.taskName}: ${result.score.toFixed(1)}/100`);
+        logger.debug('Task completed', { taskName: result.taskName, passed: result.passed, score: result.score });
       }
 
       if (this.config.failFast && !result.passed) {
@@ -343,7 +345,7 @@ export class GoldenTaskRunner {
     const taskFiles = this.discoverTaskFiles();
 
     if (this.config.verbose) {
-      console.log(`Discovered ${taskFiles.length} golden task file(s)`);
+      logger.debug('Discovered golden task files', { count: taskFiles.length });
     }
 
     const allResults: GoldenTaskResult[] = [];
@@ -351,7 +353,7 @@ export class GoldenTaskRunner {
 
     for (const file of taskFiles) {
       if (this.config.verbose) {
-        console.log(`\nRunning: ${path.basename(file)}`);
+        logger.debug('Running task file', { file: path.basename(file) });
       }
 
       const tasks = this.loadTasksFromFile(file);

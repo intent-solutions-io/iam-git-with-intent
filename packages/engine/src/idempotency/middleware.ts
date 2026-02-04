@@ -19,9 +19,12 @@
  * @module @gwi/engine/idempotency
  */
 
+import { getLogger } from '@gwi/core';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import type { ApiIdempotencyKey } from './types.js';
 import { getIdempotencyService, IdempotencyProcessingError } from './service.js';
+
+const logger = getLogger('idempotency-middleware');
 
 // =============================================================================
 // Middleware Options
@@ -214,7 +217,7 @@ export function idempotencyMiddleware(
               response: cachedResponse,
             })
           ).catch((err: Error) => {
-            console.error('Failed to store idempotency response:', err.message);
+            logger.error('Failed to store idempotency response', { error: err.message });
           });
         }
 
@@ -233,7 +236,7 @@ export function idempotencyMiddleware(
               response: { statusCode: res.statusCode, body },
             })
           ).catch((err: Error) => {
-            console.error('Failed to store idempotency response:', err.message);
+            logger.error('Failed to store idempotency response', { error: err.message });
           });
         }
 
@@ -257,7 +260,7 @@ export function idempotencyMiddleware(
       }
 
       // Log error but don't fail the request
-      console.error('Idempotency middleware error:', error);
+      logger.error('Idempotency middleware error', { error: error instanceof Error ? error.message : String(error) });
       return next();
     }
   };

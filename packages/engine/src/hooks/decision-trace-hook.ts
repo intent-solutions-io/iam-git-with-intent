@@ -9,6 +9,7 @@
  * @module @gwi/engine/hooks/decision-trace-hook
  */
 
+import { getLogger } from '@gwi/core';
 import type { AgentHook, AgentRunContext, AgentRole } from './types.js';
 import {
   type AgentType,
@@ -17,6 +18,8 @@ import {
   getDecisionTraceStore,
   generateTraceId,
 } from '@gwi/core';
+
+const logger = getLogger('decision-trace-hook');
 
 // =============================================================================
 // Role to Agent Type Mapping
@@ -160,7 +163,7 @@ export class DecisionTraceHook implements AgentHook {
 
     } catch (error) {
       // Hooks should never crash the main pipeline
-      console.error('[DecisionTraceHook] Error saving trace:', error);
+      logger.error('Error saving trace', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 

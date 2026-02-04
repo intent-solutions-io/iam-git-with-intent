@@ -7,6 +7,9 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('migrations');
 
 export interface Migration {
   version: number;
@@ -76,7 +79,7 @@ export class MigrationManager {
     for (const file of files) {
       const match = file.match(/^(\d+)_(.+)\.sql$/);
       if (!match) {
-        console.warn(`Skipping invalid migration file: ${file}`);
+        logger.warn('Skipping invalid migration file', { file });
         continue;
       }
 
@@ -164,20 +167,20 @@ export class MigrationManager {
       return [];
     }
 
-    console.log(`Applying ${pending.length} migration(s)...`);
+    logger.info('Applying migrations', { count: pending.length });
 
     const results: MigrationResult[] = [];
 
     for (const migration of pending) {
-      console.log(`  → Migration ${migration.version}: ${migration.description}`);
+      logger.info('Applying migration', { version: migration.version, description: migration.description });
 
       const result = this.applyMigration(migration);
       results.push(result);
 
       if (result.success) {
-        console.log(`    ✓ Applied in ${result.duration}ms`);
+        logger.info('Migration applied', { version: migration.version, durationMs: result.duration });
       } else {
-        console.error(`    ✗ Failed: ${result.error}`);
+        logger.error('Migration failed', { version: migration.version, error: result.error });
         break; // Stop on first failure
       }
     }
@@ -185,7 +188,7 @@ export class MigrationManager {
     const successful = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
 
-    console.log(`\nCompleted: ${successful} successful, ${failed} failed`);
+    logger.info('Migration batch completed', { successful, failed });
 
     return results;
   }
@@ -206,7 +209,7 @@ export class MigrationManager {
     }
 
     if (targetVersion === currentVersion) {
-      console.log(`✓ Already at version ${targetVersion}`);
+      logger.info('Already at target version', { version: targetVersion });
       return [];
     }
 
@@ -218,20 +221,20 @@ export class MigrationManager {
       throw new Error(`No migrations found between ${currentVersion} and ${targetVersion}`);
     }
 
-    console.log(`Migrating from v${currentVersion} to v${targetVersion}...`);
+    logger.info('Migrating to target version', { currentVersion, targetVersion });
 
     const results: MigrationResult[] = [];
 
     for (const migration of toApply) {
-      console.log(`  → Migration ${migration.version}: ${migration.description}`);
+      logger.info('Applying migration', { version: migration.version, description: migration.description });
 
       const result = this.applyMigration(migration);
       results.push(result);
 
       if (result.success) {
-        console.log(`    ✓ Applied in ${result.duration}ms`);
+        logger.info('Migration applied', { version: migration.version, durationMs: result.duration });
       } else {
-        console.error(`    ✗ Failed: ${result.error}`);
+        logger.error('Migration failed', { version: migration.version, error: result.error });
         break;
       }
     }
@@ -331,15 +334,14 @@ export async function runMigrations(dbPath: string, migrationsDir?: string): Pro
   const manager = new MigrationManager(db, migrationsDir);
 
   try {
-    console.log('Database Migration Tool\n');
-    console.log(`Database: ${dbPath}`);
-    console.log(`Migrations: ${migrationsDir || 'db/migrations'}\n`);
+    logger.info('Database Migration Tool');
+    logger.info('Migration configuration', { database: dbPath, migrationsDir: migrationsDir || 'db/migrations' });
 
     const currentVersion = manager.getCurrentVersion();
-    console.log(`Current version: ${currentVersion}`);
+    logger.info('Current schema version', { version: currentVersion });
 
     const pending = manager.getPendingMigrations();
-    console.log(`Pending migrations: ${pending.length}\n`);
+    logger.info('Pending migrations', { count: pending.length });
 
     if (pending.length === 0) {
       console.log('✓ Database is up to date.');
@@ -363,8 +365,7 @@ export async function runMigrations(dbPath: string, migrationsDir?: string): Pro
     if (validation.valid) {
       console.log('✓ Schema validation passed.');
     } else {
-      console.error('✗ Schema validation failed:');
-      validation.errors.forEach(err => console.error(`  - ${err}`));
+      logger.error('Schema validation failed', { errors: validation.errors });
       process.exit(1);
     }
   } finally {

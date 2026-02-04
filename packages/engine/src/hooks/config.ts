@@ -13,10 +13,13 @@
  * @module @gwi/engine/hooks
  */
 
+import { getLogger } from '@gwi/core';
 import type { HookConfig, AgentHook } from './types.js';
 import { DEFAULT_HOOK_CONFIG } from './types.js';
 import { AgentHookRunner } from './runner.js';
 import { DecisionTraceHook } from './decision-trace-hook.js';
+
+const logger = getLogger('hooks');
 
 /**
  * Read hook configuration from environment variables
@@ -54,7 +57,7 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
     runner.register(decisionTraceHook);
 
     if (config.debug) {
-      console.log('[Hooks] Decision trace hook registered');
+      logger.debug('Decision trace hook registered');
     }
   }
 

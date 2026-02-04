@@ -26,7 +26,9 @@ import type {
   MarketplaceSearchOptions,
   ConnectorCapability,
 } from '@gwi/core';
-import { getMarketplaceService, getAllCircuitBreakerStats } from '@gwi/core';
+import { createLogger, getMarketplaceService, getAllCircuitBreakerStats } from '@gwi/core';
+
+const logger = createLogger('gateway:marketplace');
 import { z } from 'zod';
 
 // ESM __dirname equivalent
@@ -675,7 +677,7 @@ router.post(
     const tarballPath = `${connectorId}/${version}/connector.tar.gz`;
     const signaturePath = `${connectorId}/${version}/signature.json`;
 
-    console.log(`Uploading tarball to gs://${tarballBucket}/${tarballPath}`);
+    logger.info('Uploading tarball', { bucket: tarballBucket, path: tarballPath });
     await bucket.file(tarballPath).save(tarballBuffer, {
       contentType: 'application/gzip',
       metadata: {
@@ -686,7 +688,7 @@ router.post(
     });
 
     // Upload signature
-    console.log(`Uploading signature to gs://${tarballBucket}/${signaturePath}`);
+    logger.info('Uploading signature', { bucket: tarballBucket, path: signaturePath });
     await bucket.file(signaturePath).save(JSON.stringify(signature, null, 2), {
       contentType: 'application/json',
     });
@@ -721,7 +723,7 @@ router.post(
       });
     }
 
-    console.log(`Published ${connectorId}@${version} by ${publishedBy}`);
+    logger.info('Published connector', { connectorId, version, publishedBy });
 
     res.status(201).json({
       success: true,
@@ -768,7 +770,7 @@ router.post('/v1/connectors/:id/:version/deprecate', async (req, res) => {
       });
     }
 
-    console.log(`Deprecated ${id}@${version} by ${publishedBy}: ${reason}`);
+    logger.info('Deprecated version', { id, version, publishedBy, reason });
 
     res.json({ success: true, id, version, reason });
   } catch (error) {
@@ -825,7 +827,7 @@ function loadOpenApiSpec(): void {
     const specPath = join(__dirname, '..', 'openapi.yaml');
     openApiSpec = readFileSync(specPath, 'utf-8');
     openApiJson = yaml.load(openApiSpec) as object;
-    console.log('OpenAPI spec loaded from', specPath);
+    logger.info('OpenAPI spec loaded', { path: specPath });
   } catch (error) {
     console.warn('Could not load OpenAPI spec:', error instanceof Error ? error.message : error);
   }

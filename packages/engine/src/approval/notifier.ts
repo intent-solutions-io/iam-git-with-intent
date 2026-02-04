@@ -7,12 +7,15 @@
  * @module @gwi/engine/approval
  */
 
+import { getLogger } from '@gwi/core';
 import type {
   NotificationChannel,
   NotificationChannelType,
   NotificationMessage,
   ApprovalRequest,
 } from './types.js';
+
+const logger = getLogger('notifier');
 
 // =============================================================================
 // Notification Result
@@ -96,15 +99,14 @@ export class StubNotifier implements Notifier {
   ): Promise<NotificationResult> {
     const now = new Date();
 
-    console.log(JSON.stringify({
+    logger.info('Notification sent', {
       type: 'notification_sent',
       channel: channel.type,
       subject: message.subject,
       recipients: message.recipients,
       approvalRequestId: message.approvalRequestId,
       runId: message.runId,
-      timestamp: now.toISOString(),
-    }));
+    });
 
     const result: NotificationResult = {
       success: true,

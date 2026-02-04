@@ -18,7 +18,9 @@ import type {
   TenantSettings,
   RepoSettings,
 } from '@gwi/core';
-import { getTenantStore } from '@gwi/core';
+import { getTenantStore, createLogger } from '@gwi/core';
+
+const logger = createLogger('github-webhook:installation');
 
 // =============================================================================
 // Types
@@ -143,7 +145,7 @@ export async function handleInstallationCreated(
   // Check if tenant already exists
   const existing = await tenantStore.getTenant(tenantId);
   if (existing) {
-    console.log(`[Installation] Tenant ${tenantId} already exists, updating...`);
+    logger.info('Tenant already exists, updating', { tenantId });
 
     // Update installation info
     await tenantStore.updateTenant(tenantId, {
@@ -226,7 +228,7 @@ export async function handleInstallationDeleted(
 
   const existing = await tenantStore.getTenant(tenantId);
   if (!existing) {
-    console.log(`[Installation] Tenant ${tenantId} not found for deletion`);
+    logger.info('Tenant not found for deletion', { tenantId });
     return {
       status: 'skipped',
       reason: 'Tenant not found',
@@ -272,7 +274,7 @@ export async function handleInstallationRepositories(
 
   const existing = await tenantStore.getTenant(tenantId);
   if (!existing) {
-    console.log(`[Installation] Tenant ${tenantId} not found for repo update`);
+    logger.info('Tenant not found for repo update', { tenantId });
     return {
       status: 'skipped',
       reason: 'Tenant not found',
@@ -395,10 +397,7 @@ export async function getTenantByInstallationId(
   // For Phase 8, we rely on the tenant ID being known from
   // the installation event context.
 
-  console.warn(
-    `[Installation] getTenantByInstallationId(${installationId}) - ` +
-    'Consider adding installationId index for production'
-  );
+  logger.warn('Consider adding installationId index for production', { installationId });
 
   return null;
 }

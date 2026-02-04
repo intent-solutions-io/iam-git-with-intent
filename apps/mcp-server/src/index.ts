@@ -27,6 +27,9 @@
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
+import { createLogger } from '@gwi/core';
+
+const logger = createLogger('mcp-server');
 
 // MCP Protocol Types
 const MCPRequestSchema = z.object({
@@ -379,8 +382,8 @@ export default app;
 // Local development server
 if (process.env.NODE_ENV !== 'production') {
   const port = parseInt(process.env.PORT || '3100');
-  console.log(`GWI MCP Server starting on port ${port}`);
-  console.log(`Tools available: ${TOOLS.map(t => t.name).join(', ')}`);
+  logger.info('GWI MCP Server starting', { port });
+  logger.info('Tools available', { tools: TOOLS.map(t => t.name) });
 
   // @ts-ignore - Bun/Node compatibility
   const server = Bun?.serve?.({ port, fetch: app.fetch }) || app;

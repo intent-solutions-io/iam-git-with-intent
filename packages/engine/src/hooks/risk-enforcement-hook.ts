@@ -16,8 +16,11 @@
  * @module @gwi/engine/hooks
  */
 
+import { getLogger } from '@gwi/core';
 import type { AgentHook, AgentRunContext } from './types.js';
 import { type RiskTier, meetsRiskTier } from '@gwi/core';
+
+const logger = getLogger('risk-enforcement');
 
 /**
  * Configuration for risk enforcement
@@ -150,7 +153,7 @@ export class RiskEnforcementHook implements AgentHook {
           this.config.maxRiskTier,
         );
       } else {
-        console.warn(`[RiskEnforcement] WARNING: ${reason}`);
+        logger.warn('Risk tier exceeded but enforcement disabled', { reason });
       }
     }
 
@@ -173,9 +176,9 @@ export class RiskEnforcementHook implements AgentHook {
         if (this.config.enforceBlocking) {
           await this.config.onBlocked?.(ctx, reason);
           // Log but don't throw - step already completed
-          console.error(`[RiskEnforcement] VIOLATION: ${reason}`);
+          logger.error('Risk enforcement violation detected', { reason, operation });
         } else {
-          console.warn(`[RiskEnforcement] WARNING: ${reason}`);
+          logger.warn('Risk tier exceeded but enforcement disabled', { reason, operation });
         }
       }
     }
@@ -189,10 +192,10 @@ export class RiskEnforcementHook implements AgentHook {
     const wasBlocked = this.blockedOperations.get(ctx.runId);
 
     if (wasBlocked) {
-      console.info(`[RiskEnforcement] Run ${ctx.runId} was blocked: ${wasBlocked}`);
+      logger.info('Run was blocked by risk enforcement', { runId: ctx.runId, reason: wasBlocked });
       this.blockedOperations.delete(ctx.runId);
     } else if (success) {
-      console.debug(`[RiskEnforcement] Run ${ctx.runId} completed within risk tier ${this.config.maxRiskTier}`);
+      logger.debug('Run completed within risk tier', { runId: ctx.runId, maxRiskTier: this.config.maxRiskTier });
     }
   }
 

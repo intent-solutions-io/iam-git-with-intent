@@ -15,6 +15,9 @@
 import Stripe from 'stripe';
 import { type PlanId } from '../security/index.js';
 import { type SubscriptionStatus } from './index.js';
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('billing:stripe-webhooks');
 
 // =============================================================================
 // Types
@@ -476,18 +479,18 @@ export function createStripeWebhookHandler(deps: WebhookHandlerDeps): StripeWebh
 export function createStubWebhookDeps(): WebhookHandlerDeps {
   return {
     updateTenantSubscription: async (update) => {
-      console.log('[Stub] updateTenantSubscription:', update);
+      logger.debug('Stub: updateTenantSubscription', { update });
     },
     resetTenantUsage: async (tenantId, resetType) => {
-      console.log(`[Stub] resetTenantUsage: ${tenantId} (${resetType})`);
+      logger.debug('Stub: resetTenantUsage', { tenantId, resetType });
     },
     getTenantIdFromCustomer: async (customerId) => {
-      console.log(`[Stub] getTenantIdFromCustomer: ${customerId}`);
+      logger.debug('Stub: getTenantIdFromCustomer', { customerId });
       // In development, could return a test tenant ID
       return `tenant_${customerId.slice(-8)}`;
     },
     logWebhookEvent: async (eventId, eventType, tenantId, result) => {
-      console.log('[Stub] logWebhookEvent:', { eventId, eventType, tenantId, result });
+      logger.debug('Stub: logWebhookEvent', { eventId, eventType, tenantId, result });
     },
   };
 }

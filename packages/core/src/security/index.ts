@@ -10,6 +10,10 @@
  * @module @gwi/core/security
  */
 
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('security');
+
 // =============================================================================
 // Role Model
 // =============================================================================
@@ -679,7 +683,7 @@ export class DevSecretProvider implements SecretProvider {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path, value, { mode: 0o600 });
 
-    console.log(`[DevSecretProvider] Secret stored: ${this.redactRef(ref)}`);
+    logger.info('Secret stored', { ref: this.redactRef(ref), provider: 'DevSecretProvider' });
   }
 
   async exists(ref: SecretRef): Promise<boolean> {
@@ -709,7 +713,7 @@ export class DevSecretProvider implements SecretProvider {
     const fs = await import('fs/promises');
     const path = this.refToPath(ref);
     await fs.unlink(path);
-    console.log(`[DevSecretProvider] Secret deleted: ${this.redactRef(ref)}`);
+    logger.info('Secret deleted', { ref: this.redactRef(ref), provider: 'DevSecretProvider' });
   }
 
   private refToPath(ref: SecretRef): string {
@@ -868,7 +872,7 @@ export class GCPSecretProvider implements SecretProvider {
       },
     });
 
-    console.log(`[GCPSecretProvider] Secret version added: ${this.redactRef(ref)}`);
+    logger.info('Secret version added', { ref: this.redactRef(ref), provider: 'GCPSecretProvider' });
   }
 
   async exists(ref: SecretRef): Promise<boolean> {
@@ -908,7 +912,7 @@ export class GCPSecretProvider implements SecretProvider {
       name: `projects/${parts.project}/secrets/${parts.secretName}`,
     });
 
-    console.log(`[GCPSecretProvider] Secret deleted: ${this.redactRef(ref)}`);
+    logger.info('Secret deleted', { ref: this.redactRef(ref), provider: 'GCPSecretProvider' });
   }
 
   private parseRef(ref: SecretRef): string {

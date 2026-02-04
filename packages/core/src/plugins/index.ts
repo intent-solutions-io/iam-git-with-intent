@@ -13,6 +13,10 @@
  * @module @gwi/core/plugins
  */
 
+import { createLogger } from '../telemetry/index.js';
+
+const logger = createLogger('plugins');
+
 // =============================================================================
 // Plugin Types
 // =============================================================================
@@ -245,7 +249,7 @@ export class PluginRegistry {
       this.registerContributions(name, plugin.contributions);
     }
 
-    console.log(`Plugin registered: ${name}@${version}`);
+    logger.info('Plugin registered', { name, version });
   }
 
   /**
@@ -269,7 +273,7 @@ export class PluginRegistry {
 
       state.loaded = true;
       state.loadedAt = new Date();
-      console.log(`Plugin loaded: ${name}`);
+      logger.info('Plugin loaded', { name });
     } catch (error) {
       state.error = error instanceof Error ? error.message : String(error);
       throw error;
@@ -299,9 +303,9 @@ export class PluginRegistry {
       this.unregisterContributions(name);
 
       state.loaded = false;
-      console.log(`Plugin unloaded: ${name}`);
+      logger.info('Plugin unloaded', { name });
     } catch (error) {
-      console.error(`Error unloading plugin '${name}':`, error);
+      logger.error('Error unloading plugin', { name, error });
       throw error;
     }
   }
@@ -390,7 +394,7 @@ export class PluginRegistry {
             await (hook as (ctx: WorkflowContext) => Promise<void>)(ctx);
           }
         } catch (error) {
-          console.error(`Plugin '${state.plugin.metadata.name}' ${hookName} hook failed:`, error);
+          logger.error('Plugin hook failed', { pluginName: state.plugin.metadata.name, hookName, error });
         }
       }
     }
@@ -415,7 +419,7 @@ export class PluginRegistry {
             await (hook as (ctx: StepContext) => Promise<void>)(ctx);
           }
         } catch (error) {
-          console.error(`Plugin '${state.plugin.metadata.name}' ${hookName} hook failed:`, error);
+          logger.error('Plugin hook failed', { pluginName: state.plugin.metadata.name, hookName, error });
         }
       }
     }
@@ -432,7 +436,7 @@ export class PluginRegistry {
         try {
           await hook(ctx);
         } catch (error) {
-          console.error(`Plugin '${state.plugin.metadata.name}' onError hook failed:`, error);
+          logger.error('Plugin onError hook failed', { pluginName: state.plugin.metadata.name, error });
         }
       }
     }
@@ -451,7 +455,7 @@ export class PluginRegistry {
       try {
         await handler.handler(payload);
       } catch (error) {
-        console.error(`Event handler in plugin '${pluginName}' failed:`, error);
+        logger.error('Event handler failed', { pluginName, error });
       }
     }
   }
@@ -464,7 +468,7 @@ export class PluginRegistry {
     if (contributions.workflows) {
       for (const workflow of contributions.workflows) {
         if (this.workflows.has(workflow.type)) {
-          console.warn(`Workflow '${workflow.type}' from plugin '${pluginName}' conflicts with existing workflow`);
+          logger.warn('Workflow conflict with existing workflow', { workflowType: workflow.type, pluginName });
           continue;
         }
         this.workflows.set(workflow.type, workflow);
@@ -475,7 +479,7 @@ export class PluginRegistry {
     if (contributions.agents) {
       for (const agent of contributions.agents) {
         if (this.agents.has(agent.name)) {
-          console.warn(`Agent '${agent.name}' from plugin '${pluginName}' conflicts with existing agent`);
+          logger.warn('Agent conflict with existing agent', { agentName: agent.name, pluginName });
           continue;
         }
         this.agents.set(agent.name, agent);
@@ -486,7 +490,7 @@ export class PluginRegistry {
     if (contributions.storage) {
       for (const storageBackend of contributions.storage) {
         if (this.storage.has(storageBackend.type)) {
-          console.warn(`Storage '${storageBackend.type}' from plugin '${pluginName}' conflicts with existing backend`);
+          logger.warn('Storage conflict with existing backend', { storageType: storageBackend.type, pluginName });
           continue;
         }
         this.storage.set(storageBackend.type, storageBackend);
@@ -497,7 +501,7 @@ export class PluginRegistry {
     if (contributions.commands) {
       for (const command of contributions.commands) {
         if (this.commands.has(command.name)) {
-          console.warn(`Command '${command.name}' from plugin '${pluginName}' conflicts with existing command`);
+          logger.warn('Command conflict with existing command', { commandName: command.name, pluginName });
           continue;
         }
         this.commands.set(command.name, command);
@@ -624,11 +628,11 @@ export async function loadPluginsFromDirectory(dir: string): Promise<void> {
           await registry.register(plugin);
           await registry.load(plugin.metadata.name);
         } catch (error) {
-          console.error(`Failed to load plugin from ${pluginPath}:`, error);
+          logger.error('Failed to load plugin', { pluginPath, error });
         }
       }
     }
   } catch (error) {
-    console.error(`Failed to read plugins directory ${dir}:`, error);
+    logger.error('Failed to read plugins directory', { dir, error });
   }
 }

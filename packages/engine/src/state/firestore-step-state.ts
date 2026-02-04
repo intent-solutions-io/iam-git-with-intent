@@ -64,6 +64,7 @@
  */
 
 import { randomUUID } from 'crypto';
+import { getLogger } from '@gwi/core';
 import type { StepStateStore } from './step-state-store.js';
 import {
   StepState as StepStateSchema,
@@ -74,6 +75,8 @@ import {
   type StepStateSort,
   type StepStatePagination,
 } from './types.js';
+
+const logger = getLogger('firestore-step-state');
 
 // =============================================================================
 // Firestore Types (avoid direct dependency for portability)
@@ -341,10 +344,11 @@ export class FirestoreStepStateStore implements StepStateStore {
       return states;
     } catch (error) {
       // Log partial success info for debugging
-      console.error(
-        `[FirestoreStepStateStore] Batch write failed after ${committedCount}/${states.length} records:`,
-        error
-      );
+      logger.error('Batch write failed', {
+        committedCount,
+        totalCount: states.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
       // Re-throw with additional context
       const err = error instanceof Error ? error : new Error(String(error));
       err.message = `Batch write failed after ${committedCount}/${states.length} records: ${err.message}`;
@@ -395,10 +399,11 @@ export class FirestoreStepStateStore implements StepStateStore {
 
       return deletedCount;
     } catch (error) {
-      console.error(
-        `[FirestoreStepStateStore] Batch delete failed after ${deletedCount}/${states.length} records:`,
-        error
-      );
+      logger.error('Batch delete failed', {
+        deletedCount,
+        totalCount: states.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
       const err = error instanceof Error ? error : new Error(String(error));
       err.message = `Batch delete failed after ${deletedCount}/${states.length} records: ${err.message}`;
       throw err;
