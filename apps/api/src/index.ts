@@ -998,8 +998,8 @@ app.post('/tenants', authMiddleware, idempotencyMiddleware({
       },
       settings: {
         defaultRiskMode: 'comment_only',
-        defaultTriageModel: 'gemini-1.5-flash',
-        defaultCodeModel: 'gemini-1.5-pro',
+        defaultTriageModel: 'gemini-2.0-flash-exp',
+        defaultCodeModel: 'claude-sonnet-4-20250514',
         complexityThreshold: 3,
         autoRunOnConflict: false,
         autoRunOnPrOpen: false,

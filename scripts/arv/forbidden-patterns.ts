@@ -13,7 +13,23 @@ interface ForbiddenPattern {
   pattern: RegExp;
   message: string;
   severity: 'error' | 'warning';
+  excludePaths?: string[]; // Paths to exclude from this check
 }
+
+// Paths that define model configurations (not hardcoded usage)
+const MODEL_CONFIG_PATHS = [
+  'packages/core/src/models/index.ts',
+  'packages/core/src/llm/provider-capabilities.ts',
+  'packages/core/src/llm/providers/',
+  'packages/core/src/planner/',
+  'test/goldens/',
+];
+
+// CLI paths where console.log is expected
+const CLI_PATHS = [
+  'apps/cli/',
+  'scripts/',
+];
 
 const FORBIDDEN_PATTERNS: ForbiddenPattern[] = [
   // Deprecated ADK patterns
@@ -34,20 +50,24 @@ const FORBIDDEN_PATTERNS: ForbiddenPattern[] = [
   },
 
   // Hardcoded model names (should use MODELS config)
+  // Excludes model config files where these are definitions, not usage
   {
     pattern: /['"]claude-3-opus-\d+['"]/g,
     message: 'Hardcoded Claude model name - use MODELS config',
     severity: 'warning',
+    excludePaths: MODEL_CONFIG_PATHS,
   },
   {
     pattern: /['"]claude-3-sonnet-\d+['"]/g,
     message: 'Hardcoded Claude model name - use MODELS config',
     severity: 'warning',
+    excludePaths: MODEL_CONFIG_PATHS,
   },
   {
     pattern: /['"]gemini-\d+\.\d+-flash['"]/g,
     message: 'Hardcoded Gemini model name - use MODELS config',
     severity: 'warning',
+    excludePaths: MODEL_CONFIG_PATHS,
   },
 
   // Local-only state storage (should use TenantStore)
@@ -58,10 +78,12 @@ const FORBIDDEN_PATTERNS: ForbiddenPattern[] = [
   },
 
   // Unstructured console logging in production code
+  // Excludes CLI and scripts where console.log is expected for user output
   {
     pattern: /console\.log\s*\(\s*`[^`]*\$\{/g,
     message: 'Unstructured console.log with template - use structured logging',
     severity: 'warning',
+    excludePaths: CLI_PATHS,
   },
 ];
 
@@ -76,6 +98,11 @@ interface Violation {
   match: string;
 }
 
+function isExcluded(filePath: string, excludePaths?: string[]): boolean {
+  if (!excludePaths) return false;
+  return excludePaths.some(exclude => filePath.includes(exclude));
+}
+
 async function scanFile(filePath: string): Promise<Violation[]> {
   const violations: Violation[] = [];
 
@@ -86,6 +113,10 @@ async function scanFile(filePath: string): Promise<Violation[]> {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       for (const pattern of FORBIDDEN_PATTERNS) {
+        // Skip if this file is excluded from this pattern
+        if (isExcluded(filePath, pattern.excludePaths)) {
+          continue;
+        }
         const matches = line.match(pattern.pattern);
         if (matches) {
           for (const match of matches) {

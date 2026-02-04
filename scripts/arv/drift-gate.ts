@@ -345,15 +345,17 @@ async function checkPackageDependencies(): Promise<DriftViolation[]> {
         const subPkg = JSON.parse(subPkgContent);
 
         // Check for workspace protocol violations
+        // npm workspaces use "*" while pnpm uses "workspace:*"
         const deps = { ...subPkg.dependencies, ...subPkg.devDependencies };
         for (const [depName, version] of Object.entries(deps)) {
           if (depName.startsWith('@gwi/') && typeof version === 'string') {
-            if (!version.startsWith('workspace:')) {
+            // Accept "*" (npm workspace) or "workspace:*" (pnpm)
+            if (version !== '*' && !version.startsWith('workspace:')) {
               violations.push({
                 rule: 'R5',
                 severity: 'warning',
                 file: `packages/${pkgName}/package.json`,
-                message: `Internal dependency ${depName} should use "workspace:*" protocol.`,
+                message: `Internal dependency ${depName} should use "*" (npm) or "workspace:*" (pnpm) protocol.`,
               });
             }
           }
