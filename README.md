@@ -295,15 +295,15 @@ flowchart TB
     end
 
     subgraph Agents["AI Agents"]
-        triage[Triage<br/>Gemini Flash]
-        coder[Coder<br/>Claude Sonnet]
-        resolver[Resolver<br/>Claude Sonnet/Opus]
-        reviewer[Reviewer<br/>Claude Sonnet]
+        triage[Triage - Gemini Flash]
+        coder[Coder - Claude Sonnet]
+        resolver[Resolver - Claude Sonnet/Opus]
+        reviewer[Reviewer - Claude Sonnet]
     end
 
     subgraph Storage["Storage"]
-        firestore[(Firestore<br/>Production)]
-        sqlite[(SQLite<br/>Local Dev)]
+        firestore[(Firestore - Production)]
+        sqlite[(SQLite - Local Dev)]
     end
 
     subgraph External["External"]
@@ -324,9 +324,9 @@ flowchart TB
 flowchart LR
     PR[PR/Issue] --> Score{Complexity?}
 
-    Score -->|1-3| Fast[Gemini Flash<br/>Fast, cheap]
-    Score -->|4-6| Medium[Claude Sonnet<br/>Balanced]
-    Score -->|7-10| Powerful[Claude Opus<br/>Complex tasks]
+    Score -->|1-3| Fast[Gemini Flash - Fast, cheap]
+    Score -->|4-6| Medium[Claude Sonnet - Balanced]
+    Score -->|7-10| Powerful[Claude Opus - Complex tasks]
 ```
 
 Simple tasks use fast/cheap models. Complex tasks use powerful models.
