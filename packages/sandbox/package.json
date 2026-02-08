@@ -1,7 +1,7 @@
 {
-  "name": "@gwi/agents",
+  "name": "@gwi/sandbox",
   "version": "0.7.1",
-  "description": "Agent implementations for Git With Intent",
+  "description": "Sandbox execution layer for Git With Intent: Docker, KVM, and Deno isolates",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,21 +10,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./triage": {
-      "types": "./dist/triage/index.d.ts",
-      "import": "./dist/triage/index.js"
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
     },
-    "./resolver": {
-      "types": "./dist/resolver/index.d.ts",
-      "import": "./dist/resolver/index.js"
-    },
-    "./reviewer": {
-      "types": "./dist/reviewer/index.d.ts",
-      "import": "./dist/reviewer/index.js"
-    },
-    "./infra": {
-      "types": "./dist/infra/index.d.ts",
-      "import": "./dist/infra/index.js"
+    "./export": {
+      "types": "./dist/export/index.d.ts",
+      "import": "./dist/export/index.js"
     }
   },
   "scripts": {
@@ -39,11 +31,14 @@
   },
   "dependencies": {
     "@gwi/core": "*",
-    "firebase-admin": "12.7.0",
-    "vite": "7.3.1"
+    "dockerode": "^4.0.4",
+    "ssh2": "^1.16.0",
+    "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@types/dockerode": "^3.3.31",
     "@types/node": "^20.10.0",
+    "@types/ssh2": "^1.15.1",
     "eslint": "^8.56.0",
     "typescript": "^5.3.0",
     "vitest": "^4.0.18"

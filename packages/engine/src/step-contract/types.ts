@@ -299,7 +299,7 @@ export const StepInput = z.object({
 
   // --- Workflow ---
   /** Step type/name */
-  stepType: z.enum(['triage', 'plan', 'code', 'resolve', 'review', 'apply']),
+  stepType: z.enum(['triage', 'plan', 'code', 'resolve', 'review', 'apply', 'sandbox']),
 
   /** Risk mode for this run */
   riskMode: z.enum(['comment_only', 'suggest_patch', 'auto_patch', 'auto_push']),

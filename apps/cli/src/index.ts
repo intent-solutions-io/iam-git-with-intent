@@ -131,6 +131,17 @@ import {
   evalListCommand,
   evalValidateCommand,
 } from './commands/eval.js';
+import {
+  infraPlanCommand,
+  infraStatusCommand,
+  infraSandboxListCommand,
+  infraSandboxCreateCommand,
+  infraDiffCommand,
+  infraSnapshotCommand,
+  infraRestoreCommand,
+  infraExportCommand,
+  infraApproveCommand,
+} from './commands/infra.js';
 
 const program = new Command();
 
@@ -274,6 +285,159 @@ program
   .action(async (issueUrl, options) => {
     try {
       await issueToCodeCommand(issueUrl, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Infrastructure Commands (Sandbox Execution)
+// =============================================================================
+
+const infraCmd = program
+  .command('infra')
+  .description('Infrastructure automation with sandbox execution');
+
+infraCmd
+  .command('plan <description>')
+  .description('Plan infrastructure changes using AI agent')
+  .option('-t, --task-type <type>', 'Task type (setup, configure, deploy, update, migrate, secure, optimize, troubleshoot)')
+  .option('-e, --environment <env>', 'Target environment (development, staging, production)')
+  .option('--base-image <image>', 'Base image or template (default: ubuntu:22.04)')
+  .option('--requires-root', 'Require root access (uses KVM sandbox)')
+  .option('--timeout <seconds>', 'Timeout in seconds', parseInt)
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (description, options) => {
+    try {
+      await infraPlanCommand(description, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraCmd
+  .command('status')
+  .description('Show infrastructure agent status and statistics')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await infraStatusCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+// Sandbox subcommands
+const infraSandboxCmd = infraCmd
+  .command('sandbox')
+  .description('Manage execution sandboxes');
+
+infraSandboxCmd
+  .command('list')
+  .description('List active sandboxes')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await infraSandboxListCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraSandboxCmd
+  .command('create')
+  .description('Create a new sandbox')
+  .option('-t, --type <type>', 'Sandbox type (docker, kvm, deno-isolate)')
+  .option('--base-image <image>', 'Base image (default: ubuntu:22.04)')
+  .option('--memory <mb>', 'Memory limit in MB', parseInt)
+  .option('--cpu <cores>', 'CPU cores', parseInt)
+  .option('--enable-root', 'Enable root access')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    try {
+      await infraSandboxCreateCommand(options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraCmd
+  .command('diff <sandbox-id>')
+  .description('View changes in a sandbox')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (sandboxId, options) => {
+    try {
+      await infraDiffCommand(sandboxId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraCmd
+  .command('snapshot <sandbox-id>')
+  .description('Create a snapshot of sandbox state')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (sandboxId, options) => {
+    try {
+      await infraSnapshotCommand(sandboxId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraCmd
+  .command('restore <sandbox-id> <snapshot-id>')
+  .description('Restore sandbox to a previous snapshot')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (sandboxId, snapshotId, options) => {
+    try {
+      await infraRestoreCommand(sandboxId, snapshotId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraCmd
+  .command('export <sandbox-id>')
+  .description('Export sandbox changes to Terraform/OpenTofu')
+  .option('-f, --format <format>', 'Export format (terraform)')
+  .option('--provider <provider>', 'Cloud provider (gcp, aws, azure)')
+  .option('--prefix <prefix>', 'Resource name prefix')
+  .option('-o, --output <dir>', 'Output directory')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (sandboxId, options) => {
+    try {
+      await infraExportCommand(sandboxId, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+infraCmd
+  .command('approve <run-id>')
+  .description('Approve infrastructure changes for production deployment')
+  .option('-v, --verbose', 'Show detailed output')
+  .option('--json', 'Output as JSON')
+  .action(async (runId, options) => {
+    try {
+      await infraApproveCommand(runId, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -1476,7 +1640,24 @@ Multi-Agent Workflows:
   gwi workflow approve <id>     Approve pending workflow
   gwi workflow reject <id>      Reject pending workflow
 
-  Workflow types: issue-to-code, pr-resolve, pr-review, test-gen, docs-update
+  Workflow types: issue-to-code, pr-resolve, pr-review, test-gen, docs-update, infra-setup, infra-deploy
+
+Infrastructure Automation (Sandbox Execution):
+  gwi infra plan "description"  Plan infrastructure changes with AI
+  gwi infra status              Show infra agent status
+  gwi infra sandbox list        List active sandboxes
+  gwi infra sandbox create      Create a new sandbox (docker/kvm)
+  gwi infra diff <sandbox-id>   View changes in sandbox
+  gwi infra snapshot <id>       Create checkpoint
+  gwi infra restore <id> <snap> Restore to snapshot
+  gwi infra export <id>         Export to Terraform
+  gwi infra approve <run-id>    Approve for production
+
+  Examples:
+    gwi infra plan "Set up nginx with SSL on port 443"
+    gwi infra plan "Configure PostgreSQL with replication" --requires-root
+    gwi infra sandbox create --type docker --base-image node:20
+    gwi infra export sbx-docker-123 --provider gcp -o ./terraform
 
 Configuration:
   gwi config show               Show current config

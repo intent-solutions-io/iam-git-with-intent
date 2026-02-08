@@ -25,6 +25,7 @@ export const WorkflowStepType = z.enum([
   'resolve',
   'review',
   'apply',
+  'sandbox',
   'custom',
 ]);
 
@@ -98,6 +99,76 @@ export const StepModelConfig = z.object({
 });
 
 export type StepModelConfig = z.infer<typeof StepModelConfig>;
+
+/**
+ * Sandbox configuration for sandbox steps
+ */
+export const SandboxStepConfig = z.object({
+  /** Sandbox type */
+  sandboxType: z.enum(['docker', 'kvm', 'deno-isolate']).default('docker'),
+
+  /** Base image for Docker/KVM */
+  baseImage: z.string().optional(),
+
+  /** Working directory inside sandbox */
+  workDir: z.string().default('/workspace'),
+
+  /** Whether to snapshot before execution */
+  snapshot: z.boolean().default(true),
+
+  /** Resource limits */
+  resources: z.object({
+    /** Memory limit (e.g., "512m", "2g") */
+    memory: z.string().optional(),
+
+    /** CPU limit (e.g., "0.5", "2") */
+    cpu: z.string().optional(),
+
+    /** Disk limit (e.g., "1g", "10g") */
+    disk: z.string().optional(),
+
+    /** Network access mode */
+    network: z.enum(['none', 'host', 'bridge']).default('none'),
+  }).optional(),
+
+  /** Files to mount into sandbox */
+  mounts: z.array(z.object({
+    /** Host path (or artifact reference) */
+    source: z.string(),
+
+    /** Path inside sandbox */
+    target: z.string(),
+
+    /** Read-only mount */
+    readonly: z.boolean().default(true),
+  })).optional(),
+
+  /** Environment variables */
+  env: z.record(z.string(), z.string()).optional(),
+
+  /** Commands to execute in sandbox */
+  commands: z.array(z.string()).optional(),
+
+  /** Timeout for sandbox operations in milliseconds */
+  sandboxTimeoutMs: z.number().int().min(1000).max(3600000).default(300000),
+
+  /** IaC export format (terraform, pulumi, etc.) */
+  exportFormat: z.enum(['terraform', 'opentofu', 'pulumi', 'ansible', 'cloudformation']).optional(),
+
+  /** Whether this step requires root access (KVM only) */
+  requiresRoot: z.boolean().default(false),
+
+  /** Deno permissions (for deno-isolate type) */
+  denoPermissions: z.object({
+    allowNet: z.union([z.boolean(), z.array(z.string())]).optional(),
+    allowRead: z.union([z.boolean(), z.array(z.string())]).optional(),
+    allowWrite: z.union([z.boolean(), z.array(z.string())]).optional(),
+    allowEnv: z.union([z.boolean(), z.array(z.string())]).optional(),
+    allowRun: z.union([z.boolean(), z.array(z.string())]).optional(),
+  }).optional(),
+});
+
+export type SandboxStepConfig = z.infer<typeof SandboxStepConfig>;
 
 // =============================================================================
 // Step Conditions
@@ -254,6 +325,9 @@ export const WorkflowStep = z.object({
 
   /** Model configuration (for AI-powered steps) */
   model: StepModelConfig.optional(),
+
+  /** Sandbox configuration (for type: sandbox) */
+  sandbox: SandboxStepConfig.optional(),
 
   /** Retry configuration */
   retry: StepRetryConfig.optional(),

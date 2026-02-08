@@ -23,3 +23,6 @@ export * from './parser.js';
 
 // Graph exports - DAG operations for execution planning
 export * from './graph.js';
+
+// Sandbox executor - Sandbox step execution
+export * from './sandbox-executor.js';

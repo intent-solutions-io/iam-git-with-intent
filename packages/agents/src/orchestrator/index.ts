@@ -23,11 +23,12 @@ import { TriageAgent } from '../triage/index.js';
 import { ResolverAgent } from '../resolver/index.js';
 import { ReviewerAgent } from '../reviewer/index.js';
 import { CoderAgent } from '../coder/index.js';
+import { InfraAgent } from '../infra/index.js';
 
 /**
  * Workflow types supported by the orchestrator
  */
-export type WorkflowType = 'pr-resolve' | 'issue-to-code' | 'pr-review' | 'test-gen' | 'docs-update';
+export type WorkflowType = 'pr-resolve' | 'issue-to-code' | 'pr-review' | 'test-gen' | 'docs-update' | 'infra-setup' | 'infra-deploy';
 
 /**
  * Workflow status
@@ -116,6 +117,8 @@ const WORKFLOW_DEFINITIONS: Record<WorkflowType, string[]> = {
   'pr-review': ['triage', 'reviewer'],
   'test-gen': ['triage', 'coder'],
   'docs-update': ['coder'],
+  'infra-setup': ['triage', 'infra', 'reviewer'],
+  'infra-deploy': ['infra', 'reviewer'],
 };
 
 /**
@@ -169,11 +172,12 @@ export class OrchestratorAgent extends BaseAgent {
       }
     }
 
-    // Register known agents (Phase 13: Added coder)
+    // Register known agents (Phase 13: Added coder, infra)
     this.registerAgent('triage', ['complexity-analysis', 'routing']);
     this.registerAgent('resolver', ['conflict-resolution', 'code-merge']);
     this.registerAgent('reviewer', ['code-review', 'security-scan']);
     this.registerAgent('coder', ['code-generation', 'test-generation', 'file-creation']);
+    this.registerAgent('infra', ['infrastructure-automation', 'sandbox-execution', 'iac-generation']);
   }
 
   /**
@@ -358,6 +362,9 @@ export class OrchestratorAgent extends BaseAgent {
       case 'coder':
         agent = new CoderAgent();
         break;
+      case 'infra':
+        agent = new InfraAgent();
+        break;
       default:
         throw new Error(`Unknown agent: ${agentName}`);
     }
@@ -528,6 +535,40 @@ export class OrchestratorAgent extends BaseAgent {
       }
     }
 
+    // For infra-setup workflow
+    if (workflowType === 'infra-setup' || workflowType === 'infra-deploy') {
+      switch (agentName) {
+        case 'triage':
+          // Triage expects { description, context }
+          return {
+            infraTask: typedInput.description || typedInput,
+            context: typedInput.context,
+          };
+
+        case 'infra':
+          // Infra expects { description, taskType, environment, ... }
+          const triageOutput = typedInput as { overallComplexity?: number };
+          return {
+            description: typedOriginal.description || String(typedOriginal),
+            taskType: typedOriginal.taskType || 'setup',
+            environment: typedOriginal.environment || 'development',
+            baseImage: typedOriginal.baseImage,
+            requiresRoot: typedOriginal.requiresRoot,
+            context: typedOriginal.context,
+            complexity: triageOutput.overallComplexity || 5,
+          };
+
+        case 'reviewer':
+          // Reviewer expects infra result
+          const infraResult = typedInput as { result?: unknown };
+          return {
+            infraResult: infraResult.result || infraResult,
+            description: typedOriginal.description,
+            workflowType: workflowType,
+          };
+      }
+    }
+
     // Default: pass through unchanged
     return input;
   }
@@ -546,6 +587,8 @@ export class OrchestratorAgent extends BaseAgent {
         return 'review';
       case 'coder':
         return workflowType === 'test-gen' ? 'test' : 'code';
+      case 'infra':
+        return 'infra';
       default:
         return agentName;
     }
