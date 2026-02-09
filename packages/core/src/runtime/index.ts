@@ -8,6 +8,28 @@
 
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 
+// Declare Deno and Bun globals for type checking
+// These are only available at runtime in their respective environments
+/* eslint-disable @typescript-eslint/no-explicit-any */
+declare const Deno: {
+  version: { deno: string };
+  build: { os: string; arch: string };
+  Command: new (cmd: string, options: any) => { spawn: () => any };
+  readTextFile: (path: string) => Promise<string>;
+  writeTextFile: (path: string, content: string) => Promise<void>;
+  stat: (path: string) => Promise<any>;
+  env: { get: (key: string) => string | undefined; set: (key: string, value: string) => void };
+  exit: (code: number) => never;
+} | undefined;
+
+declare const Bun: {
+  version: string;
+  spawn: (args: string[], options: any) => any;
+  file: (path: string) => { text: () => Promise<string>; exists: () => Promise<boolean> };
+  write: (path: string, content: string) => Promise<void>;
+} | undefined;
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 /**
  * Supported JavaScript runtimes
  */
@@ -18,14 +40,12 @@ export type Runtime = 'node' | 'deno' | 'bun';
  */
 export function detectRuntime(): Runtime {
   // Check for Deno
-  // @ts-expect-error - Deno is not defined in Node.js
-  if (typeof Deno !== 'undefined') {
+    if (typeof Deno !== 'undefined') {
     return 'deno';
   }
 
   // Check for Bun
-  // @ts-expect-error - Bun is not defined in Node.js
-  if (typeof Bun !== 'undefined') {
+    if (typeof Bun !== 'undefined') {
     return 'bun';
   }
 
@@ -87,22 +107,18 @@ export function getRuntimeInfo(): RuntimeInfo {
 
   switch (runtime) {
     case 'deno':
-      // @ts-expect-error - Deno is not defined in Node.js
-      const denoVersion = Deno?.version?.deno ?? 'unknown';
+            const denoVersion = Deno?.version?.deno ?? 'unknown';
       return {
         runtime: 'deno',
         version: denoVersion,
-        // @ts-expect-error Runtime-specific API
-        platform: Deno?.build?.os ?? process.platform,
-        // @ts-expect-error Runtime-specific API
-        arch: Deno?.build?.arch ?? process.arch,
+                platform: Deno?.build?.os ?? process.platform,
+                arch: Deno?.build?.arch ?? process.arch,
         nativeTypeScript: true,
         hasPermissions: true,
       };
 
     case 'bun':
-      // @ts-expect-error - Bun is not defined in Node.js
-      const bunVersion = Bun?.version ?? 'unknown';
+            const bunVersion = Bun?.version ?? 'unknown';
       return {
         runtime: 'bun',
         version: bunVersion,
@@ -258,14 +274,12 @@ async function spawnDeno(
   args: string[],
   options: CrossSpawnOptions
 ): Promise<SpawnResult> {
-  // @ts-expect-error - Deno is not defined in Node.js
-  if (typeof Deno === 'undefined') {
+    if (typeof Deno === 'undefined') {
     throw new Error('Not running in Deno');
   }
 
   try {
-    // @ts-expect-error - Deno.Command is Deno-specific
-    const cmd = new Deno.Command(command, {
+        const cmd = new Deno.Command(command, {
       args,
       cwd: options.cwd,
       env: options.env,
@@ -274,44 +288,36 @@ async function spawnDeno(
       stderr: 'piped',
     });
 
-    // @ts-expect-error Runtime-specific API
-    const child = cmd.spawn();
+        const child = cmd.spawn();
 
     // Write stdin if provided
     if (options.stdin) {
-      // @ts-expect-error Runtime-specific API
-      const writer = child.stdin.getWriter();
+            const writer = child.stdin.getWriter();
       await writer.write(new TextEncoder().encode(options.stdin));
       await writer.close();
     }
 
     // Set up timeout
-    let timeoutId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let killed = false;
 
     if (options.timeout) {
-      // @ts-expect-error Runtime-specific API
-      timeoutId = setTimeout(() => {
+            timeoutId = setTimeout(() => {
         killed = true;
-        // @ts-expect-error Runtime-specific API
-        child.kill('SIGKILL');
+                child.kill('SIGKILL');
       }, options.timeout);
     }
 
-    // @ts-expect-error Runtime-specific API
-    const output = await child.output();
+        const output = await child.output();
 
     if (timeoutId) {
       clearTimeout(timeoutId);
     }
 
     return {
-      // @ts-expect-error Runtime-specific API
-      exitCode: output.code,
-      // @ts-expect-error Runtime-specific API
-      stdout: new TextDecoder().decode(output.stdout),
-      // @ts-expect-error Runtime-specific API
-      stderr: new TextDecoder().decode(output.stderr),
+            exitCode: output.code,
+            stdout: new TextDecoder().decode(output.stdout),
+            stderr: new TextDecoder().decode(output.stderr),
       killed,
     };
   } catch (err) {
@@ -332,38 +338,31 @@ async function spawnBun(
   args: string[],
   options: CrossSpawnOptions
 ): Promise<SpawnResult> {
-  // @ts-expect-error - Bun is not defined in Node.js
-  if (typeof Bun === 'undefined') {
+    if (typeof Bun === 'undefined') {
     throw new Error('Not running in Bun');
   }
 
   try {
-    // @ts-expect-error - Bun.spawn is Bun-specific
-    const proc = Bun.spawn([command, ...args], {
+        const proc = Bun.spawn([command, ...args], {
       cwd: options.cwd,
       env: options.env ? { ...process.env, ...options.env } : process.env,
       stdin: options.stdin ? new Response(options.stdin).body : undefined,
     });
 
     // Set up timeout
-    let timeoutId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let killed = false;
 
     if (options.timeout) {
-      // @ts-expect-error Runtime-specific API
-      timeoutId = setTimeout(() => {
+            timeoutId = setTimeout(() => {
         killed = true;
-        // @ts-expect-error Runtime-specific API
-        proc.kill('SIGKILL');
+                proc.kill('SIGKILL');
       }, options.timeout);
     }
 
-    // @ts-expect-error Runtime-specific API
-    const exitCode = await proc.exited;
-    // @ts-expect-error Runtime-specific API
-    const stdout = await new Response(proc.stdout).text();
-    // @ts-expect-error Runtime-specific API
-    const stderr = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+        const stdout = await new Response(proc.stdout).text();
+        const stderr = await new Response(proc.stderr).text();
 
     if (timeoutId) {
       clearTimeout(timeoutId);
@@ -393,12 +392,10 @@ export async function readFile(path: string): Promise<string> {
 
   switch (runtime) {
     case 'deno':
-      // @ts-expect-error Runtime-specific API
-      return Deno.readTextFile(path);
+      return Deno!.readTextFile(path);
 
     case 'bun':
-      // @ts-expect-error Runtime-specific API
-      return Bun.file(path).text();
+      return Bun!.file(path).text();
 
     default:
       const fs = await import('node:fs/promises');
@@ -414,13 +411,11 @@ export async function writeFile(path: string, content: string): Promise<void> {
 
   switch (runtime) {
     case 'deno':
-      // @ts-expect-error Runtime-specific API
-      await Deno.writeTextFile(path, content);
+      await Deno!.writeTextFile(path, content);
       break;
 
     case 'bun':
-      // @ts-expect-error Runtime-specific API
-      await Bun.write(path, content);
+      await Bun!.write(path, content);
       break;
 
     default:
@@ -439,13 +434,11 @@ export async function fileExists(path: string): Promise<boolean> {
   try {
     switch (runtime) {
       case 'deno':
-        // @ts-expect-error Runtime-specific API
-        await Deno.stat(path);
+        await Deno!.stat(path);
         return true;
 
       case 'bun':
-        // @ts-expect-error Runtime-specific API
-        return Bun.file(path).exists();
+        return Bun!.file(path).exists();
 
       default:
         const fs = await import('node:fs/promises');
@@ -465,8 +458,7 @@ export function getEnv(key: string): string | undefined {
 
   switch (runtime) {
     case 'deno':
-      // @ts-expect-error Runtime-specific API
-      return Deno.env.get(key);
+      return Deno!.env.get(key);
 
     default:
       return process.env[key];
@@ -481,8 +473,7 @@ export function setEnv(key: string, value: string): void {
 
   switch (runtime) {
     case 'deno':
-      // @ts-expect-error Runtime-specific API
-      Deno.env.set(key, value);
+      Deno!.env.set(key, value);
       break;
 
     default:
@@ -499,8 +490,7 @@ export function exit(code: number): never {
 
   switch (runtime) {
     case 'deno':
-      // @ts-expect-error - Deno.exit always throws/terminates, so no break needed
-      Deno.exit(code);
+      Deno!.exit(code);
       // Note: Deno.exit never returns, but TypeScript doesn't know that
       throw new Error('Unreachable');
 
