@@ -250,7 +250,13 @@ export function computeFileDiff(
   newContent: string | null,
   path: string,
   oldPath?: string
-): FileDiff {
+): FileDiff | null {
+  // Handle unchanged content - no diff needed
+  // If oldPath is undefined or same as path, and content is identical, no diff
+  if (oldContent === newContent && (!oldPath || oldPath === path)) {
+    return null;
+  }
+
   if (oldContent === null && newContent !== null) {
     return {
       path,

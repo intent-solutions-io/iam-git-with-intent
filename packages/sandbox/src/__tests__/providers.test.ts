@@ -129,6 +129,27 @@ describe('BaseSandboxProvider', () => {
       expect(diff!.path).toBe('/workspace/new-name.ts');
       expect(diff!.oldPath).toBe('/workspace/old-name.ts');
     });
+
+    it('returns null for unchanged files', () => {
+      const diff = computeFileDiff(
+        'unchanged content',
+        'unchanged content',
+        '/workspace/file.ts'
+      );
+
+      expect(diff).toBeNull();
+    });
+
+    it('returns null for unchanged files with same path explicitly', () => {
+      const diff = computeFileDiff(
+        'unchanged content',
+        'unchanged content',
+        '/workspace/file.ts',
+        '/workspace/file.ts'
+      );
+
+      expect(diff).toBeNull();
+    });
   });
 });
 

@@ -70,10 +70,10 @@ export async function infraPlanCommand(
 ): Promise<void> {
   const spinner = ora({ isSilent: options.json });
 
+  const agent = createInfraAgent();
+
   try {
     spinner.start('Initializing infrastructure agent...');
-
-    const agent = createInfraAgent();
     await agent.initialize();
 
     spinner.text = 'Planning infrastructure changes...';
@@ -89,7 +89,6 @@ export async function infraPlanCommand(
 
     const result = await agent.executeInfraTask(input);
 
-    await agent.shutdown();
     spinner.succeed('Infrastructure plan generated');
 
     if (options.json) {
@@ -166,6 +165,8 @@ export async function infraPlanCommand(
     spinner.fail('Infrastructure planning failed');
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
     process.exit(1);
+  } finally {
+    await agent.shutdown();
   }
 }
 
@@ -174,18 +175,16 @@ export async function infraPlanCommand(
  */
 export async function infraStatusCommand(options: InfraOptions): Promise<void> {
   const spinner = ora({ isSilent: options.json });
+  const agent = createInfraAgent();
 
   try {
     spinner.start('Getting infrastructure agent status...');
-
-    const agent = createInfraAgent();
     await agent.initialize();
 
     const status = agent.getStatus();
     const stats = await agent.getStats();
     const card = agent.getAgentCard();
 
-    await agent.shutdown();
     spinner.succeed('Status retrieved');
 
     if (options.json) {
@@ -232,6 +231,8 @@ export async function infraStatusCommand(options: InfraOptions): Promise<void> {
     spinner.fail('Failed to get status');
     console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`));
     process.exit(1);
+  } finally {
+    await agent.shutdown();
   }
 }
 
