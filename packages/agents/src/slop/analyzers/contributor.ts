@@ -6,27 +6,10 @@
  * Phase 2: Full GitHub API integration
  */
 
-import type { SlopAnalysisInput, AnalyzerResult, SlopSignal } from '../types.js';
+import type { SlopAnalysisInput, AnalyzerResult, SlopSignal, ContributorContext } from '../types.js';
 
-/**
- * Contributor context (from GitHub API, to be implemented in Phase 2)
- */
-export interface ContributorContext {
-  /** Whether this is the contributor's first PR to this repo */
-  isFirstTimeContributor: boolean;
-  /** Number of previous PRs to this repo */
-  previousPRCount: number;
-  /** Number of issues/comments in this repo */
-  engagementCount: number;
-  /** Account age in days */
-  accountAgeDays: number;
-  /** Number of repos they contribute to */
-  repoCount: number;
-  /** Number of PRs submitted in last 24h across all repos */
-  recentPRCount: number;
-  /** Similar PRs detected across repos (spam detection) */
-  crossRepoSimilarPRs: number;
-}
+// Re-export for convenience
+export type { ContributorContext } from '../types.js';
 
 /**
  * Contributor signal weights
