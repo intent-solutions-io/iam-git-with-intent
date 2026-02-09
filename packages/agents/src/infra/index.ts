@@ -438,8 +438,8 @@ export class InfraAgent extends BaseAgent {
         risks: planData.risks ?? [],
         confidence: Math.min(100, Math.max(0, planData.confidence ?? 70)),
       };
-    } catch (error) {
-      // Return a minimal fallback plan
+    } catch {
+      // Return a minimal fallback plan (LLM response parsing failed)
       return {
         id: `plan-fallback-${Date.now()}`,
         steps: [
