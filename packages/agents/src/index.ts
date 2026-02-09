@@ -13,3 +13,4 @@ export * from './resolver/index.js';
 export * from './reviewer/index.js';
 export * from './coder/index.js';
 export * from './infra/index.js';
+export * from './slop/index.js';
