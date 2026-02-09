@@ -119,7 +119,7 @@ export class GPT4TurboCodeProvider implements LLMProvider {
     let json: unknown;
     try {
       json = JSON.parse(raw);
-    } catch (parseError) {
+    } catch {
       // Try to extract JSON from markdown code fence
       const jsonMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
       if (jsonMatch) {

@@ -480,3 +480,6 @@ export {
 
 // Evaluation exports (EPIC 003: Evaluation Harness + Golden Tasks Framework)
 export * from './evaluation/index.js';
+
+// Runtime exports (Deno/Bun hybrid support)
+export * from './runtime/index.js';
