@@ -6,10 +6,40 @@
  * to auto-flag or auto-close suspicious PRs.
  *
  * Model: Gemini 2.0 Flash (fast, cost-effective)
+ *
+ * A2A Protocol: Exposes 'slop-detection' task type for inter-agent messaging.
  */
 
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
 import { type TaskRequestPayload, MODELS } from '@gwi/core';
+
+/**
+ * Structured audit log entry for A2A operations
+ */
+interface AuditLogEntry {
+  timestamp: string;
+  operation: 'task_received' | 'analysis_complete' | 'llm_refinement' | 'error';
+  prUrl?: string;
+  taskId?: string;
+  score?: number;
+  recommendation?: string;
+  durationMs?: number;
+  error?: string;
+}
+
+/**
+ * Simple audit logger for A2A operations
+ * In production, this would integrate with Cloud Logging/OpenTelemetry
+ */
+function auditLog(entry: AuditLogEntry): void {
+  const logEntry = {
+    ...entry,
+    agent: 'slop-detector',
+    timestamp: entry.timestamp || new Date().toISOString(),
+  };
+  // Structured logging - in production, send to Cloud Logging
+  console.log(JSON.stringify(logEntry));
+}
 import {
   type SlopAnalysisInput,
   type SlopAnalysisResult,
@@ -120,20 +150,56 @@ export class SlopDetectorAgent extends BaseAgent {
   }
 
   /**
-   * Process a slop detection request via A2A
+   * Process a slop detection request via A2A protocol
+   * Logs all operations for audit trail
    */
   protected async processTask(payload: TaskRequestPayload): Promise<SlopAnalysisResult> {
+    const startTime = Date.now();
+    // Generate task ID for audit logging (not part of A2A payload)
+    const taskId = `slop-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     if (payload.taskType !== 'slop-detection') {
+      auditLog({
+        timestamp: new Date().toISOString(),
+        operation: 'error',
+        taskId,
+        error: `Unsupported task type: ${payload.taskType}`,
+      });
       throw new Error(`Unsupported task type: ${payload.taskType}`);
     }
 
     // Validate input
     const parseResult = SlopAnalysisInputSchema.safeParse(payload.input);
     if (!parseResult.success) {
+      auditLog({
+        timestamp: new Date().toISOString(),
+        operation: 'error',
+        taskId,
+        error: `Invalid input: ${parseResult.error.message}`,
+      });
       throw new Error(`Invalid slop analysis input: ${parseResult.error.message}`);
     }
 
-    return this.analyze(parseResult.data);
+    auditLog({
+      timestamp: new Date().toISOString(),
+      operation: 'task_received',
+      taskId,
+      prUrl: parseResult.data.prUrl,
+    });
+
+    const result = await this.analyze(parseResult.data);
+
+    auditLog({
+      timestamp: new Date().toISOString(),
+      operation: 'analysis_complete',
+      taskId,
+      prUrl: parseResult.data.prUrl,
+      score: result.slopScore,
+      recommendation: result.recommendation,
+      durationMs: Date.now() - startTime,
+    });
+
+    return result;
   }
 
   /**
@@ -169,6 +235,9 @@ export class SlopDetectorAgent extends BaseAgent {
     let confidence = this.calculateConfidence(allSignals, rawScore);
     let reasoning = this.generateReasoning(allSignals, rawScore);
 
+    // Use immutable pattern for signal list
+    let finalSignals = allSignals;
+
     if (rawScore >= 30 && rawScore <= 75 && allSignals.length > 0) {
       try {
         const llmResult = await this.refineWithLLM(input, allSignals, rawScore);
@@ -176,22 +245,21 @@ export class SlopDetectorAgent extends BaseAgent {
         confidence = llmResult.confidence;
         reasoning = llmResult.reasoning;
 
-        // Remove false positives from signals
+        // Remove false positives from signals (immutable pattern)
         const filteredSignals = allSignals.filter(
           s => !llmResult.falsePositives.includes(s.signal)
         );
-        allSignals.length = 0;
-        allSignals.push(...filteredSignals);
 
-        // Add any additional concerns as signals
-        for (const concern of llmResult.additionalConcerns) {
-          allSignals.push({
-            type: 'quality',
-            signal: 'llm_concern',
-            weight: 5,
-            evidence: concern,
-          });
-        }
+        // Add any additional concerns as signals (immutable pattern)
+        const concernSignals: SlopSignal[] = llmResult.additionalConcerns.map(concern => ({
+          type: 'quality' as const,
+          signal: 'llm_concern',
+          weight: 5,
+          evidence: concern,
+        }));
+
+        // Create new array instead of mutating
+        finalSignals = [...filteredSignals, ...concernSignals];
       } catch {
         // LLM failed, use rule-based score
         reasoning += ' (LLM refinement failed, using rule-based analysis)';
@@ -201,17 +269,24 @@ export class SlopDetectorAgent extends BaseAgent {
     // Determine recommendation
     const recommendation = this.determineRecommendation(finalScore);
 
-    // Build result
+    // Build result with immutable signals array
     const result: SlopAnalysisResult = {
       slopScore: Math.round(finalScore),
       confidence,
-      signals: allSignals,
+      signals: finalSignals,
       recommendation,
       reasoning,
     };
 
-    // Record in history
-    this.recordHistory(input.prUrl, result);
+    // Record in history (fire-and-forget but log errors)
+    this.recordHistory(input.prUrl, result).catch(err => {
+      auditLog({
+        timestamp: new Date().toISOString(),
+        operation: 'error',
+        prUrl: input.prUrl,
+        error: `Failed to record history: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    });
 
     return result;
   }
@@ -367,8 +442,9 @@ Please analyze and provide your refined assessment.`;
 
   /**
    * Record analysis in history
+   * Properly awaits persistence to prevent data loss
    */
-  private recordHistory(prUrl: string, result: SlopAnalysisResult): void {
+  private async recordHistory(prUrl: string, result: SlopAnalysisResult): Promise<void> {
     this.history.push({
       prUrl,
       slopScore: result.slopScore,
@@ -381,8 +457,8 @@ Please analyze and provide your refined assessment.`;
       this.history = this.history.slice(-1000);
     }
 
-    // Persist
-    this.saveState('slop_history', this.history);
+    // Persist - await to ensure data is saved
+    await this.saveState('slop_history', this.history);
   }
 
   /**
