@@ -4,23 +4,50 @@
  * Detects AI-generated text patterns in PR content.
  * Identifies templated phrases, over-politeness, and other
  * linguistic markers common in AI-generated PRs.
+ *
+ * Security: All regex patterns use bounded quantifiers to prevent ReDoS.
  */
 
 import type { SlopAnalysisInput, AnalyzerResult, SlopSignal, LinguisticPattern } from '../types.js';
+
+/**
+ * Maximum input length for pattern matching (64KB)
+ * Prevents DoS via extremely long inputs
+ */
+const MAX_TEXT_LENGTH = 65_536;
+
+/**
+ * Safely test a regex against text with length limits
+ * Prevents DoS via extremely long inputs
+ */
+function safeRegexTest(regex: RegExp, text: string): boolean {
+  // Truncate text to prevent DoS
+  const safeText = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) : text;
+  return regex.test(safeText);
+}
+
+/**
+ * Safely match a regex against text with length limits
+ */
+function safeRegexMatch(regex: RegExp, text: string): RegExpMatchArray | null {
+  const safeText = text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) : text;
+  return safeText.match(regex);
+}
 
 /**
  * Patterns that indicate AI-generated content
  */
 const LINGUISTIC_PATTERNS: LinguisticPattern[] = [
   // Templated improvement phrases
+  // Note: Bounded quantifiers used to prevent ReDoS attacks
   {
     name: 'templated_improvements',
     patterns: [
       /I've made some improvements/i,
       /I've improved the/i,
       /I've enhanced the/i,
-      /I've refactored .* for better/i,
-      /I've updated .* to improve/i,
+      /I've refactored .{0,100} for better/i, // Bounded to prevent ReDoS
+      /I've updated .{0,100} to improve/i, // Bounded to prevent ReDoS
       /This PR improves the overall/i,
       /for better maintainability/i,
       /for better readability/i,
@@ -64,14 +91,15 @@ const LINGUISTIC_PATTERNS: LinguisticPattern[] = [
     description: 'Generic value claims without specifics',
   },
   // Unnecessary docstrings on obvious code
+  // Note: Bounded quantifiers used to prevent ReDoS attacks
   {
     name: 'obvious_docstrings',
     patterns: [
-      /\/\*\*\s*\*\s*(?:Returns|Gets|Sets)\s+the\s+\w+\s*\*\/\s*(?:get|set)/i,
-      /@returns\s+\{[^}]+\}\s+(?:The|A)\s+\w+$/im,
-      /\/\*\*\s*\*\s*Constructor\s*\*\//i,
-      /\/\*\*\s*\*\s*Initializes?\s+(?:the|a)\s+new\s+instance/i,
-      /\*\s*@param\s+\w+\s+(?:The|A)\s+\w+\s+(?:to use|value)?\s*$/im,
+      /\/\*\*\s{0,20}\*\s{0,20}(?:Returns|Gets|Sets)\s{1,20}the\s{1,20}\w{1,50}\s{0,20}\*\/\s{0,20}(?:get|set)/i,
+      /@returns\s{1,20}\{[^}]{1,100}\}\s{1,20}(?:The|A)\s{1,20}\w{1,50}$/im,
+      /\/\*\*\s{0,20}\*\s{0,20}Constructor\s{0,20}\*\//i,
+      /\/\*\*\s{0,20}\*\s{0,20}Initializes?\s{1,20}(?:the|a)\s{1,20}new\s{1,20}instance/i,
+      /\*\s{0,20}@param\s{1,20}\w{1,50}\s{1,20}(?:The|A)\s{1,20}\w{1,50}(?:\s{1,20}(?:to use|value))?\s{0,20}$/im,
     ],
     weight: 20,
     description: 'Adding obvious documentation that restates the code',
@@ -143,18 +171,18 @@ export function analyzeLinguistic(input: SlopAnalysisInput): AnalyzerResult {
     ...(input.commitMessages || []),
   ].join('\n');
 
-  // Check each pattern
+  // Check each pattern using safe regex functions
   for (const pattern of LINGUISTIC_PATTERNS) {
     for (const regex of pattern.patterns) {
       const match = typeof regex === 'string'
         ? textContent.toLowerCase().includes(regex.toLowerCase())
-        : regex.test(textContent);
+        : safeRegexTest(regex, textContent);
 
       if (match) {
         // Extract evidence (the matched text)
         let evidence: string | undefined;
         if (typeof regex !== 'string') {
-          const matchResult = textContent.match(regex);
+          const matchResult = safeRegexMatch(regex, textContent);
           if (matchResult) {
             evidence = matchResult[0].slice(0, 100); // Limit evidence length
           }
@@ -228,23 +256,26 @@ function analyzeCommentAdditions(diff: string): SlopSignal | null {
 
 /**
  * Check for obvious/redundant comments in code
+ * Uses bounded quantifiers to prevent ReDoS
  */
 export function hasObviousComments(code: string): boolean {
   const obviousPatterns = [
-    // Increment comments
-    /\/\/\s*increment\s+\w+/i,
-    /\/\/\s*add\s+1\s+to/i,
+    // Increment comments (bounded quantifiers)
+    /\/\/\s{0,20}increment\s{1,20}\w{1,50}/i,
+    /\/\/\s{0,20}add\s{1,20}1\s{1,20}to/i,
     // Loop comments
-    /\/\/\s*(?:loop|iterate)\s+(?:through|over)/i,
+    /\/\/\s{0,20}(?:loop|iterate)\s{1,20}(?:through|over)/i,
     // Variable comments
-    /\/\/\s*(?:set|assign|store)\s+(?:the\s+)?(?:value|result)/i,
+    /\/\/\s{0,20}(?:set|assign|store)\s{1,20}(?:the\s{1,20})?(?:value|result)/i,
     // Return comments
-    /\/\/\s*return\s+(?:the\s+)?(?:result|value)/i,
+    /\/\/\s{0,20}return\s{1,20}(?:the\s{1,20})?(?:result|value)/i,
     // Initialize comments
-    /\/\/\s*initialize/i,
+    /\/\/\s{0,20}initialize/i,
     // Self-documenting function calls
-    /\/\/\s*call\s+\w+\s*\(/i,
+    /\/\/\s{0,20}call\s{1,20}\w{1,50}\s{0,20}\(/i,
   ];
 
-  return obviousPatterns.some(p => p.test(code));
+  // Use safe length limit
+  const safeCode = code.length > MAX_TEXT_LENGTH ? code.slice(0, MAX_TEXT_LENGTH) : code;
+  return obviousPatterns.some(p => p.test(safeCode));
 }
