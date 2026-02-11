@@ -184,7 +184,7 @@ function analyzeDiff(diff: string): DiffAnalysis {
 
   const commentPatterns = [
     /^\+\s*\/\//,          // JS/TS single-line
-    /^\+\s*#(?!\!)/,       // Python/Shell (not shebang)
+    /^\+\s*#(?!!)/,        // Python/Shell (not shebang)
     /^\+\s*\/\*\*/,        // JSDoc start
     /^\+\s*\*/,            // JSDoc continuation
     /^\+\s*\*\//,          // JSDoc end
