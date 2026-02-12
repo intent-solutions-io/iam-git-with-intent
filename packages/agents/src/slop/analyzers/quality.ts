@@ -4,9 +4,17 @@
  * Assesses the actual value of PR changes.
  * Detects cosmetic-only changes, comment spam,
  * README inflation, and other low-value patterns.
+ *
+ * Security: Input limits and bounded regex to prevent DoS.
  */
 
 import type { SlopAnalysisInput, AnalyzerResult, SlopSignal, QualitySignal } from '../types.js';
+
+/**
+ * Maximum diff size to analyze (500KB)
+ * Prevents DoS via extremely large diffs
+ */
+const MAX_DIFF_SIZE = 500_000;
 
 /**
  * Quality signals and their weights
@@ -160,9 +168,12 @@ interface DiffAnalysis {
 
 /**
  * Parse and analyze diff content
+ * Limits input size to prevent DoS
  */
 function analyzeDiff(diff: string): DiffAnalysis {
-  const lines = diff.split('\n');
+  // Truncate large diffs to prevent DoS
+  const safeDiff = diff.length > MAX_DIFF_SIZE ? diff.slice(0, MAX_DIFF_SIZE) : diff;
+  const lines = safeDiff.split('\n');
 
   let additions = 0;
   let deletions = 0;
@@ -173,7 +184,7 @@ function analyzeDiff(diff: string): DiffAnalysis {
 
   const commentPatterns = [
     /^\+\s*\/\//,          // JS/TS single-line
-    /^\+\s*#(?!\!)/,       // Python/Shell (not shebang)
+    /^\+\s*#(?!!)/,        // Python/Shell (not shebang)
     /^\+\s*\/\*\*/,        // JSDoc start
     /^\+\s*\*/,            // JSDoc continuation
     /^\+\s*\*\//,          // JSDoc end
@@ -186,10 +197,11 @@ function analyzeDiff(diff: string): DiffAnalysis {
     /^-\s*$/,              // Removed empty line
   ];
 
+  // Type annotation patterns with bounded quantifiers to prevent ReDoS
   const typeAnnotationPatterns = [
-    /^\+.*:\s*(string|number|boolean|any|void|null|undefined)/,
-    /^\+.*<[A-Z]\w*>/,     // Generic type
-    /^\+\s*@types?\s/,     // JSDoc type annotation
+    /^\+.{0,200}:\s{0,20}(string|number|boolean|any|void|null|undefined)/,
+    /^\+.{0,200}<[A-Z]\w{0,50}>/,     // Generic type (bounded)
+    /^\+\s{0,20}@types?\s/,           // JSDoc type annotation
   ];
 
   for (const line of lines) {
