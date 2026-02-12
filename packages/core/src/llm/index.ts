@@ -87,6 +87,30 @@ export {
   selectionToConfig,
 } from './selection-policy.js';
 
+// Re-export custom provider registry
+export {
+  type CustomProviderConfig,
+  CustomProviderRegistry,
+  customProviderRegistry,
+  registerCustomProvider,
+  unregisterCustomProvider,
+  getAllProviders,
+  PROVIDER_ENV_VARS,
+} from './provider-registry.js';
+
+// Re-export provider discovery
+export {
+  type ProviderAvailability,
+  discoverProviders,
+  getAvailableProviderTypes,
+  isProviderAvailable,
+  getProviderApiKey,
+  getDefaultModel as getDefaultModelForProvider,
+  getProviderSummary,
+  autoSelectProvider,
+  validateRequiredProviders,
+} from './provider-discovery.js';
+
 // Re-export evaluation hooks
 export {
   type EvaluationHookConfig,

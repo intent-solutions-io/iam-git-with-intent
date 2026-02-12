@@ -14,7 +14,16 @@
  * @module @gwi/engine/run/autopilot-executor
  */
 
-import { TriageAgent, CoderAgent, type CoderRunInput, type CoderRunOutput } from '@gwi/agents';
+import {
+  TriageAgent,
+  CoderAgent,
+  type CoderRunInput,
+  type CoderRunOutput,
+  analyzeQuality,
+  analyzeLinguistic,
+  hasObviousComments,
+  type SlopAnalysisInput,
+} from '@gwi/agents';
 import {
   type IssueMetadata,
   type ComplexityScore,
@@ -187,6 +196,11 @@ export class AutopilotExecutor {
         durationMs: Date.now() - planStart,
         data: { filesGenerated: coderOutput.code.files.length },
       };
+
+      // Phase 2.5: Quality gate - validate generated code before apply
+      if (!this.config.dryRun) {
+        this.validateCodeQuality(coderOutput);
+      }
 
       // Phase 3: Apply patches to isolated workspace
       const applyStart = Date.now();
@@ -481,8 +495,13 @@ export class AutopilotExecutor {
       let filesModified = 0;
       let filesCreated = 0;
 
-      // Write each file to workspace
+      // Write each file to workspace (with path validation)
       for (const file of coderOutput.code.files) {
+        // Defense-in-depth: validate paths before writing to disk
+        const normalizedPath = file.path.replace(/\\/g, '/');
+        if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || /[;&|`$(){}!#]/.test(normalizedPath) || normalizedPath.includes('\0')) {
+          throw new Error(`Unsafe file path rejected in autopilot: ${file.path}`);
+        }
         await workspaceManager.writeFile(file.path, file.content);
 
         if (file.action === 'create') {
@@ -612,6 +631,85 @@ export class AutopilotExecutor {
   // =============================================================================
   // Helper Methods
   // =============================================================================
+
+  /**
+   * Phase 2.5: Validate generated code quality before apply/commit.
+   * Runs the same slop analyzers used for external PRs on internal output.
+   */
+  private validateCodeQuality(coderOutput: CoderRunOutput): void {
+    const { files, confidence } = coderOutput.code;
+
+    if (files.length === 0) {
+      return; // Nothing to validate
+    }
+
+    const MIN_CONFIDENCE = 40;
+    if (confidence < MIN_CONFIDENCE) {
+      throw new Error(
+        `Code quality gate: confidence too low (${confidence}%, minimum ${MIN_CONFIDENCE}%)`
+      );
+    }
+
+    // Synthesize a diff from generated files for analyzer input
+    const diffLines: string[] = [];
+    const slopFiles: SlopAnalysisInput['files'] = [];
+
+    for (const file of files) {
+      const contentLines = file.content.split('\n');
+      diffLines.push(`--- /dev/null`);
+      diffLines.push(`+++ b/${file.path}`);
+      diffLines.push(`@@ -0,0 +1,${contentLines.length} @@`);
+      for (const line of contentLines) {
+        diffLines.push(`+${line}`);
+      }
+      slopFiles.push({ path: file.path, additions: contentLines.length, deletions: 0 });
+    }
+
+    const analysisInput: SlopAnalysisInput = {
+      prUrl: 'internal://agent/coder',
+      diff: diffLines.join('\n'),
+      prTitle: 'Agent-generated code',
+      prBody: coderOutput.code.summary,
+      contributor: 'gwi-coder-agent',
+      files: slopFiles,
+    };
+
+    const qualityResult = analyzeQuality(analysisInput);
+    const linguisticResult = analyzeLinguistic(analysisInput);
+    const combinedScore = Math.min(100, qualityResult.totalWeight + linguisticResult.totalWeight);
+
+    // Check for obvious comments in the generated code
+    const allContent = files.map(f => f.content).join('\n');
+    const hasObvious = hasObviousComments(allContent);
+
+    const MAX_SLOP_SCORE = 60;
+    if (combinedScore > MAX_SLOP_SCORE) {
+      const signals = [
+        ...qualityResult.signals.map(s => s.signal),
+        ...linguisticResult.signals.map(s => s.signal),
+      ];
+
+      logger.warn('Code quality gate blocked code', {
+        runId: this.config.runId,
+        combinedScore,
+        confidence,
+        signals,
+        hasObviousComments: hasObvious,
+      });
+
+      throw new Error(
+        `Code quality gate: slop score too high (${combinedScore}, max ${MAX_SLOP_SCORE}). ` +
+        `Signals: ${signals.join(', ')}`
+      );
+    }
+
+    logger.info('Code quality gate passed', {
+      runId: this.config.runId,
+      combinedScore,
+      confidence,
+      hasObviousComments: hasObvious,
+    });
+  }
 
   private extractRequirements(body: string): string[] {
     const requirements: string[] = [];

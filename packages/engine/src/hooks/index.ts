@@ -70,3 +70,12 @@ export {
   RiskEnforcementError,
 } from './risk-enforcement-hook.js';
 export type { RiskEnforcementConfig } from './risk-enforcement-hook.js';
+
+// Code Quality Hook (Internal Agent Quality Gate)
+export {
+  CodeQualityHook,
+  createCodeQualityHook,
+  CodeQualityError,
+  DEFAULT_CODE_QUALITY_CONFIG,
+} from './code-quality-hook.js';
+export type { CodeQualityConfig, QualityAssessment } from './code-quality-hook.js';

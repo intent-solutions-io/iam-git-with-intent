@@ -58,11 +58,11 @@ const config: WebhookReceiverConfig = {
     10
   ),
   requireSignature: process.env.REQUIRE_SIGNATURE !== 'false' &&
-    (process.env.DEPLOYMENT_ENV === 'prod' || process.env.REQUIRE_SIGNATURE === 'true'),
+    ((process.env.DEPLOYMENT_ENV || 'production') !== 'dev' || process.env.REQUIRE_SIGNATURE === 'true'),
 };
 
 // Validate production configuration
-if (config.environment === 'prod') {
+if (config.environment !== 'dev') {
   if (!config.projectId) {
     console.error(JSON.stringify({
       severity: 'CRITICAL',

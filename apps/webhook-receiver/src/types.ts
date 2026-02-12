@@ -189,10 +189,10 @@ export interface WebhookReceiverConfig {
  */
 export const DEFAULT_CONFIG: WebhookReceiverConfig = {
   projectId: process.env.GCP_PROJECT_ID || '',
-  environment: process.env.DEPLOYMENT_ENV || 'dev',
+  environment: process.env.DEPLOYMENT_ENV || 'production',
   port: parseInt(process.env.PORT || '8080', 10),
   rateLimitPerMinute: 100,
-  requireSignature: process.env.DEPLOYMENT_ENV === 'prod',
+  requireSignature: (process.env.DEPLOYMENT_ENV || 'production') !== 'dev',
   topicPrefix: 'gwi',
   enableIdempotency: true,
   idempotencyTtlSeconds: 7 * 24 * 60 * 60, // 7 days

@@ -99,6 +99,20 @@ interface CodeGenHistoryEntry {
 }
 
 /**
+ * Default minimum confidence threshold (0-100).
+ * Code generation results below this confidence are rejected.
+ */
+const DEFAULT_MIN_CONFIDENCE = 40;
+
+/**
+ * Coder agent options
+ */
+export interface CoderAgentOptions {
+  /** Minimum confidence threshold (0-100). Defaults to 40. */
+  minConfidence?: number;
+}
+
+/**
  * Coder agent configuration
  */
 const CODER_CONFIG: AgentConfig = {
@@ -180,8 +194,13 @@ export class CoderAgent extends BaseAgent {
   /** Learned patterns by language */
   private patterns: Map<string, string[]> = new Map();
 
-  constructor() {
+  /** Minimum confidence threshold for code generation */
+  readonly minConfidence: number;
+
+  constructor(options?: CoderAgentOptions) {
     super(CODER_CONFIG);
+    const raw = options?.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+    this.minConfidence = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : DEFAULT_MIN_CONFIDENCE;
   }
 
   /**
@@ -250,6 +269,14 @@ export class CoderAgent extends BaseAgent {
 
     // Parse response
     const result = this.parseResponse(response, issue, complexity);
+
+    // Enforce minimum confidence threshold
+    if (result.confidence < this.minConfidence && result.files.length > 0) {
+      throw new Error(
+        `Code generation confidence too low (${result.confidence}%, minimum ${this.minConfidence}%). ` +
+        `Summary: ${result.summary}`
+      );
+    }
 
     // Record in history
     this.recordGeneration(issue, result, complexity);
@@ -479,7 +506,7 @@ ${issue.body}
 
       // Validate and normalize
       const files = (parsed.files || []).map((f: any) => ({
-        path: f.path || '',
+        path: this.sanitizePath(f.path || ''),
         content: f.content || '',
         action: this.validateAction(f.action),
         explanation: f.explanation || 'No explanation provided',
@@ -512,6 +539,39 @@ ${issue.body}
       return action;
     }
     return 'create';
+  }
+
+  /**
+   * Sanitize LLM-generated file path to prevent path traversal and injection
+   */
+  private sanitizePath(filePath: string): string {
+    // Reject empty paths
+    if (!filePath) return '';
+
+    // Normalize path separators
+    const sanitized = filePath.replace(/\\/g, '/');
+
+    // Reject absolute paths (Unix /, Windows drive letters)
+    if (sanitized.startsWith('/') || /^[A-Za-z]:/.test(sanitized)) {
+      throw new Error(`Absolute path rejected in LLM output: ${filePath}`);
+    }
+
+    // Reject path traversal
+    if (sanitized.includes('..')) {
+      throw new Error(`Path traversal detected in LLM output: ${filePath}`);
+    }
+
+    // Reject shell metacharacters
+    if (/[;&|`$(){}!#]/.test(sanitized)) {
+      throw new Error(`Shell metacharacters detected in LLM path: ${filePath}`);
+    }
+
+    // Reject null bytes
+    if (sanitized.includes('\0')) {
+      throw new Error(`Null byte detected in LLM path: ${filePath}`);
+    }
+
+    return sanitized;
   }
 
   /**
@@ -609,6 +669,6 @@ ${issue.body}
 /**
  * Create a Coder Agent instance
  */
-export function createCoderAgent(): CoderAgent {
-  return new CoderAgent();
+export function createCoderAgent(options?: CoderAgentOptions): CoderAgent {
+  return new CoderAgent(options);
 }

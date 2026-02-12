@@ -65,7 +65,7 @@ const PORT = process.env.PORT || 8080;
 const config = {
   appName: process.env.APP_NAME || 'gwi-api',
   appVersion: process.env.APP_VERSION || '0.1.0',
-  env: process.env.DEPLOYMENT_ENV || 'dev',
+  env: process.env.DEPLOYMENT_ENV || 'production',
   storeBackend: getStoreBackend(),
 };
 
@@ -78,7 +78,7 @@ const config = {
  * Production requires strict configuration; dev allows more flexibility.
  */
 function validateEnvironment(): void {
-  const isProd = config.env === 'prod';
+  const isProd = config.env !== 'dev';
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -665,7 +665,7 @@ app.use(healthRouter);
  */
 function internalOnlyMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   // In production, verify Cloud Run internal header (set by Cloud Run only)
-  if (config.env === 'prod') {
+  if (config.env !== 'dev') {
     // Cloud Run sets this header for internal service-to-service calls
     // This cannot be spoofed from external requests
     const cloudRunTrace = req.headers['x-cloud-trace-context'];

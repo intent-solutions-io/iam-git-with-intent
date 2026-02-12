@@ -65,6 +65,33 @@ export {
   type ExportResult,
 } from './export/index.js';
 
+// Permissions
+export {
+  type DenoPermissions,
+  type AgentPermissionProfile,
+  AGENT_PERMISSIONS,
+  buildPermissionFlags,
+  getAgentPermissions,
+  canAgentModify,
+} from './permissions.js';
+
+// Worktree Manager
+export {
+  type WorktreeSession,
+  type WorktreeManagerOptions,
+  WorktreeManager,
+  createWorktreeManager,
+} from './worktree-manager.js';
+
+// Sandboxed Agent Execution
+export {
+  type SandboxedExecutionResult,
+  type SandboxedAgentOptions,
+  SandboxedAgentExecutor,
+  createSandboxedAgent,
+  runInSandbox,
+} from './sandboxed-agent.js';
+
 // Re-export provider types
 export type {
   Sandbox,
