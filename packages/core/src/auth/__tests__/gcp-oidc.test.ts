@@ -164,4 +164,29 @@ describe('verifyGcpOidcToken', () => {
 
     await expect(verifyGcpOidcToken('token')).rejects.toThrow('ECONNREFUSED');
   });
+
+  it('rejects tokens with non-numeric exp/iat (NaN bypass prevention)', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        email: 'sa@project.iam.gserviceaccount.com',
+        sub: '123',
+        aud: 'https://worker.run.app',
+        iss: 'https://accounts.google.com',
+        exp: 'not-a-number',
+        iat: String(now),
+      }),
+    });
+
+    await expect(verifyGcpOidcToken('token')).rejects.toThrow('non-numeric exp or iat');
+  });
+
+  it('handles fetch timeout (AbortError)', async () => {
+    const abortError = new Error('The operation was aborted');
+    abortError.name = 'AbortError';
+    globalThis.fetch = vi.fn().mockRejectedValue(abortError);
+
+    await expect(verifyGcpOidcToken('token')).rejects.toThrow('timed out');
+  });
 });

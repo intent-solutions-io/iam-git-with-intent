@@ -49,6 +49,9 @@ export interface GcpOidcVerifyConfig {
 // Google's public token info endpoint for OIDC tokens
 const GOOGLE_TOKEN_INFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 
+// Timeout for tokeninfo requests (prevent indefinite hangs)
+const TOKEN_VERIFY_TIMEOUT_MS = 10_000;
+
 /**
  * Verify a GCP OIDC identity token
  *
@@ -71,11 +74,20 @@ export async function verifyGcpOidcToken(
 
   try {
     // Verify token via Google's tokeninfo endpoint (POST to avoid token in URL/logs)
-    const response = await fetch(GOOGLE_TOKEN_INFO_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `id_token=${encodeURIComponent(token)}`,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), TOKEN_VERIFY_TIMEOUT_MS);
+
+    let response: Response;
+    try {
+      response = await fetch(GOOGLE_TOKEN_INFO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `id_token=${encodeURIComponent(token)}`,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
       const body = await response.text();
@@ -119,8 +131,14 @@ export async function verifyGcpOidcToken(
       );
     }
 
-    // Check expiration
+    // Parse and validate numeric claims (NaN would bypass expiration checks)
     const exp = parseInt(claims.exp, 10);
+    const iat = parseInt(claims.iat, 10);
+    if (isNaN(exp) || isNaN(iat)) {
+      throw new GcpOidcError('invalid_claims', 'Token has non-numeric exp or iat claims');
+    }
+
+    // Check expiration
     const now = Math.floor(Date.now() / 1000);
     if (exp < now) {
       throw new GcpOidcError('token_expired', 'OIDC token has expired');
@@ -133,7 +151,7 @@ export async function verifyGcpOidcToken(
       aud: claims.aud,
       iss: claims.iss,
       exp,
-      iat: parseInt(claims.iat, 10),
+      iat,
     };
 
     logger.debug('GCP OIDC token verified', {
@@ -145,6 +163,14 @@ export async function verifyGcpOidcToken(
   } catch (error) {
     if (error instanceof GcpOidcError) {
       throw error;
+    }
+
+    // Translate AbortError into a timeout error
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new GcpOidcError(
+        'verification_timeout',
+        `OIDC verification timed out after ${TOKEN_VERIFY_TIMEOUT_MS}ms`,
+      );
     }
 
     logger.warn('GCP OIDC token verification failed', {
