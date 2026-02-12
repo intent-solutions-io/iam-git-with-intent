@@ -413,9 +413,11 @@ function mapTenantRoleToRole(tenantRole: TenantRole): Role {
 async function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
   // DEVELOPMENT ONLY: Accept debug header (never in production)
   if (isDevEnvironment()) {
-    const debugUser = req.headers['x-debug-user'] as string;
+    const debugUserHeader = req.headers['x-debug-user'];
+    const debugUser = Array.isArray(debugUserHeader) ? debugUserHeader[0] : debugUserHeader;
     if (debugUser) {
-      const debugRole = (req.headers['x-debug-role'] as string) || 'owner';
+      const debugRoleHeader = req.headers['x-debug-role'];
+      const debugRole = (Array.isArray(debugRoleHeader) ? debugRoleHeader[0] : debugRoleHeader) || 'owner';
       req.context = {
         userId: debugUser,
         tenantRole: debugRole as TenantRole,

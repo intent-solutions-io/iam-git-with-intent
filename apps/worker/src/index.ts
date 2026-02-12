@@ -166,7 +166,9 @@ async function verifyOidcMiddleware(
   }
 
   try {
-    const claims = await verifyGcpOidcToken(token);
+    // Verify token with expected audience (worker's own URL)
+    const expectedAudience = process.env.WORKER_SERVICE_URL || undefined;
+    const claims = await verifyGcpOidcToken(token, { expectedAudience });
 
     logger.debug('OIDC token verified', {
       email: claims.email,

@@ -70,10 +70,12 @@ export async function verifyGcpOidcToken(
   }
 
   try {
-    // Verify token via Google's tokeninfo endpoint
-    const response = await fetch(
-      `${GOOGLE_TOKEN_INFO_URL}?id_token=${encodeURIComponent(token)}`,
-    );
+    // Verify token via Google's tokeninfo endpoint (POST to avoid token in URL/logs)
+    const response = await fetch(GOOGLE_TOKEN_INFO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `id_token=${encodeURIComponent(token)}`,
+    });
 
     if (!response.ok) {
       const body = await response.text();
