@@ -9,6 +9,8 @@
  * - GWI_HOOK_TIMEOUT_MS: Timeout for hook execution (default: 5000)
  * - GWI_HOOK_PARALLEL: Run hooks in parallel (default: true)
  * - GWI_DECISION_TRACE_ENABLED: Enable decision trace hook (default: false)
+ * - GWI_RISK_ENFORCEMENT_ENABLED: Enable risk enforcement hook (default: true)
+ * - GWI_CODE_QUALITY_HOOK_ENABLED: Enable code quality hook (default: true)
  *
  * @module @gwi/engine/hooks
  */
@@ -19,6 +21,7 @@ import { DEFAULT_HOOK_CONFIG } from './types.js';
 import { AgentHookRunner } from './runner.js';
 import { DecisionTraceHook } from './decision-trace-hook.js';
 import { CodeQualityHook } from './code-quality-hook.js';
+import { RiskEnforcementHook } from './risk-enforcement-hook.js';
 
 const logger = getLogger('hooks');
 
@@ -59,6 +62,16 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
 
     if (config.debug) {
       logger.debug('Decision trace hook registered');
+    }
+  }
+
+  // Register risk enforcement hook (enabled by default, opt-out via env)
+  if (process.env.GWI_RISK_ENFORCEMENT_ENABLED !== 'false') {
+    const riskHook = new RiskEnforcementHook();
+    runner.register(riskHook);
+
+    if (config.debug) {
+      logger.debug('Risk enforcement hook registered');
     }
   }
 
