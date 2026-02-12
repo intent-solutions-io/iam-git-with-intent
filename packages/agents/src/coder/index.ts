@@ -199,7 +199,8 @@ export class CoderAgent extends BaseAgent {
 
   constructor(options?: CoderAgentOptions) {
     super(CODER_CONFIG);
-    this.minConfidence = options?.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+    const raw = options?.minConfidence ?? DEFAULT_MIN_CONFIDENCE;
+    this.minConfidence = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : DEFAULT_MIN_CONFIDENCE;
   }
 
   /**
@@ -548,10 +549,12 @@ ${issue.body}
     if (!filePath) return '';
 
     // Normalize path separators
-    let sanitized = filePath.replace(/\\/g, '/');
+    const sanitized = filePath.replace(/\\/g, '/');
 
-    // Strip leading slashes (no absolute paths)
-    sanitized = sanitized.replace(/^\/+/, '');
+    // Reject absolute paths (Unix /, Windows drive letters)
+    if (sanitized.startsWith('/') || /^[A-Za-z]:/.test(sanitized)) {
+      throw new Error(`Absolute path rejected in LLM output: ${filePath}`);
+    }
 
     // Reject path traversal
     if (sanitized.includes('..')) {

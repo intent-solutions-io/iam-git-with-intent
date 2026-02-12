@@ -14,8 +14,11 @@ import { describe, it, expect } from 'vitest';
 function sanitizePath(filePath: string): string {
   if (!filePath) return '';
 
-  let sanitized = filePath.replace(/\\/g, '/');
-  sanitized = sanitized.replace(/^\/+/, '');
+  const sanitized = filePath.replace(/\\/g, '/');
+
+  if (sanitized.startsWith('/') || /^[A-Za-z]:/.test(sanitized)) {
+    throw new Error(`Absolute path rejected in LLM output: ${filePath}`);
+  }
 
   if (sanitized.includes('..')) {
     throw new Error(`Path traversal detected in LLM output: ${filePath}`);
@@ -65,13 +68,17 @@ describe('CoderAgent Path Sanitization', () => {
     });
   });
 
-  describe('absolute path stripping', () => {
-    it('strips leading slash from absolute paths', () => {
-      expect(sanitizePath('/etc/passwd')).toBe('etc/passwd');
+  describe('absolute path rejection', () => {
+    it('rejects Unix absolute paths', () => {
+      expect(() => sanitizePath('/etc/passwd')).toThrow('Absolute path rejected');
     });
 
-    it('strips multiple leading slashes', () => {
-      expect(sanitizePath('///usr/bin/node')).toBe('usr/bin/node');
+    it('rejects paths with multiple leading slashes', () => {
+      expect(() => sanitizePath('///usr/bin/node')).toThrow('Absolute path rejected');
+    });
+
+    it('rejects Windows drive letter paths', () => {
+      expect(() => sanitizePath('C:\\Windows\\System32')).toThrow('Absolute path rejected');
     });
   });
 
