@@ -30,6 +30,9 @@ export type {
 // Security exports (Phase 11: Production-ready RBAC and plan enforcement)
 export * from './security/index.js';
 
+// Auth exports (Token verification for Firebase Auth and GCP OIDC)
+export * from './auth/index.js';
+
 // Workflow exports (Phase 13: Multi-agent workflow definitions)
 export * from './workflows/index.js';
 
