@@ -43,6 +43,10 @@ import {
   // B5: Health check utilities
   createHealthRouter,
   type ServiceHealthConfig,
+  // Phase 23+: OTel export bridge
+  initializeOTel,
+  shutdownOTel,
+  prometheusMiddleware,
 } from '@gwi/core';
 import { marketplaceRouter } from './marketplace-routes.js';
 import { onboardingRouter } from './onboarding-routes.js';
@@ -146,6 +150,12 @@ const config = {
   spiffeId: process.env.AGENT_SPIFFE_ID || 'spiffe://intent.solutions/agent/gwi',
   env: process.env.DEPLOYMENT_ENV || 'production',
 };
+
+// OpenTelemetry Export Bridge (conditional — only if endpoint configured)
+initializeOTel({ serviceName: config.appName, serviceVersion: config.appVersion });
+
+// Prometheus /metrics endpoint (works without OTel config)
+app.use(prometheusMiddleware());
 
 // A2A Message schema
 const A2AMessageSchema = z.object({
@@ -687,6 +697,17 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     error: 'Internal server error',
     message: err.message,
   });
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  await shutdownOTel();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  await shutdownOTel();
+  process.exit(0);
 });
 
 // Start server

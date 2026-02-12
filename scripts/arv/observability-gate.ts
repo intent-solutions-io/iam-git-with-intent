@@ -279,6 +279,39 @@ async function main(): Promise<void> {
   // Check 11: TypeScript compilation
   results.push(checkTypeScript());
 
+  // Check 12: OpenTelemetry API in core dependencies
+  results.push(
+    checkFileContains(
+      resolve(process.cwd(), 'packages/core/package.json'),
+      ['@opentelemetry/api'],
+      '@opentelemetry/api in core dependencies'
+    )
+  );
+
+  // Check 13: OTel init module exists
+  results.push(
+    checkFileExists(
+      `${coreDir}/exporters/otel.ts`,
+      'OTel SDK initialization module'
+    )
+  );
+
+  // Check 14: Span bridge exists
+  results.push(
+    checkFileExists(
+      `${coreDir}/exporters/span-bridge.ts`,
+      'GWI-to-OTel span bridge module'
+    )
+  );
+
+  // Check 15: Metrics bridge exists
+  results.push(
+    checkFileExists(
+      `${coreDir}/exporters/metrics-bridge.ts`,
+      'GWI-to-OTel metrics bridge module'
+    )
+  );
+
   // Print results
   console.log('Results:');
   console.log('─'.repeat(60));

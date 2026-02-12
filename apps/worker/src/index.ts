@@ -29,6 +29,10 @@ import {
   // B5: Health check utilities
   createHealthRouter,
   type ServiceHealthConfig,
+  // Phase 23+: OTel export bridge
+  initializeOTel,
+  shutdownOTel,
+  prometheusMiddleware,
 } from '@gwi/core';
 import { getIdempotencyService } from '@gwi/engine';
 import { WorkerProcessor, type WorkerJob, type JobResult } from './processor.js';
@@ -58,9 +62,15 @@ const config = {
 const app = express();
 const logger = getLogger('worker');
 
+// OpenTelemetry Export Bridge (conditional — only if endpoint configured)
+initializeOTel({ serviceName: 'gwi-worker' });
+
 // Security middleware
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
+
+// Prometheus /metrics endpoint (works without OTel config)
+app.use(prometheusMiddleware());
 
 // Initialize Firebase before reliability stores (ensures Firestore is available)
 if (process.env.GWI_STORE_BACKEND === 'firestore') {
@@ -430,6 +440,7 @@ process.on('SIGTERM', async () => {
     await broker.stop();
   }
 
+  await shutdownOTel();
   process.exit(0);
 });
 
@@ -440,6 +451,7 @@ process.on('SIGINT', async () => {
     await broker.stop();
   }
 
+  await shutdownOTel();
   process.exit(0);
 });
 

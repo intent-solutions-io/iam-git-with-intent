@@ -251,6 +251,33 @@ export {
   calculateDORAMetrics,
 } from './sdlc-events.js';
 
+// =============================================================================
+// OpenTelemetry Export Bridge
+// =============================================================================
+
+export {
+  // OTel SDK Init
+  initializeOTel,
+  shutdownOTel,
+  type OTelInitOptions,
+
+  // Span Bridge
+  GwiSpanBridge,
+
+  // Metrics Bridge
+  MetricsBridge,
+  type MetricsBridgeOptions,
+
+  // Exporter Factory
+  createExporter,
+  autoDetectExporter,
+  type ExporterType,
+
+  // Prometheus Middleware
+  prometheusMiddleware,
+  type PrometheusMiddlewareOptions,
+} from './exporters/index.js';
+
 // SDLC Event Storage
 export {
   // Stores
