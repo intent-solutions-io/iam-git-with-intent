@@ -56,6 +56,10 @@ import {
   // B5: Health check utilities
   createHealthRouter,
   type ServiceHealthConfig,
+  // Phase 23+: OTel export bridge
+  initializeOTel,
+  shutdownOTel,
+  prometheusMiddleware,
 } from '@gwi/core';
 
 const app = express();
@@ -71,6 +75,15 @@ const config = {
   env: process.env.DEPLOYMENT_ENV || 'production',
   storeBackend: getStoreBackend(),
 };
+
+// =============================================================================
+// OpenTelemetry Export Bridge (conditional — only if endpoint configured)
+// =============================================================================
+
+initializeOTel({ serviceName: config.appName, serviceVersion: config.appVersion });
+
+// Prometheus /metrics endpoint (works without OTel config)
+app.use(prometheusMiddleware());
 
 // =============================================================================
 // Environment Validation
@@ -4325,6 +4338,20 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
     error: 'Internal server error',
     message: err.message,
   });
+});
+
+// =============================================================================
+// Graceful Shutdown
+// =============================================================================
+
+process.on('SIGTERM', async () => {
+  await shutdownOTel();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  await shutdownOTel();
+  process.exit(0);
 });
 
 // =============================================================================
