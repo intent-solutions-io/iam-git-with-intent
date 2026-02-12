@@ -46,6 +46,9 @@ import {
   checkMemberLimit,
   checkConcurrencyLimit,
   type Role,
+  // Auth
+  verifyFirebaseToken,
+  FirebaseAuthError,
   // A7: Telemetry
   generateTraceId,
   type Action,
@@ -403,48 +406,57 @@ function mapTenantRoleToRole(tenantRole: TenantRole): Role {
 /**
  * Authentication middleware
  *
- * In production: Verifies Firebase Auth token.
- * In development: Accepts X-Debug-User header.
- * Service accounts: Identified by email pattern.
+ * In production: Verifies Firebase Auth token from Authorization header.
+ * In development: Also accepts X-Debug-User header for local testing.
+ * Service accounts: Verified via GCP IAM (Cloud Run handles this at infra level).
  */
-function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
-  // Check for service account (Cloud Run internal calls)
-  const serviceAccountHeader = req.headers['x-service-account'] as string;
-  if (serviceAccountHeader && process.env.NODE_ENV !== 'production') {
-    req.context = {
-      userId: serviceAccountHeader,
-      isServiceAccount: true,
-    };
-    return next();
+async function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  // DEVELOPMENT ONLY: Accept debug header (never in production)
+  if (isDevEnvironment()) {
+    const debugUserHeader = req.headers['x-debug-user'];
+    const debugUser = Array.isArray(debugUserHeader) ? debugUserHeader[0] : debugUserHeader;
+    if (debugUser) {
+      const debugRoleHeader = req.headers['x-debug-role'];
+      const debugRole = (Array.isArray(debugRoleHeader) ? debugRoleHeader[0] : debugRoleHeader) || 'owner';
+      req.context = {
+        userId: debugUser,
+        tenantRole: debugRole as TenantRole,
+        role: mapTenantRoleToRole(debugRole as TenantRole),
+        isServiceAccount: false,
+      };
+      return next();
+    }
   }
 
-  // DEVELOPMENT ONLY: Accept debug header
-  const debugUser = req.headers['x-debug-user'] as string;
-  const debugRole = (req.headers['x-debug-role'] as string) || 'owner';
-  if (debugUser && isDevEnvironment()) {
+  // Production + Dev: Verify Firebase Auth token
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+
+  const token = authHeader.slice(7);
+
+  try {
+    const decoded = await verifyFirebaseToken(token);
+
     req.context = {
-      userId: debugUser,
-      tenantRole: debugRole as TenantRole,
-      role: mapTenantRoleToRole(debugRole as TenantRole),
+      userId: decoded.uid,
+      email: decoded.email,
       isServiceAccount: false,
     };
+
     return next();
+  } catch (error) {
+    if (error instanceof FirebaseAuthError) {
+      return res.status(401).json({
+        error: 'Authentication failed',
+        code: error.code,
+        ...(isDevEnvironment() ? { message: error.message } : {}),
+      });
+    }
+
+    return res.status(401).json({ error: 'Authentication failed' });
   }
-
-  // SECURITY: Firebase Auth token verification needed (tracked in git-with-intent-scod)
-  // const authHeader = req.headers.authorization;
-  // if (!authHeader?.startsWith('Bearer ')) {
-  //   return res.status(401).json({ error: 'Missing authorization header' });
-  // }
-  // const token = authHeader.slice(7);
-  // const decoded = await verifyFirebaseToken(token);
-  // req.context = { userId: decoded.uid, isServiceAccount: false };
-
-  // For now, return 401 if no debug header
-  return res.status(401).json({
-    error: 'Authentication required',
-    hint: 'Set X-Debug-User header for development',
-  });
 }
 
 /**

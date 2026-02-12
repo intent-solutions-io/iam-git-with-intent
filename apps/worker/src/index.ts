@@ -22,6 +22,10 @@ import {
   getFirestoreCheckpointManager,
   getLogger,
   getFirestoreClient,
+  // Auth
+  verifyGcpOidcToken,
+  extractBearerToken,
+  GcpOidcError,
   // B5: Health check utilities
   createHealthRouter,
   type ServiceHealthConfig,
@@ -127,6 +131,74 @@ const healthRouter = createHealthRouter(healthConfig);
 app.use(healthRouter);
 
 // =============================================================================
+// GCP OIDC Authentication Middleware
+// =============================================================================
+
+/**
+ * Verify GCP OIDC tokens for service-to-service authentication.
+ *
+ * In production, Pub/Sub and Cloud Scheduler send OIDC tokens in the
+ * Authorization header. This middleware validates them.
+ *
+ * In dev/local environments, OIDC verification is skipped to allow
+ * manual testing without GCP infrastructure.
+ */
+async function verifyOidcMiddleware(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): Promise<void> {
+  const isLocal = config.env === 'dev' || config.env === 'local';
+
+  // Skip OIDC verification in local development
+  if (isLocal) {
+    return next();
+  }
+
+  const token = extractBearerToken(req.headers.authorization);
+  if (!token) {
+    logger.warn('Missing OIDC token on protected endpoint', {
+      path: req.path,
+      userAgent: req.headers['user-agent'],
+    });
+    res.status(401).json({ error: 'Missing Authorization header with Bearer token' });
+    return;
+  }
+
+  try {
+    // Verify token with expected audience (worker's own URL)
+    const expectedAudience = process.env.WORKER_SERVICE_URL || undefined;
+    const claims = await verifyGcpOidcToken(token, { expectedAudience });
+
+    logger.debug('OIDC token verified', {
+      email: claims.email,
+      path: req.path,
+    });
+
+    next();
+  } catch (error) {
+    if (error instanceof GcpOidcError) {
+      logger.warn('OIDC token verification failed', {
+        code: error.code,
+        message: error.message,
+        path: req.path,
+      });
+      res.status(403).json({
+        error: 'OIDC token verification failed',
+        code: error.code,
+      });
+      return;
+    }
+
+    logger.error('Unexpected OIDC verification error', {
+      error: error instanceof Error ? error.message : String(error),
+      path: req.path,
+    });
+    res.status(500).json({ error: 'Internal authentication error' });
+  }
+}
+
+// =============================================================================
 // Push Endpoint (for Pub/Sub push subscriptions)
 // =============================================================================
 
@@ -135,8 +207,10 @@ app.use(healthRouter);
  *
  * Receives messages from Pub/Sub push subscriptions.
  * Each message contains a job to process.
+ *
+ * Authentication: OIDC token from Pub/Sub push subscription (verified by middleware).
  */
-app.post('/push', async (req, res) => {
+app.post('/push', verifyOidcMiddleware, async (req, res) => {
   const startTime = Date.now();
 
   try {
@@ -249,24 +323,12 @@ app.post('/process', async (req, res) => {
  * Called by Cloud Scheduler to remove expired idempotency records from Firestore.
  * Runs every hour to keep the collection size manageable.
  *
- * Security: Should be protected by Cloud Scheduler OIDC token validation.
+ * Authentication: OIDC token from Cloud Scheduler (verified by middleware).
  */
-app.post('/tasks/cleanup-idempotency', async (req, res) => {
+app.post('/tasks/cleanup-idempotency', verifyOidcMiddleware, async (req, res) => {
   const startTime = Date.now();
 
   try {
-    // Validate Cloud Scheduler request (optional - for extra security)
-    const userAgent = req.headers['user-agent'];
-    const isCloudScheduler = userAgent?.includes('Google-Cloud-Scheduler');
-    const isLocalDev = config.env === 'dev' || config.env === 'local';
-
-    if (!isCloudScheduler && !isLocalDev) {
-      logger.warn('Cleanup endpoint called from non-scheduler source', {
-        userAgent,
-        env: config.env,
-      });
-      // Still allow the request but log it
-    }
 
     // Run cleanup in batches
     const idempotencyService = getIdempotencyService();
