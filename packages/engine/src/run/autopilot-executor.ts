@@ -498,7 +498,8 @@ export class AutopilotExecutor {
       // Write each file to workspace (with path validation)
       for (const file of coderOutput.code.files) {
         // Defense-in-depth: validate paths before writing to disk
-        if (file.path.includes('..') || file.path.startsWith('/') || /[;&|`$(){}!#]/.test(file.path) || file.path.includes('\0')) {
+        const normalizedPath = file.path.replace(/\\/g, '/');
+        if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || /[;&|`$(){}!#]/.test(normalizedPath) || normalizedPath.includes('\0')) {
           throw new Error(`Unsafe file path rejected in autopilot: ${file.path}`);
         }
         await workspaceManager.writeFile(file.path, file.content);

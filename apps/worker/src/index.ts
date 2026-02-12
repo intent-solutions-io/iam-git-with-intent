@@ -219,7 +219,7 @@ app.get('/stats', (_req, res) => {
  * Manually trigger job processing (for testing)
  */
 app.post('/process', async (req, res) => {
-  if (config.env === 'prod') {
+  if (config.env !== 'dev') {
     return res.status(403).json({ error: 'Manual processing disabled in production' });
   }
 

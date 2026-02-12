@@ -53,7 +53,7 @@ const config = {
 };
 
 // Security validation: Require webhook secret in production
-if (config.env === 'prod' && !config.webhookSecret) {
+if (config.env !== 'dev' && !config.webhookSecret) {
   console.error(JSON.stringify({
     severity: 'CRITICAL',
     type: 'startup_security_error',
