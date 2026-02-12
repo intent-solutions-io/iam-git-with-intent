@@ -58,6 +58,9 @@ FOUND_SECRETS=0
 # Files to skip for high-entropy base64 patterns (false positives from integrity hashes, documentation, and code with long URLs)
 SKIP_BASE64_FILES="package-lock.json|pnpm-lock.yaml|yarn.lock|README.md|CLAUDE.md|openapi.yaml|\.test\.ts$|\.spec\.ts$|test/.*\.ts$|examples/.*\.ts$|apps/.*/src/.*\.ts$"
 
+# Test files that legitimately contain mock credentials (not actual secrets)
+SKIP_MOCK_CREDENTIALS="\.test\.ts$|\.spec\.ts$|__tests__/|test/|__mocks__/"
+
 # Files that legitimately contain secret detection patterns (not actual secrets)
 SECRET_PATTERN_DEFINITION_FILES="packages/core/src/security/secrets\.ts|scripts/check-secrets\.sh"
 
@@ -66,6 +69,10 @@ for pattern in "${SECRET_PATTERNS[@]}"; do
   while IFS= read -r file; do
     # Skip lock files for the generic base64 pattern (integrity hashes are not secrets)
     if [[ "$pattern" == "[A-Za-z0-9+/]{40,}={0,2}" ]] && echo "$file" | grep -qE "$SKIP_BASE64_FILES"; then
+      continue
+    fi
+    # Skip test files for private key and credential patterns (mock fixtures, not real secrets)
+    if [[ "$pattern" == *"PRIVATE KEY"* || "$pattern" == "private_key"* ]] && echo "$file" | grep -qE "$SKIP_MOCK_CREDENTIALS"; then
       continue
     fi
     # Skip files that define secret detection patterns (they contain patterns, not secrets)
