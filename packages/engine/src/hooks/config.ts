@@ -18,6 +18,7 @@ import type { HookConfig, AgentHook } from './types.js';
 import { DEFAULT_HOOK_CONFIG } from './types.js';
 import { AgentHookRunner } from './runner.js';
 import { DecisionTraceHook } from './decision-trace-hook.js';
+import { CodeQualityHook } from './code-quality-hook.js';
 
 const logger = getLogger('hooks');
 
@@ -58,6 +59,16 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
 
     if (config.debug) {
       logger.debug('Decision trace hook registered');
+    }
+  }
+
+  // Register code quality hook (enabled by default, opt-out via env)
+  if (process.env.GWI_CODE_QUALITY_HOOK_ENABLED !== 'false') {
+    const codeQualityHook = new CodeQualityHook();
+    runner.register(codeQualityHook);
+
+    if (config.debug) {
+      logger.debug('Code quality hook registered');
     }
   }
 
