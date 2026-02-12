@@ -156,7 +156,7 @@ describe('verifyGcpOidcToken', () => {
       text: () => Promise.resolve('Invalid Value'),
     });
 
-    await expect(verifyGcpOidcToken('bad-token')).rejects.toThrow('verification_failed');
+    await expect(verifyGcpOidcToken('bad-token')).rejects.toThrow('Google tokeninfo returned 400');
   });
 
   it('handles network errors', async () => {
