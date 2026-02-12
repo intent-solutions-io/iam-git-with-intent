@@ -14,16 +14,19 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Track hook calls for verification
-const mockHookRunner = {
-  runStart: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
-  afterStep: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
-  runEnd: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
-  register: vi.fn(),
-  getRegisteredHooks: vi.fn().mockReturnValue([]),
-  getHooks: vi.fn().mockReturnValue([]),
-  unregister: vi.fn(),
-};
+// Track hook calls for verification — use vi.hoisted() so the variable
+// is available when vi.mock factories run (Vitest 4 hoisting change)
+const { mockHookRunner } = vi.hoisted(() => ({
+  mockHookRunner: {
+    runStart: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+    afterStep: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+    runEnd: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+    register: vi.fn(),
+    getRegisteredHooks: vi.fn().mockReturnValue([]),
+    getHooks: vi.fn().mockReturnValue([]),
+    unregister: vi.fn(),
+  },
+}));
 
 // Mock hook system
 vi.mock('../../hooks/config.js', () => ({
