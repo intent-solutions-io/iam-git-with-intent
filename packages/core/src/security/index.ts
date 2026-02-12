@@ -509,10 +509,21 @@ export type BetaFeature =
 /**
  * Default beta configuration
  */
+/**
+ * Parse beta invite codes from environment variable.
+ * Codes are comma-separated in GWI_BETA_INVITE_CODES.
+ * Falls back to empty list if not set (no default codes in source).
+ */
+function parseBetaInviteCodes(): string[] {
+  const envCodes = process.env.GWI_BETA_INVITE_CODES;
+  if (!envCodes) return [];
+  return envCodes.split(',').map((c) => c.trim()).filter(Boolean);
+}
+
 export const DEFAULT_BETA_CONFIG: BetaConfig = {
   enabled: true,
   accessMode: 'invite_only',
-  validInviteCodes: ['GWIBETA2025', 'EARLYBIRD', 'FOUNDER50'],
+  validInviteCodes: parseBetaInviteCodes(),
   betaFeatures: ['early-access', 'extended-limits', 'direct-support', 'feedback-priority'],
   maxBetaUsers: 500,
 };

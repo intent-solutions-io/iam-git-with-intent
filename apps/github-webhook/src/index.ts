@@ -46,7 +46,7 @@ const config = {
   projectId: process.env.PROJECT_ID || '',
   orchestratorEngineId: process.env.ORCHESTRATOR_ENGINE_ID || '',
   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
-  env: process.env.DEPLOYMENT_ENV || 'dev',
+  env: process.env.DEPLOYMENT_ENV || 'production',
   location: 'us-central1',
   // Phase 17: Use job queue instead of direct orchestrator calls
   useJobQueue: process.env.USE_JOB_QUEUE === 'true',

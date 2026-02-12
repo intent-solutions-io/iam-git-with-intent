@@ -65,7 +65,7 @@ const PORT = process.env.PORT || 8080;
 const config = {
   appName: process.env.APP_NAME || 'gwi-api',
   appVersion: process.env.APP_VERSION || '0.1.0',
-  env: process.env.DEPLOYMENT_ENV || 'dev',
+  env: process.env.DEPLOYMENT_ENV || 'production',
   storeBackend: getStoreBackend(),
 };
 

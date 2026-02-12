@@ -37,7 +37,7 @@ import { registerHandlers } from './handlers/index.js';
 
 const config = {
   port: parseInt(process.env.PORT || '8080', 10),
-  env: process.env.DEPLOYMENT_ENV || 'dev',
+  env: process.env.DEPLOYMENT_ENV || 'production',
   projectId: process.env.GCP_PROJECT_ID || process.env.PROJECT_ID || '',
   subscriptionId: process.env.PUBSUB_SUBSCRIPTION || 'gwi-worker-sub',
   topicId: process.env.PUBSUB_TOPIC || 'gwi-worker-jobs',

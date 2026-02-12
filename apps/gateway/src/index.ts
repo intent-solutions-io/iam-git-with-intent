@@ -144,7 +144,7 @@ const config = {
   appName: process.env.APP_NAME || 'git-with-intent',
   appVersion: process.env.APP_VERSION || '0.1.0',
   spiffeId: process.env.AGENT_SPIFFE_ID || 'spiffe://intent.solutions/agent/gwi',
-  env: process.env.DEPLOYMENT_ENV || 'dev',
+  env: process.env.DEPLOYMENT_ENV || 'production',
 };
 
 // A2A Message schema
