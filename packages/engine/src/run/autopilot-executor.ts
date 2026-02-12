@@ -209,6 +209,12 @@ export class AutopilotExecutor {
         })
       );
 
+      // Validate CODER role risk tier before code generation/apply phases
+      // (runStart only checked FOREMAN; CODER requires R2)
+      await this.hookRunner.runStart(
+        this.createHookContext('CODER', 'validate-coder-role', 'running')
+      );
+
       // Phase 2: Generate plan and code
       const planStart = Date.now();
       const coderOutput = await this.generateCode(analysis);
@@ -299,6 +305,11 @@ export class AutopilotExecutor {
           data: { skipped: true },
         };
         this.checkpoint('test', { skipped: true });
+        await this.hookRunner.afterStep(
+          this.createHookContext('VALIDATOR', 'run-tests', 'skipped', 0, {
+            skipped: true,
+          })
+        );
       }
 
       // Phase 5: Create PR
@@ -339,6 +350,11 @@ export class AutopilotExecutor {
           data: { dryRun: true },
         };
         this.checkpoint('pr', { dryRun: true });
+        await this.hookRunner.afterStep(
+          this.createHookContext('FOREMAN', 'create-pr', 'completed', 0, {
+            dryRun: true,
+          })
+        );
       }
 
       result.success = true;

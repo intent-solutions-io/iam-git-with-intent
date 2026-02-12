@@ -9,6 +9,8 @@
  * - GWI_HOOK_TIMEOUT_MS: Timeout for hook execution (default: 5000)
  * - GWI_HOOK_PARALLEL: Run hooks in parallel (default: true)
  * - GWI_DECISION_TRACE_ENABLED: Enable decision trace hook (default: false)
+ * - GWI_RISK_ENFORCEMENT_ENABLED: Enable risk enforcement hook (default: true)
+ * - GWI_CODE_QUALITY_HOOK_ENABLED: Enable code quality hook (default: true)
  *
  * @module @gwi/engine/hooks
  */
