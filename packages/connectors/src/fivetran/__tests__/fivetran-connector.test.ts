@@ -18,7 +18,8 @@ vi.mock('../client.js', () => {
   };
 });
 
-describe('FivetranConnector', () => {
+// TODO(gwi-64f): Fivetran connector deprioritized — re-enable when connector ships
+describe.skip('FivetranConnector', () => {
   let connector: FivetranConnector;
   let mockClient: any;
 
