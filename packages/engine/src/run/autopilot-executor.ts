@@ -27,6 +27,7 @@ import {
 import {
   type IssueMetadata,
   type ComplexityScore,
+  type StepStatus,
   getRunWorkspaceDir,
   getRunArtifactPaths,
   createIsolatedWorkspace,
@@ -37,6 +38,9 @@ import {
 } from '@gwi/core';
 import { createGitHubClient } from '@gwi/integrations';
 import { mkdir, writeFile } from 'fs/promises';
+import { buildDefaultHookRunner } from '../hooks/config.js';
+import { AgentHookRunner } from '../hooks/runner.js';
+import type { AgentRunContext, AgentRole } from '../hooks/types.js';
 
 const logger = getLogger('autopilot-executor');
 
@@ -138,6 +142,8 @@ export class AutopilotExecutor {
   private config: AutopilotConfig;
   private workspace: IsolatedWorkspace | null = null;
   private startTime: number = 0;
+  private hookRunner: AgentHookRunner | null = null;
+  private completedPhases: string[] = [];
 
   constructor(config: AutopilotConfig) {
     this.config = {
@@ -176,26 +182,52 @@ export class AutopilotExecutor {
         repo: this.config.repo.fullName,
       });
 
+      // Initialize hook runner for lifecycle events
+      this.hookRunner = await buildDefaultHookRunner();
+
+      // Fire runStart hooks (risk enforcement validates before execution)
+      const startCtx = this.createHookContext('FOREMAN', 'run-start', 'running');
+      await this.hookRunner.runStart(startCtx);
+
       // Update job status if tracking
       await this.updateJobStatus('running');
 
       // Phase 1: Analyze issue
       const analyzeStart = Date.now();
       const analysis = await this.analyzeIssue();
+      const analyzeDuration = Date.now() - analyzeStart;
       result.phases.analyze = {
         completed: true,
-        durationMs: Date.now() - analyzeStart,
+        durationMs: analyzeDuration,
         data: { complexity: analysis.complexity, requirements: analysis.requirements.length },
       };
+      this.checkpoint('analyze', { complexity: analysis.complexity });
+      await this.hookRunner.afterStep(
+        this.createHookContext('TRIAGE', 'analyze', 'completed', analyzeDuration, {
+          complexity: analysis.complexity,
+          requirements: analysis.requirements.length,
+        })
+      );
 
       // Phase 2: Generate plan and code
       const planStart = Date.now();
       const coderOutput = await this.generateCode(analysis);
+      const planDuration = Date.now() - planStart;
       result.phases.plan = {
         completed: true,
-        durationMs: Date.now() - planStart,
+        durationMs: planDuration,
         data: { filesGenerated: coderOutput.code.files.length },
       };
+      this.checkpoint('plan', { filesGenerated: coderOutput.code.files.length });
+
+      // Fire afterStep with generated files in metadata so CodeQualityHook can assess
+      await this.hookRunner.afterStep(
+        this.createHookContext('CODER', 'generate-code', 'completed', planDuration, {
+          generatedFiles: coderOutput.code.files,
+          confidence: coderOutput.code.confidence,
+          estimatedComplexity: coderOutput.code.estimatedComplexity,
+        })
+      );
 
       // Phase 2.5: Quality gate - validate generated code before apply
       if (!this.config.dryRun) {
@@ -205,28 +237,54 @@ export class AutopilotExecutor {
       // Phase 3: Apply patches to isolated workspace
       const applyStart = Date.now();
       const applyResult = await this.applyPatches(coderOutput);
+      const applyDuration = Date.now() - applyStart;
       result.phases.apply = {
         completed: applyResult.success,
-        durationMs: Date.now() - applyStart,
+        durationMs: applyDuration,
         filesModified: applyResult.filesModified,
         filesCreated: applyResult.filesCreated,
         error: applyResult.error,
       };
 
       if (!applyResult.success) {
+        await this.hookRunner.afterStep(
+          this.createHookContext('CODER', 'apply-patches', 'failed', applyDuration, {
+            error: applyResult.error,
+          })
+        );
         throw new Error(`Apply phase failed: ${applyResult.error}`);
       }
+
+      this.checkpoint('apply', {
+        filesModified: applyResult.filesModified,
+        filesCreated: applyResult.filesCreated,
+      });
+      await this.hookRunner.afterStep(
+        this.createHookContext('CODER', 'apply-patches', 'completed', applyDuration, {
+          filesModified: applyResult.filesModified,
+          filesCreated: applyResult.filesCreated,
+          operation: 'write_file',
+        })
+      );
 
       // Phase 4: Run tests (optional)
       const testStart = Date.now();
       if (!this.config.skipTests && !this.config.dryRun) {
         const testResult = await this.runTests();
+        const testDuration = Date.now() - testStart;
         result.phases.test = {
           completed: true,
-          durationMs: Date.now() - testStart,
+          durationMs: testDuration,
           passed: testResult.passed,
           error: testResult.error,
         };
+        this.checkpoint('test', { passed: testResult.passed });
+        await this.hookRunner.afterStep(
+          this.createHookContext('VALIDATOR', 'run-tests', testResult.passed ? 'completed' : 'failed', testDuration, {
+            passed: testResult.passed,
+            operation: 'run_tests',
+          })
+        );
 
         if (!testResult.passed) {
           logger.warn('Tests failed, continuing with PR creation', {
@@ -240,29 +298,47 @@ export class AutopilotExecutor {
           durationMs: 0,
           data: { skipped: true },
         };
+        this.checkpoint('test', { skipped: true });
       }
 
       // Phase 5: Create PR
       const prStart = Date.now();
       if (!this.config.dryRun) {
         const prResult = await this.createPR(coderOutput);
+        const prDuration = Date.now() - prStart;
         result.phases.pr = {
           completed: prResult.success,
-          durationMs: Date.now() - prStart,
+          durationMs: prDuration,
           prNumber: prResult.prNumber,
           prUrl: prResult.prUrl,
           error: prResult.error,
         };
 
         if (!prResult.success) {
+          await this.hookRunner.afterStep(
+            this.createHookContext('FOREMAN', 'create-pr', 'failed', prDuration, {
+              error: prResult.error,
+              operation: 'open_pr',
+            })
+          );
           throw new Error(`PR creation failed: ${prResult.error}`);
         }
+
+        this.checkpoint('pr', { prNumber: prResult.prNumber });
+        await this.hookRunner.afterStep(
+          this.createHookContext('FOREMAN', 'create-pr', 'completed', prDuration, {
+            prNumber: prResult.prNumber,
+            prUrl: prResult.prUrl,
+            operation: 'open_pr',
+          })
+        );
       } else {
         result.phases.pr = {
           completed: true,
           durationMs: 0,
           data: { dryRun: true },
         };
+        this.checkpoint('pr', { dryRun: true });
       }
 
       result.success = true;
@@ -273,6 +349,7 @@ export class AutopilotExecutor {
         success: true,
         prNumber: result.phases.pr.prNumber,
         totalDurationMs: result.totalDurationMs,
+        completedPhases: this.completedPhases,
       });
 
       await this.updateJobStatus('completed', { result });
@@ -287,12 +364,29 @@ export class AutopilotExecutor {
         runId: this.config.runId,
         error: errorMessage,
         phase: this.getCurrentPhase(result),
+        completedPhases: this.completedPhases,
       });
 
       await this.updateJobStatus('failed', { error: errorMessage });
 
       return result;
     } finally {
+      // Fire runEnd hooks
+      if (this.hookRunner) {
+        const endCtx = this.createHookContext(
+          'FOREMAN',
+          'run-end',
+          result.success ? 'completed' : 'failed',
+          result.totalDurationMs,
+          { completedPhases: this.completedPhases },
+        );
+        await this.hookRunner.runEnd(endCtx, result.success).catch((err) => {
+          logger.warn('Hook runEnd failed', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+
       // Cleanup workspace
       await this.cleanup();
     }
@@ -708,6 +802,43 @@ export class AutopilotExecutor {
       combinedScore,
       confidence,
       hasObviousComments: hasObvious,
+    });
+  }
+
+  /**
+   * Create an AgentRunContext for a given phase.
+   */
+  private createHookContext(
+    agentRole: AgentRole,
+    stepId: string,
+    stepStatus: StepStatus,
+    durationMs?: number,
+    metadata?: Record<string, unknown>,
+  ): AgentRunContext {
+    return {
+      tenantId: this.config.tenantId,
+      runId: this.config.runId,
+      runType: 'autopilot',
+      stepId: `${this.config.runId}-${stepId}`,
+      agentRole,
+      stepStatus,
+      timestamp: new Date().toISOString(),
+      durationMs,
+      metadata,
+    };
+  }
+
+  /**
+   * Record a checkpoint after a successful phase.
+   * Stores phase completion state for resume/replay.
+   */
+  private checkpoint(phase: string, data?: Record<string, unknown>): void {
+    this.completedPhases.push(phase);
+    logger.info('Checkpoint created', {
+      runId: this.config.runId,
+      phase,
+      completedPhases: this.completedPhases,
+      ...data,
     });
   }
 

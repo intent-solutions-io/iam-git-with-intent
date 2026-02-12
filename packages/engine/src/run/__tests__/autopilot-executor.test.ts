@@ -8,9 +8,31 @@
  * - Phase execution flow
  * - Dry run mode
  * - Error handling
+ * - Hook runner integration (PR 2: git-with-intent-0lt)
+ * - Checkpoint creation after each phase
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Track hook calls for verification
+const mockHookRunner = {
+  runStart: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+  afterStep: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+  runEnd: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+  register: vi.fn(),
+  getRegisteredHooks: vi.fn().mockReturnValue([]),
+  getHooks: vi.fn().mockReturnValue([]),
+  unregister: vi.fn(),
+};
+
+// Mock hook system
+vi.mock('../../hooks/config.js', () => ({
+  buildDefaultHookRunner: vi.fn().mockResolvedValue(mockHookRunner),
+}));
+
+vi.mock('../../hooks/runner.js', () => ({
+  AgentHookRunner: vi.fn().mockImplementation(() => mockHookRunner),
+}));
 
 // Mock dependencies
 vi.mock('@gwi/core', async (importOriginal) => {
@@ -289,6 +311,184 @@ describe('AutopilotExecutor', () => {
       const config = createValidConfig();
       const executor = new AutopilotExecutor(config);
       expect(executor).toBeDefined();
+    });
+  });
+
+  // ===========================================================================
+  // Hook Runner Integration Tests (PR 2: git-with-intent-0lt)
+  // ===========================================================================
+
+  describe('Hook Runner Integration', () => {
+    beforeEach(() => {
+      mockHookRunner.runStart.mockClear();
+      mockHookRunner.afterStep.mockClear();
+      mockHookRunner.runEnd.mockClear();
+    });
+
+    it('should initialize hook runner and call runStart', async () => {
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      expect(mockHookRunner.runStart).toHaveBeenCalledTimes(1);
+      const startCtx = mockHookRunner.runStart.mock.calls[0][0];
+      expect(startCtx.runId).toBe('run-xyz-123');
+      expect(startCtx.agentRole).toBe('FOREMAN');
+      expect(startCtx.runType).toBe('autopilot');
+    });
+
+    it('should call afterStep for each completed phase', async () => {
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      // Dry run: analyze, generate-code, apply-patches, then PR (skips test afterStep in dry run)
+      // In dry run: analyze + code gen + apply hook calls
+      expect(mockHookRunner.afterStep).toHaveBeenCalled();
+      const calls = mockHookRunner.afterStep.mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+
+      // Verify analyze step context
+      const analyzeCtx = calls[0][0];
+      expect(analyzeCtx.agentRole).toBe('TRIAGE');
+      expect(analyzeCtx.stepId).toContain('analyze');
+      expect(analyzeCtx.stepStatus).toBe('completed');
+
+      // Verify code generation step context
+      const coderCtx = calls[1][0];
+      expect(coderCtx.agentRole).toBe('CODER');
+      expect(coderCtx.stepId).toContain('generate-code');
+      expect(coderCtx.stepStatus).toBe('completed');
+    });
+
+    it('should pass generated files in CODER step metadata for CodeQualityHook', async () => {
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      // Find the CODER generate-code call
+      const coderCall = mockHookRunner.afterStep.mock.calls.find(
+        (call: any[]) => call[0].agentRole === 'CODER' && call[0].stepId.includes('generate-code')
+      );
+      expect(coderCall).toBeDefined();
+
+      const coderCtx = coderCall![0];
+      expect(coderCtx.metadata).toBeDefined();
+      expect(coderCtx.metadata.generatedFiles).toBeDefined();
+      expect(Array.isArray(coderCtx.metadata.generatedFiles)).toBe(true);
+      expect(coderCtx.metadata.confidence).toBeDefined();
+    });
+
+    it('should call runEnd in finally block on success', async () => {
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      expect(mockHookRunner.runEnd).toHaveBeenCalledTimes(1);
+      const [endCtx, success] = mockHookRunner.runEnd.mock.calls[0];
+      expect(endCtx.runId).toBe('run-xyz-123');
+      expect(success).toBe(true);
+    });
+
+    it('should call runEnd with success=false on failure', async () => {
+      // Make runStart throw to simulate an error
+      mockHookRunner.runStart.mockRejectedValueOnce(new Error('Risk tier exceeded'));
+
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(mockHookRunner.runEnd).toHaveBeenCalledTimes(1);
+      const [, success] = mockHookRunner.runEnd.mock.calls[0];
+      expect(success).toBe(false);
+    });
+
+    it('should include tenantId in all hook contexts', async () => {
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      // Check runStart
+      expect(mockHookRunner.runStart.mock.calls[0][0].tenantId).toBe('tenant-abc');
+
+      // Check all afterStep calls
+      for (const call of mockHookRunner.afterStep.mock.calls) {
+        expect(call[0].tenantId).toBe('tenant-abc');
+      }
+
+      // Check runEnd
+      expect(mockHookRunner.runEnd.mock.calls[0][0].tenantId).toBe('tenant-abc');
+    });
+
+    it('should include durationMs in afterStep contexts', async () => {
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      for (const call of mockHookRunner.afterStep.mock.calls) {
+        expect(call[0].durationMs).toBeDefined();
+        expect(typeof call[0].durationMs).toBe('number');
+        expect(call[0].durationMs).toBeGreaterThanOrEqual(0);
+      }
+    });
+  });
+
+  // ===========================================================================
+  // Checkpoint Tests (PR 2: git-with-intent-0lt)
+  // ===========================================================================
+
+  describe('Checkpoints', () => {
+    it('should create checkpoints after each phase in dry run', async () => {
+      const { getLogger } = await import('@gwi/core');
+      const mockLogger = (getLogger as any)();
+
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      // Verify checkpoint log calls for each phase
+      const checkpointCalls = mockLogger.info.mock.calls.filter(
+        (call: any[]) => call[0] === 'Checkpoint created'
+      );
+
+      // dry run should checkpoint: analyze, plan, apply, test, pr
+      expect(checkpointCalls.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('should track completedPhases in run completion log', async () => {
+      const { getLogger } = await import('@gwi/core');
+      const mockLogger = (getLogger as any)();
+
+      const config = createValidConfig();
+      config.dryRun = true;
+
+      const executor = new AutopilotExecutor(config);
+      await executor.execute();
+
+      // Find the final completion log
+      const completionLog = mockLogger.info.mock.calls.find(
+        (call: any[]) => call[0] === 'Autopilot execution completed'
+      );
+      expect(completionLog).toBeDefined();
+      expect(completionLog![1].completedPhases).toBeDefined();
+      expect(completionLog![1].completedPhases.length).toBeGreaterThan(0);
     });
   });
 });
