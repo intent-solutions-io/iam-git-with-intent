@@ -2,7 +2,7 @@
 
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
-**Version:** 0.7.0 | **Status:** Active development
+**Version:** 0.8.0 | **Status:** Active development
 
 ---
 
@@ -128,7 +128,7 @@ flowchart TB
     Analytics --> Observability
 ```
 
-**Platform capabilities (v0.7.0):**
+**Platform capabilities (v0.8.0):**
 
 | Category | Features |
 |----------|----------|

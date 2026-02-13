@@ -1,6 +1,6 @@
 {
   "name": "@gwi/engine",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Git With Intent - Agent execution engine with hook system",
   "type": "module",
   "main": "dist/index.js",

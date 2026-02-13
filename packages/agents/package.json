@@ -1,6 +1,6 @@
 {
   "name": "@gwi/agents",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Agent implementations for Git With Intent",
   "type": "module",
   "main": "./dist/index.js",

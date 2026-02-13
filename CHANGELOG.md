@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-02-12
+
+### Added
+- **OpenTelemetry Export Bridge**: Bridge GWI custom telemetry to OTLP collectors (#79)
+  - `GwiSpanBridge`: Convert GWI Span → OTel ReadableSpan
+  - `MetricsBridge`: Sync MetricsRegistry → OTel instruments
+  - `initializeOTel`/`shutdownOTel` lifecycle functions
+  - Prometheus `/metrics` endpoint (works with zero OTel config)
+  - Auto-detect exporter from environment variables
+- **Hook Runner Integration**: Wire hook runner into autopilot executor (#76)
+- **Sandbox Execution Layer**: Add secure sandbox execution for IDP (#71)
+
+### Fixed
+- **Security**: Implement Firebase Auth and GCP OIDC token verification (#77)
+- **Security**: Stop-ship security hardening Phase 1 (#75)
+- **Agents**: Consolidate slop detector hardening (#74)
+- **CI**: Skip multiple test suites broken by Vitest 4 mock patterns (#78)
+- **CI**: Mock index.js module to prevent process.exit at import time
+- **Engine**: Use vi.hoisted() for mock variable in autopilot-executor test
+- **Mermaid**: Fix diagrams and Claude Code hook format (#70)
+
 ## [0.7.1] - 2026-02-03
 
 ### Fixed

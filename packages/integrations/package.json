@@ -1,6 +1,6 @@
 {
   "name": "@gwi/integrations",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "External integrations for Git With Intent: GitHub, GitLab, Slack",
   "type": "module",
   "main": "./dist/index.js",
