@@ -260,9 +260,8 @@ describe('CodeQualityHook', () => {
 
       // COMMENT_HEAVY_FILES should produce a non-trivial slop score
       // With maxSlopScore=10, anything above 10 fails
-      if (assessment.combinedSlopScore > 10) {
-        expect(assessment.passed).toBe(false);
-      }
+      expect(assessment.combinedSlopScore).toBeGreaterThan(10);
+      expect(assessment.passed).toBe(false);
     });
 
     it('should block when confidence is missing (defaults to 0)', () => {
