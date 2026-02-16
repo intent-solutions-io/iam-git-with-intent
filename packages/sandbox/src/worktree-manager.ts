@@ -251,6 +251,17 @@ export class WorktreeManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
+    // Capture original branch so we can restore on failure
+    let originalBranch: string | null = null;
+    try {
+      const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: this.repoRoot,
+      });
+      originalBranch = stdout.trim();
+    } catch {
+      // Proceed without — worst case we stay on targetBranch
+    }
+
     try {
       // Checkout target branch in main repo
       await execFileAsync('git', ['checkout', targetBranch], { cwd: this.repoRoot });
@@ -287,6 +298,21 @@ export class WorktreeManager {
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       session.status = 'error';
+
+      // Abort the failed merge and restore original branch
+      try {
+        await execFileAsync('git', ['merge', '--abort'], { cwd: this.repoRoot });
+      } catch {
+        // merge --abort may fail if not mid-merge; ignore
+      }
+      if (originalBranch && originalBranch !== targetBranch) {
+        try {
+          await execFileAsync('git', ['checkout', originalBranch], { cwd: this.repoRoot });
+        } catch {
+          // Best-effort restore
+        }
+      }
+
       return { merged: false, error };
     }
   }

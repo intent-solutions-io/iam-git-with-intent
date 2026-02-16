@@ -11,6 +11,7 @@ import { DenoSandboxProvider } from './providers/deno.js';
 import {
   type AgentPermissionProfile,
   getAgentPermissions,
+  AgentPermissionProfileSchema,
 } from './permissions.js';
 import {
   type WorktreeSession,
@@ -104,8 +105,18 @@ export class SandboxedAgentExecutor {
   constructor(options: SandboxedAgentOptions) {
     this.options = options;
     this.provider = new DenoSandboxProvider();
-    this.permissionProfile =
-      options.customPermissions ?? getAgentPermissions(options.agentType);
+
+    if (options.customPermissions) {
+      const parsed = AgentPermissionProfileSchema.safeParse(options.customPermissions);
+      if (!parsed.success) {
+        throw new Error(
+          `Invalid customPermissions: ${parsed.error.issues.map((i) => i.message).join(', ')}`
+        );
+      }
+      this.permissionProfile = options.customPermissions;
+    } else {
+      this.permissionProfile = getAgentPermissions(options.agentType);
+    }
   }
 
   /**
@@ -132,17 +143,24 @@ export class SandboxedAgentExecutor {
       });
     }
 
+    // Compute effective timeout: use the lower of the two if both are set
+    const effectiveTimeoutMs = this.options.maxExecutionTimeMs
+      ? Math.min(this.options.maxExecutionTimeMs, this.permissionProfile.maxExecutionTimeMs)
+      : this.permissionProfile.maxExecutionTimeMs;
+
+    // Network: deny-by-default — only enable when explicitly allowed
+    const allowNet = this.permissionProfile.permissions.allowNet;
+    const networkEnabled = allowNet === true || Array.isArray(allowNet);
+
     // Create sandbox
     this.sandbox = await this.provider.create({
       type: 'deno-isolate',
       baseImage: 'deno', // Not actually an image, but required by interface
       workDir: this.worktreeSession?.worktreePath ?? process.cwd(),
-      timeoutMs: this.options.maxExecutionTimeMs ?? this.permissionProfile.maxExecutionTimeMs,
+      timeoutMs: effectiveTimeoutMs,
       network: {
-        enabled: this.permissionProfile.permissions.allowNet !== false,
-        allowedHosts: Array.isArray(this.permissionProfile.permissions.allowNet)
-          ? this.permissionProfile.permissions.allowNet
-          : undefined,
+        enabled: networkEnabled,
+        allowedHosts: Array.isArray(allowNet) ? allowNet : undefined,
       },
     });
 
@@ -172,9 +190,12 @@ export class SandboxedAgentExecutor {
     }
 
     try {
-      // Execute in sandbox
+      // Execute in sandbox with effective timeout
+      const effectiveTimeoutMs = this.options.maxExecutionTimeMs
+        ? Math.min(this.options.maxExecutionTimeMs, this.permissionProfile.maxExecutionTimeMs)
+        : this.permissionProfile.maxExecutionTimeMs;
       const result = await this.sandbox.execute(code, {
-        timeoutMs: this.permissionProfile.maxExecutionTimeMs,
+        timeoutMs: effectiveTimeoutMs,
       });
 
       // Get changed files
@@ -255,6 +276,11 @@ export class SandboxedAgentExecutor {
     if (!this.worktreeSession || !this.worktreeManager) {
       return null;
     }
+    if (!this.permissionProfile.allowsDestructive) {
+      throw new Error(
+        `Agent '${this.options.agentType}' (profile: ${this.permissionProfile.name}) is not permitted to commit`
+      );
+    }
 
     return this.worktreeManager.commit(this.worktreeSession.sessionId, message, {
       addAll: true,
@@ -270,6 +296,12 @@ export class SandboxedAgentExecutor {
   ): Promise<{ merged: boolean; hash?: string; error?: string }> {
     if (!this.worktreeSession || !this.worktreeManager) {
       return { merged: false, error: 'Not using worktree isolation' };
+    }
+    if (!this.permissionProfile.allowsDestructive) {
+      return {
+        merged: false,
+        error: `Agent '${this.options.agentType}' (profile: ${this.permissionProfile.name}) is not permitted to merge`,
+      };
     }
 
     return this.worktreeManager.merge(
