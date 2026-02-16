@@ -84,6 +84,8 @@ export type CustomProviderConfig = z.infer<typeof CustomProviderConfigSchema>;
  */
 interface RegistryEntry {
   config: CustomProviderConfig;
+  capabilities: ProviderCapabilities;
+  cost: ProviderCostMetadata;
   factory?: LLMProviderFactory;
   registeredAt: number;
 }
@@ -104,7 +106,6 @@ export class CustomProviderRegistry {
     const parsed = CustomProviderConfigSchema.parse(config);
     const key = `${parsed.provider}:${parsed.model}`;
 
-    // Update PROVIDER_CAPABILITIES and PROVIDER_COSTS for selection policy
     const capabilities: ProviderCapabilities = {
       jsonMode: parsed.capabilities.jsonMode,
       functionCalling: parsed.capabilities.functionCalling,
@@ -118,7 +119,7 @@ export class CustomProviderRegistry {
       reasoningOptimized: parsed.capabilities.reasoningOptimized,
     };
 
-    const costMeta: ProviderCostMetadata = {
+    const cost: ProviderCostMetadata = {
       provider: parsed.provider,
       model: parsed.model,
       cost: parsed.cost as TokenCost,
@@ -126,16 +127,13 @@ export class CustomProviderRegistry {
       updatedAt: new Date().toISOString(),
     };
 
-    // Store in our registry
+    // Store entirely in instance — no global state mutation
     this.customProviders.set(key, {
       config: parsed,
+      capabilities,
+      cost,
       registeredAt: Date.now(),
     });
-
-    // Also inject into the static maps for selection policy compatibility
-    // Note: This modifies the shared state - be careful in multi-tenant scenarios
-    (PROVIDER_CAPABILITIES as Record<string, ProviderCapabilities>)[key] = capabilities;
-    (PROVIDER_COSTS as Record<string, ProviderCostMetadata>)[key] = costMeta;
   }
 
   /**
@@ -143,12 +141,7 @@ export class CustomProviderRegistry {
    * @param providerModel - Key in format "provider:model"
    */
   unregister(providerModel: string): boolean {
-    const existed = this.customProviders.delete(providerModel);
-    if (existed) {
-      delete (PROVIDER_CAPABILITIES as Record<string, ProviderCapabilities>)[providerModel];
-      delete (PROVIDER_COSTS as Record<string, ProviderCostMetadata>)[providerModel];
-    }
-    return existed;
+    return this.customProviders.delete(providerModel);
   }
 
   /**
@@ -173,34 +166,66 @@ export class CustomProviderRegistry {
   }
 
   /**
+   * Look up capabilities for a provider:model key (custom first, then built-in)
+   */
+  getCapabilities(providerModel: string): ProviderCapabilities | undefined {
+    return this.customProviders.get(providerModel)?.capabilities ?? PROVIDER_CAPABILITIES[providerModel];
+  }
+
+  /**
+   * Look up cost metadata for a provider:model key (custom first, then built-in)
+   */
+  getCost(providerModel: string): ProviderCostMetadata | undefined {
+    return this.customProviders.get(providerModel)?.cost ?? PROVIDER_COSTS[providerModel];
+  }
+
+  /**
    * Get all registered providers (built-in + custom)
    */
   getAll(): ProviderInfo[] {
     const all: ProviderInfo[] = [];
+    const defaultRetryPolicy = {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      maxDelayMs: 30000,
+      backoffMultiplier: 2,
+      retryOnStatusCodes: [429, 500, 502, 503, 504],
+      retryOnTimeout: true,
+      timeoutMs: 60000,
+    };
 
     // Add built-in providers
     for (const key of Object.keys(PROVIDER_CAPABILITIES)) {
       const colonIdx = key.indexOf(':');
       const provider = colonIdx === -1 ? key : key.slice(0, colonIdx);
       const model = colonIdx === -1 ? key : key.slice(colonIdx + 1);
-      const capabilities = PROVIDER_CAPABILITIES[key];
-      const cost = PROVIDER_COSTS[key];
 
       all.push({
         provider,
         model,
         displayName: `${provider}/${model}`,
-        capabilities,
-        cost,
-        retryPolicy: {
-          maxRetries: 3,
-          initialDelayMs: 1000,
-          maxDelayMs: 30000,
-          backoffMultiplier: 2,
-          retryOnStatusCodes: [429, 500, 502, 503, 504],
-          retryOnTimeout: true,
-          timeoutMs: 60000,
-        },
+        capabilities: PROVIDER_CAPABILITIES[key],
+        cost: PROVIDER_COSTS[key],
+        retryPolicy: defaultRetryPolicy,
+      });
+    }
+
+    // Add custom providers (may shadow built-in keys — custom wins)
+    for (const [key, entry] of this.customProviders) {
+      // Skip if already present from built-in (custom overrides via getCapabilities/getCost)
+      if (PROVIDER_CAPABILITIES[key]) continue;
+
+      const colonIdx = key.indexOf(':');
+      const provider = colonIdx === -1 ? key : key.slice(0, colonIdx);
+      const model = colonIdx === -1 ? key : key.slice(colonIdx + 1);
+
+      all.push({
+        provider,
+        model,
+        displayName: entry.config.displayName ?? `${provider}/${model}`,
+        capabilities: entry.capabilities,
+        cost: entry.cost,
+        retryPolicy: defaultRetryPolicy,
       });
     }
 
@@ -221,10 +246,6 @@ export class CustomProviderRegistry {
    * Clear all custom providers
    */
   clear(): void {
-    for (const key of this.customProviders.keys()) {
-      delete (PROVIDER_CAPABILITIES as Record<string, ProviderCapabilities>)[key];
-      delete (PROVIDER_COSTS as Record<string, ProviderCostMetadata>)[key];
-    }
     this.customProviders.clear();
   }
 }
