@@ -141,7 +141,7 @@ export class RiskEnforcementHook implements AgentHook {
     // Check role-based risk tier
     const roleRiskTier = ROLE_RISK_TIERS[ctx.agentRole] || 'R0';
 
-    if (!meetsRiskTier(roleRiskTier, this.config.maxRiskTier)) {
+    if (!meetsRiskTier(this.config.maxRiskTier, roleRiskTier)) {
       const reason = `Agent role ${ctx.agentRole} requires ${roleRiskTier}, but max allowed is ${this.config.maxRiskTier}`;
 
       if (this.config.enforceBlocking) {
@@ -172,7 +172,7 @@ export class RiskEnforcementHook implements AgentHook {
 
     const operationRiskTier = OPERATION_RISK_TIERS[operation] || 'R0';
 
-    if (!meetsRiskTier(operationRiskTier, this.config.maxRiskTier)) {
+    if (!meetsRiskTier(this.config.maxRiskTier, operationRiskTier)) {
       const reason = `Operation '${operation}' requires ${operationRiskTier}, but max allowed is ${this.config.maxRiskTier}`;
 
       if (this.config.enforceBlocking) {
@@ -200,7 +200,7 @@ export class RiskEnforcementHook implements AgentHook {
     if (!operation) return;
 
     const operationRiskTier = OPERATION_RISK_TIERS[operation] || 'R0';
-    const withinTier = meetsRiskTier(operationRiskTier, this.config.maxRiskTier);
+    const withinTier = meetsRiskTier(this.config.maxRiskTier, operationRiskTier);
 
     if (withinTier) {
       logger.debug('Operation completed within risk tier', {
@@ -245,7 +245,7 @@ export class RiskEnforcementHook implements AgentHook {
    */
   checkOperation(operation: string): { allowed: boolean; requiredTier: RiskTier } {
     const requiredTier = OPERATION_RISK_TIERS[operation] || 'R0';
-    const allowed = meetsRiskTier(requiredTier, this.config.maxRiskTier);
+    const allowed = meetsRiskTier(this.config.maxRiskTier, requiredTier);
     return { allowed, requiredTier };
   }
 
