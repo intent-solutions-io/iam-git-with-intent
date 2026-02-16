@@ -20,10 +20,10 @@ This audit examined the Git With Intent (GWI) monorepo across four domains: **se
 | Severity | Count | Stop-Ship? |
 |----------|-------|------------|
 | **CRITICAL** | 5 | Yes |
-| **HIGH** | 11 | Yes (security-relevant) |
-| **MEDIUM** | 10 | No (pre-GA) |
+| **HIGH** | 17 | Yes (security-relevant) |
+| **MEDIUM** | 17 | No (pre-GA) |
 | **LOW** | 4 | No |
-| **Total** | 30 | |
+| **Total** | 43 | |
 
 ### Stop-Ship Findings (CRITICAL)
 
