@@ -527,7 +527,7 @@ ${issue.body}
 
       // Sanitize paths after validation
       const files = parsed.files.map((f) => ({
-        path: this.sanitizePath(f.path),
+        path: CoderAgent.sanitizePath(f.path),
         content: f.content,
         action: f.action as 'create' | 'modify' | 'delete',
         explanation: f.explanation,
@@ -553,9 +553,10 @@ ${issue.body}
   }
 
   /**
-   * Sanitize LLM-generated file path to prevent path traversal and injection
+   * Sanitize LLM-generated file path to prevent path traversal and injection.
+   * Exported as a static method so tests can validate against the real implementation.
    */
-  private sanitizePath(filePath: string): string {
+  static sanitizePath(filePath: string): string {
     // Reject empty paths
     if (!filePath) return '';
 
