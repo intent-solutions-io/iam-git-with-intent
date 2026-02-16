@@ -33,7 +33,10 @@ import {
   getLogger,
 } from '@gwi/core';
 import { createGitHubClient } from '@gwi/integrations';
+import { DenoSandboxProvider } from '@gwi/sandbox';
 import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
+import { z } from 'zod';
 import { buildDefaultHookRunner } from '../hooks/config.js';
 import { AgentHookRunner } from '../hooks/runner.js';
 import type { AgentRunContext, AgentRole } from '../hooks/types.js';
@@ -44,6 +47,35 @@ import {
 } from '../hooks/code-quality-hook.js';
 
 const logger = getLogger('autopilot-executor');
+
+/**
+ * Zod schema for LLM-generated file payloads.
+ * Validates structure and enforces bounds before any file operations.
+ */
+const LlmFileSchema = z.object({
+  path: z.string().min(1).max(500),
+  content: z.string().max(1_000_000), // 1MB max per file
+  action: z.string().optional(),
+});
+const LlmFilesSchema = z.array(LlmFileSchema).max(200); // 200 files max
+
+/**
+ * Validate a file path is safe for writing within a workspace.
+ * Rejects traversal, absolute paths (Unix + Windows), shell metacharacters, and null bytes.
+ */
+function validateFilePath(filePath: string): string {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  if (
+    normalizedPath.includes('..') ||
+    normalizedPath.startsWith('/') ||
+    /^[A-Za-z]:\//.test(normalizedPath) ||
+    /[;&|`$(){}!#]/.test(normalizedPath) ||
+    normalizedPath.includes('\0')
+  ) {
+    throw new Error(`Unsafe file path rejected in autopilot: ${filePath}`);
+  }
+  return normalizedPath;
+}
 
 // =============================================================================
 // Types
@@ -83,6 +115,8 @@ export interface AutopilotConfig {
   dryRun?: boolean;
   /** Skip tests */
   skipTests?: boolean;
+  /** Enable sandbox isolation for LLM-generated file writes */
+  sandboxEnabled?: boolean;
   /** Worker ID for job tracking */
   workerId?: string;
   /** Job ID for durable tracking */
@@ -606,19 +640,39 @@ export class AutopilotExecutor {
       let filesModified = 0;
       let filesCreated = 0;
 
-      // Write each file to workspace (with path validation)
-      for (const file of coderOutput.code.files) {
-        // Defense-in-depth: validate paths before writing to disk
-        const normalizedPath = file.path.replace(/\\/g, '/');
-        if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || /[;&|`$(){}!#]/.test(normalizedPath) || normalizedPath.includes('\0')) {
-          throw new Error(`Unsafe file path rejected in autopilot: ${file.path}`);
-        }
-        await workspaceManager.writeFile(file.path, file.content);
+      // Validate LLM file payload structure and bounds
+      const validatedFiles = LlmFilesSchema.parse(coderOutput.code.files);
 
-        if (file.action === 'create') {
-          filesCreated++;
-        } else {
-          filesModified++;
+      // Determine sandbox mode from config or env
+      const sandboxEnabled = this.config.sandboxEnabled ??
+        process.env.GWI_SANDBOX_ENABLED === 'true';
+
+      // Try sandbox isolation for LLM-generated file writes
+      let usedSandbox = false;
+      if (sandboxEnabled) {
+        const sandboxResult = await this.writeFilesThroughSandbox(
+          validatedFiles,
+          this.workspace.path,
+        );
+        if (sandboxResult) {
+          filesModified = sandboxResult.filesModified;
+          filesCreated = sandboxResult.filesCreated;
+          usedSandbox = true;
+        }
+        // null return means Deno unavailable — fall through to direct writes
+      }
+
+      if (!usedSandbox) {
+        // Direct writes with defense-in-depth path validation
+        for (const file of validatedFiles) {
+          validateFilePath(file.path);
+          await workspaceManager.writeFile(file.path, file.content);
+
+          if (file.action === 'create') {
+            filesCreated++;
+          } else {
+            filesModified++;
+          }
         }
       }
 
@@ -664,6 +718,96 @@ export class AutopilotExecutor {
         filesCreated: 0,
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  /**
+   * Write LLM-generated files through a Deno sandbox.
+   *
+   * Instead of writing directly to the host filesystem from the Node process,
+   * we generate a Deno script and execute it inside a sandbox. This ensures:
+   * - LLM-generated content is handled by an isolated process
+   * - Path validation is enforced before script generation
+   * - File writes use absolute paths within the workspace directory
+   *
+   * NOTE: The DenoSandboxProvider creates its own internal temp directory and
+   * ignores config.workDir. We work around this by using absolute paths in
+   * the generated script (joining workspacePath + relative file path) and
+   * passing { cwd: workspacePath } to execute().
+   *
+   * Returns null if Deno is not available (caller should fall back to direct writes).
+   */
+  private async writeFilesThroughSandbox(
+    files: Array<{ path: string; content: string; action?: string }>,
+    workspacePath: string,
+  ): Promise<{ filesModified: number; filesCreated: number } | null> {
+    const provider = new DenoSandboxProvider();
+    const health = await provider.healthCheck();
+
+    if (!health.healthy) {
+      logger.warn('Deno sandbox not available, falling back to direct writes', {
+        reason: health.message,
+        runId: this.config.runId,
+      });
+      return null;
+    }
+
+    // Create a Deno sandbox for script execution.
+    // Note: provider ignores workDir and uses its own temp dir for the script.
+    // File writes use absolute paths (workspacePath + relative) to land in the workspace.
+    const sandbox = await provider.create({
+      type: 'deno-isolate',
+      baseImage: 'deno',
+      workDir: workspacePath,
+      timeoutMs: 30_000,
+      network: { enabled: false },
+    });
+
+    try {
+      let filesModified = 0;
+      let filesCreated = 0;
+
+      // Generate a Deno script that writes all files using absolute paths
+      const writeStatements = files.map((file) => {
+        const normalizedPath = validateFilePath(file.path);
+
+        if (file.action === 'create') filesCreated++;
+        else filesModified++;
+
+        // Use absolute path: workspace + relative file path
+        const absolutePath = join(workspacePath, normalizedPath);
+        const pathJson = JSON.stringify(absolutePath);
+        const contentJson = JSON.stringify(file.content);
+        const dirExpr = `${pathJson}.split("/").slice(0, -1).join("/")`;
+        return [
+          `{ const dir = ${dirExpr}; if (dir) { Deno.mkdirSync(dir, { recursive: true }); } }`,
+          `Deno.writeTextFileSync(${pathJson}, ${contentJson});`,
+          `console.log("wrote: " + ${pathJson});`,
+        ].join('\n');
+      });
+
+      const script = writeStatements.join('\n\n');
+
+      logger.info('Writing files through Deno sandbox', {
+        runId: this.config.runId,
+        fileCount: files.length,
+        workspacePath,
+      });
+
+      const result = await sandbox.execute(script, { cwd: workspacePath });
+
+      if (result.exitCode !== 0) {
+        throw new Error(`Sandbox file write failed (exit ${result.exitCode}): ${result.stderr}`);
+      }
+
+      logger.debug('Sandbox file write output', {
+        stdout: result.stdout.slice(0, 500),
+        runId: this.config.runId,
+      });
+
+      return { filesModified, filesCreated };
+    } finally {
+      await sandbox.destroy();
     }
   }
 
