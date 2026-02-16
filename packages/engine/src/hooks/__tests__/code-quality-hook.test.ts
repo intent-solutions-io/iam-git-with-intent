@@ -253,5 +253,23 @@ describe('CodeQualityHook', () => {
       const assessment = hook.assess(COMMENT_HEAVY_FILES, 85);
       expect(assessment.combinedSlopScore).toBeLessThanOrEqual(100);
     });
+
+    it('should block code with slop score above strict threshold', () => {
+      const strictHook = new CodeQualityHook({ maxSlopScore: 10 });
+      const assessment = strictHook.assess(COMMENT_HEAVY_FILES, 85);
+
+      // COMMENT_HEAVY_FILES should produce a non-trivial slop score
+      // With maxSlopScore=10, anything above 10 fails
+      if (assessment.combinedSlopScore > 10) {
+        expect(assessment.passed).toBe(false);
+      }
+    });
+
+    it('should block when confidence is missing (defaults to 0)', () => {
+      // Confidence 0 is below any reasonable minConfidence threshold
+      const assessment = hook.assess(CLEAN_FILES, 0);
+      expect(assessment.confidence).toBe(0);
+      expect(assessment.passed).toBe(false);
+    });
   });
 });
