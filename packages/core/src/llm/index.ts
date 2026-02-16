@@ -111,6 +111,9 @@ export {
   validateRequiredProviders,
 } from './provider-discovery.js';
 
+// Internal import for getDefaultModel delegation (used by local getDefaultModel below)
+import { getDefaultModel as getDefaultModelForProvider } from './provider-discovery.js';
+
 // Re-export evaluation hooks
 export {
   type EvaluationHookConfig,
@@ -258,23 +261,21 @@ function detectAvailableProvider(): LLMProviderType {
 }
 
 /**
- * Get default model for provider type
+ * Get default model for provider type.
+ * Delegates to provider-discovery's getDefaultModel which supports env var overrides.
  */
 function getDefaultModel(providerType: LLMProviderType): string {
-  switch (providerType) {
-    case 'google':
-      return 'gemini-2.0-flash';
-    case 'anthropic':
-      return 'claude-sonnet-4-20250514';
-    case 'openai':
-      return 'gpt-4o';
-    case 'openai_compat':
-      return 'gpt-4o';
-    case 'custom':
-      return 'custom';
-    default:
-      return 'unknown';
-  }
+  // Map LLMProviderType to provider-discovery provider names
+  const providerMap: Record<string, string> = {
+    google: 'google',
+    anthropic: 'anthropic',
+    openai: 'openai',
+    openai_compat: 'openai',
+    custom: 'custom',
+  };
+  const provider = providerMap[providerType];
+  if (!provider) return 'unknown';
+  return getDefaultModelForProvider(provider);
 }
 
 /**

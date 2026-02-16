@@ -46,9 +46,11 @@ const EXTENDED_PROVIDER_ENV_VARS: Record<string, string[]> = {
 };
 
 /**
- * Default models for each provider
+ * Built-in default models for each provider.
+ * Override any provider's default via GWI_DEFAULT_MODEL_{PROVIDER} env var
+ * (e.g. GWI_DEFAULT_MODEL_ANTHROPIC=claude-opus-4-20250514).
  */
-const DEFAULT_MODELS: Record<string, string> = {
+const BUILTIN_DEFAULT_MODELS: Record<string, string> = {
   anthropic: 'claude-sonnet-4-20250514',
   openai: 'gpt-4o',
   google: 'gemini-2.0-flash',
@@ -152,10 +154,16 @@ export function getProviderApiKey(provider: string): string | undefined {
 }
 
 /**
- * Get the default model for a provider
+ * Get the default model for a provider.
+ * Checks GWI_DEFAULT_MODEL_{PROVIDER} env var first, then falls back to built-in.
  */
 export function getDefaultModel(provider: string): string {
-  return DEFAULT_MODELS[provider] ?? 'default';
+  const envKey = `GWI_DEFAULT_MODEL_${provider.toUpperCase()}`;
+  const envValue = process.env[envKey]?.trim();
+  if (envValue) {
+    return envValue;
+  }
+  return BUILTIN_DEFAULT_MODELS[provider] ?? 'default';
 }
 
 /**
