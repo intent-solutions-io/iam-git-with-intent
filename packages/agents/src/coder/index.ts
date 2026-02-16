@@ -17,6 +17,7 @@
  */
 
 import { mkdir, writeFile } from 'fs/promises';
+import { z } from 'zod';
 import { BaseAgent, type AgentConfig } from '../base/agent.js';
 import {
   type TaskRequestPayload,
@@ -29,6 +30,25 @@ import {
   getPatchFilePath,
   type RunArtifacts,
 } from '@gwi/core';
+
+/**
+ * Zod schema for validating LLM code generation responses.
+ * Validates structure before trusting external AI output.
+ */
+const CodeGenFileSchema = z.object({
+  path: z.string().default(''),
+  content: z.string().default(''),
+  action: z.enum(['create', 'modify', 'delete']).catch('create'),
+  explanation: z.string().default('No explanation provided'),
+});
+
+const CodeGenResponseSchema = z.object({
+  files: z.array(CodeGenFileSchema).default([]),
+  summary: z.string().optional(),
+  confidence: z.number().min(0).max(100).catch(50),
+  testsIncluded: z.boolean().optional(),
+  estimatedComplexity: z.unknown().optional(),
+});
 
 /**
  * Coder input
@@ -502,22 +522,23 @@ ${issue.body}
         throw new Error('No JSON found in response');
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      const raw = JSON.parse(jsonMatch[0]);
+      const parsed = CodeGenResponseSchema.parse(raw);
 
-      // Validate and normalize
-      const files = (parsed.files || []).map((f: any) => ({
-        path: this.sanitizePath(f.path || ''),
-        content: f.content || '',
-        action: this.validateAction(f.action),
-        explanation: f.explanation || 'No explanation provided',
+      // Sanitize paths after validation
+      const files = parsed.files.map((f) => ({
+        path: this.sanitizePath(f.path),
+        content: f.content,
+        action: f.action as 'create' | 'modify' | 'delete',
+        explanation: f.explanation,
       }));
 
       return {
         files,
         summary: parsed.summary || `Implementation for issue #${issue.number}`,
-        confidence: Math.min(100, Math.max(0, parsed.confidence || 50)),
-        testsIncluded: parsed.testsIncluded || files.some((f: any) => f.path.includes('test')),
-        estimatedComplexity: this.clampComplexity(parsed.estimatedComplexity || complexity),
+        confidence: parsed.confidence,
+        testsIncluded: parsed.testsIncluded ?? files.some((f) => f.path.includes('test')),
+        estimatedComplexity: this.clampComplexity((parsed.estimatedComplexity as ComplexityScore) || complexity),
       };
     } catch (error) {
       // Return a low-confidence fallback
@@ -529,16 +550,6 @@ ${issue.body}
         estimatedComplexity: complexity,
       };
     }
-  }
-
-  /**
-   * Validate action type
-   */
-  private validateAction(action: unknown): 'create' | 'modify' | 'delete' {
-    if (action === 'create' || action === 'modify' || action === 'delete') {
-      return action;
-    }
-    return 'create';
   }
 
   /**
