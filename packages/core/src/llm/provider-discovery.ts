@@ -128,22 +128,26 @@ export function getAvailableProviderTypes(): LLMProviderType[] {
  * Check if a specific provider is available
  */
 export function isProviderAvailable(provider: string): boolean {
-  const envVars = EXTENDED_PROVIDER_ENV_VARS[provider] ?? [PROVIDER_ENV_VARS[provider]];
-  if (!envVars || envVars.length === 0) {
+  const extended = EXTENDED_PROVIDER_ENV_VARS[provider];
+  const single = PROVIDER_ENV_VARS[provider];
+  const envVars = extended ?? (single ? [single] : []);
+  if (envVars.length === 0) {
     return false;
   }
-  return findSetEnvVar(envVars.filter(Boolean) as string[]) !== undefined;
+  return findSetEnvVar(envVars) !== undefined;
 }
 
 /**
  * Get the API key for a provider (from environment)
  */
 export function getProviderApiKey(provider: string): string | undefined {
-  const envVars = EXTENDED_PROVIDER_ENV_VARS[provider] ?? [PROVIDER_ENV_VARS[provider]];
-  if (!envVars || envVars.length === 0) {
+  const extended = EXTENDED_PROVIDER_ENV_VARS[provider];
+  const single = PROVIDER_ENV_VARS[provider];
+  const envVars = extended ?? (single ? [single] : []);
+  if (envVars.length === 0) {
     return undefined;
   }
-  const setVar = findSetEnvVar(envVars.filter(Boolean) as string[]);
+  const setVar = findSetEnvVar(envVars);
   return setVar ? process.env[setVar] : undefined;
 }
 

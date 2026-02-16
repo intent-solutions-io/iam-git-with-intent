@@ -180,7 +180,9 @@ export class CustomProviderRegistry {
 
     // Add built-in providers
     for (const key of Object.keys(PROVIDER_CAPABILITIES)) {
-      const [provider, model] = key.split(':');
+      const colonIdx = key.indexOf(':');
+      const provider = colonIdx === -1 ? key : key.slice(0, colonIdx);
+      const model = colonIdx === -1 ? key : key.slice(colonIdx + 1);
       const capabilities = PROVIDER_CAPABILITIES[key];
       const cost = PROVIDER_COSTS[key];
 
