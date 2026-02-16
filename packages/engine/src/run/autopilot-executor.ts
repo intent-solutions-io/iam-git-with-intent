@@ -33,6 +33,7 @@ import {
   getLogger,
 } from '@gwi/core';
 import { createGitHubClient } from '@gwi/integrations';
+import { DenoSandboxProvider } from '@gwi/sandbox';
 import { mkdir, writeFile } from 'fs/promises';
 import { buildDefaultHookRunner } from '../hooks/config.js';
 import { AgentHookRunner } from '../hooks/runner.js';
@@ -83,6 +84,8 @@ export interface AutopilotConfig {
   dryRun?: boolean;
   /** Skip tests */
   skipTests?: boolean;
+  /** Enable sandbox isolation for LLM-generated file writes */
+  sandboxEnabled?: boolean;
   /** Worker ID for job tracking */
   workerId?: string;
   /** Job ID for durable tracking */
@@ -606,19 +609,39 @@ export class AutopilotExecutor {
       let filesModified = 0;
       let filesCreated = 0;
 
-      // Write each file to workspace (with path validation)
-      for (const file of coderOutput.code.files) {
-        // Defense-in-depth: validate paths before writing to disk
-        const normalizedPath = file.path.replace(/\\/g, '/');
-        if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || /[;&|`$(){}!#]/.test(normalizedPath) || normalizedPath.includes('\0')) {
-          throw new Error(`Unsafe file path rejected in autopilot: ${file.path}`);
-        }
-        await workspaceManager.writeFile(file.path, file.content);
+      // Determine sandbox mode from config or env
+      const sandboxEnabled = this.config.sandboxEnabled ??
+        process.env.GWI_SANDBOX_ENABLED === 'true';
 
-        if (file.action === 'create') {
-          filesCreated++;
-        } else {
-          filesModified++;
+      // Try sandbox isolation for LLM-generated file writes
+      let usedSandbox = false;
+      if (sandboxEnabled) {
+        const sandboxResult = await this.writeFilesThroughSandbox(
+          coderOutput.code.files,
+          this.workspace.path,
+        );
+        if (sandboxResult) {
+          filesModified = sandboxResult.filesModified;
+          filesCreated = sandboxResult.filesCreated;
+          usedSandbox = true;
+        }
+        // null return means Deno unavailable — fall through to direct writes
+      }
+
+      if (!usedSandbox) {
+        // Direct writes with defense-in-depth path validation
+        for (const file of coderOutput.code.files) {
+          const normalizedPath = file.path.replace(/\\/g, '/');
+          if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || /[;&|`$(){}!#]/.test(normalizedPath) || normalizedPath.includes('\0')) {
+            throw new Error(`Unsafe file path rejected in autopilot: ${file.path}`);
+          }
+          await workspaceManager.writeFile(file.path, file.content);
+
+          if (file.action === 'create') {
+            filesCreated++;
+          } else {
+            filesModified++;
+          }
         }
       }
 
@@ -664,6 +687,92 @@ export class AutopilotExecutor {
         filesCreated: 0,
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  /**
+   * Write LLM-generated files through a Deno sandbox.
+   *
+   * Instead of writing directly to the host filesystem from the Node process,
+   * we generate a Deno script and execute it inside a sandbox. This ensures:
+   * - LLM-generated content is handled by an isolated process
+   * - Path validation is enforced by Deno's permission system
+   * - File writes are scoped to the workspace directory
+   *
+   * Returns null if Deno is not available (caller should fall back to direct writes).
+   */
+  private async writeFilesThroughSandbox(
+    files: Array<{ path: string; content: string; action?: string }>,
+    workspacePath: string,
+  ): Promise<{ filesModified: number; filesCreated: number } | null> {
+    const provider = new DenoSandboxProvider();
+    const health = await provider.healthCheck();
+
+    if (!health.healthy) {
+      logger.warn('Deno sandbox not available, falling back to direct writes', {
+        reason: health.message,
+        runId: this.config.runId,
+      });
+      return null;
+    }
+
+    // Create a Deno sandbox scoped to the workspace directory
+    const sandbox = await provider.create({
+      type: 'deno-isolate',
+      baseImage: 'deno',
+      workDir: workspacePath,
+      timeoutMs: 30_000,
+      network: { enabled: false },
+    });
+
+    try {
+      let filesModified = 0;
+      let filesCreated = 0;
+
+      // Generate a Deno script that writes all files atomically
+      // Each file write uses ensureDirSync + writeTextFileSync
+      const writeStatements = files.map((file) => {
+        // Validate path before embedding in script
+        const normalizedPath = file.path.replace(/\\/g, '/');
+        if (normalizedPath.includes('..') || normalizedPath.startsWith('/') || /[;&|`$(){}!#]/.test(normalizedPath) || normalizedPath.includes('\0')) {
+          throw new Error(`Unsafe file path rejected in autopilot: ${file.path}`);
+        }
+
+        if (file.action === 'create') filesCreated++;
+        else filesModified++;
+
+        const pathJson = JSON.stringify(normalizedPath);
+        const contentJson = JSON.stringify(file.content);
+        const dirExpr = `${pathJson}.split("/").slice(0, -1).join("/")`;
+        return [
+          `{ const dir = ${dirExpr}; if (dir) { try { Deno.mkdirSync(dir, { recursive: true }); } catch {} } }`,
+          `Deno.writeTextFileSync(${pathJson}, ${contentJson});`,
+          `console.log("wrote: " + ${pathJson});`,
+        ].join('\n');
+      });
+
+      const script = writeStatements.join('\n\n');
+
+      logger.info('Writing files through Deno sandbox', {
+        runId: this.config.runId,
+        fileCount: files.length,
+        workspacePath,
+      });
+
+      const result = await sandbox.execute(script);
+
+      if (result.exitCode !== 0) {
+        throw new Error(`Sandbox file write failed (exit ${result.exitCode}): ${result.stderr}`);
+      }
+
+      logger.debug('Sandbox file write output', {
+        stdout: result.stdout.slice(0, 500),
+        runId: this.config.runId,
+      });
+
+      return { filesModified, filesCreated };
+    } finally {
+      await sandbox.destroy();
     }
   }
 

@@ -26,6 +26,7 @@
     "@gwi/agents": "*",
     "@gwi/core": "*",
     "@gwi/integrations": "*",
+    "@gwi/sandbox": "*",
     "firebase-admin": "12.7.0",
     "vite": "7.3.1"
   },
