@@ -239,6 +239,27 @@ export const DEFAULT_HOOK_CONFIG: HookConfig = {
 // =============================================================================
 
 /**
+ * Result of a single hook execution
+ */
+export interface HookExecutionResult {
+  hookName: string;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+}
+
+/**
+ * Result of running all hooks
+ */
+export interface HookRunResult {
+  totalHooks: number;
+  successfulHooks: number;
+  failedHooks: number;
+  results: HookExecutionResult[];
+  totalDurationMs: number;
+}
+
+/**
  * Interface for the hook runner that manages multiple hooks
  */
 export interface AgentHookRunner {
@@ -252,20 +273,20 @@ export interface AgentHookRunner {
    * Unlike afterStep, errors from beforeStep propagate to the caller
    * so the operation can be blocked.
    */
-  beforeStep(ctx: AgentRunContext): Promise<void>;
+  beforeStep(ctx: AgentRunContext): Promise<HookRunResult>;
 
   /**
    * Called after an agent step completes
    */
-  afterStep(ctx: AgentRunContext): Promise<void>;
+  afterStep(ctx: AgentRunContext): Promise<HookRunResult>;
 
   /**
    * Called when a run starts
    */
-  runStart?(ctx: AgentRunContext): Promise<void>;
+  runStart?(ctx: AgentRunContext): Promise<HookRunResult>;
 
   /**
    * Called when a run ends
    */
-  runEnd?(ctx: AgentRunContext, success: boolean): Promise<void>;
+  runEnd?(ctx: AgentRunContext, success: boolean): Promise<HookRunResult>;
 }

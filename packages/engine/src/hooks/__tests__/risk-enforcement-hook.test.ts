@@ -102,6 +102,21 @@ describe('RiskEnforcementHook', () => {
       await expect(hook.onBeforeStep(ctx)).resolves.toBeUndefined();
     });
 
+    it('should NOT call onAllowed when operation exceeds tier (warn-only)', async () => {
+      const onAllowed = vi.fn();
+      const hook = new RiskEnforcementHook({
+        maxRiskTier: 'R0',
+        enforceBlocking: false,
+        onAllowed,
+      });
+      const ctx = makeCtx({
+        metadata: { operation: 'write_file' }, // Requires R2, exceeds R0
+      });
+
+      await hook.onBeforeStep(ctx);
+      expect(onAllowed).not.toHaveBeenCalled();
+    });
+
     it('should block R4 operations when max tier is R2', async () => {
       const hook = new RiskEnforcementHook({ maxRiskTier: 'R2' });
       const ctx = makeCtx({

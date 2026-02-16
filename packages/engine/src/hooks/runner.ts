@@ -11,8 +11,13 @@ import type {
   AgentHook,
   AgentRunContext,
   HookConfig,
+  HookExecutionResult,
+  HookRunResult,
 } from './types.js';
 import { DEFAULT_HOOK_CONFIG } from './types.js';
+
+// Re-export for backwards compatibility
+export type { HookRunResult } from './types.js';
 
 /**
  * Logger interface for hook runner
@@ -33,27 +38,6 @@ const consoleLogger: Logger = {
   warn: (msg, meta) => console.warn(`[HookRunner] ${msg}`, meta || ''),
   error: (msg, meta) => console.error(`[HookRunner] ${msg}`, meta || ''),
 };
-
-/**
- * Result of a single hook execution
- */
-interface HookExecutionResult {
-  hookName: string;
-  success: boolean;
-  durationMs: number;
-  error?: string;
-}
-
-/**
- * Result of running all hooks
- */
-export interface HookRunResult {
-  totalHooks: number;
-  successfulHooks: number;
-  failedHooks: number;
-  results: HookExecutionResult[];
-  totalDurationMs: number;
-}
 
 /**
  * AgentHookRunner manages and executes hooks in the agent lifecycle
@@ -164,7 +148,7 @@ export class AgentHookRunner {
       try {
         const timeoutPromise = new Promise<never>((_, reject) => {
           setTimeout(() => {
-            reject(new Error(`Hook timeout after ${this.config.hookTimeoutMs}ms`));
+            reject(new Error(`Hook '${hook.name}' timeout after ${this.config.hookTimeoutMs}ms`));
           }, this.config.hookTimeoutMs);
         });
 

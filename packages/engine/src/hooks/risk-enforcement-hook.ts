@@ -155,9 +155,9 @@ export class RiskEnforcementHook implements AgentHook {
       } else {
         logger.warn('Risk tier exceeded but enforcement disabled', { reason });
       }
+    } else {
+      await this.config.onAllowed?.(ctx, roleRiskTier);
     }
-
-    await this.config.onAllowed?.(ctx, roleRiskTier);
   }
 
   /**
@@ -187,9 +187,9 @@ export class RiskEnforcementHook implements AgentHook {
       } else {
         logger.warn('Risk tier exceeded but enforcement disabled', { reason, operation });
       }
+    } else {
+      await this.config.onAllowed?.(ctx, operationRiskTier);
     }
-
-    await this.config.onAllowed?.(ctx, operationRiskTier);
   }
 
   /**
@@ -200,12 +200,23 @@ export class RiskEnforcementHook implements AgentHook {
     if (!operation) return;
 
     const operationRiskTier = OPERATION_RISK_TIERS[operation] || 'R0';
-    logger.debug('Operation completed within risk tier', {
-      operation,
-      requiredTier: operationRiskTier,
-      maxTier: this.config.maxRiskTier,
-      runId: ctx.runId,
-    });
+    const withinTier = meetsRiskTier(operationRiskTier, this.config.maxRiskTier);
+
+    if (withinTier) {
+      logger.debug('Operation completed within risk tier', {
+        operation,
+        requiredTier: operationRiskTier,
+        maxTier: this.config.maxRiskTier,
+        runId: ctx.runId,
+      });
+    } else {
+      logger.warn('Operation exceeded risk tier (enforcement may be disabled)', {
+        operation,
+        requiredTier: operationRiskTier,
+        maxTier: this.config.maxRiskTier,
+        runId: ctx.runId,
+      });
+    }
   }
 
   /**

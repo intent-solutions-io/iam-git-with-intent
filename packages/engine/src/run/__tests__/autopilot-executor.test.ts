@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { mockHookRunner } = vi.hoisted(() => ({
   mockHookRunner: {
     runStart: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
+    beforeStep: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
     afterStep: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
     runEnd: vi.fn().mockResolvedValue({ totalHooks: 0, successfulHooks: 0, failedHooks: 0, results: [], totalDurationMs: 0 }),
     register: vi.fn(),
