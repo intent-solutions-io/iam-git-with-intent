@@ -137,7 +137,7 @@ export interface AgentRunContextWithPR extends AgentRunContext {
 /**
  * Interface for agent lifecycle hooks
  *
- * Hooks are called after each agent step completes. They should:
+ * Hooks are called before and after each agent step. They should:
  * - Execute quickly (async but non-blocking to main flow)
  * - Handle errors gracefully (never crash the main pipeline)
  * - Be idempotent when possible
@@ -156,6 +156,17 @@ export interface AgentHook {
    * @throws Should NOT throw - errors should be caught and logged internally
    */
   onAfterStep(ctx: AgentRunContext): Promise<void>;
+
+  /**
+   * Optional: Called before an agent step executes
+   *
+   * Unlike onAfterStep, onBeforeStep MAY throw to block an operation
+   * before it executes (e.g. risk tier enforcement).
+   *
+   * @param ctx - The context of the upcoming step
+   * @throws May throw to prevent the operation from executing
+   */
+  onBeforeStep?(ctx: AgentRunContext): Promise<void>;
 
   /**
    * Optional: Called when a run starts
@@ -235,6 +246,13 @@ export interface AgentHookRunner {
    * Register a hook with the runner
    */
   registerHook(hook: AgentHook): void;
+
+  /**
+   * Called before an agent step executes.
+   * Unlike afterStep, errors from beforeStep propagate to the caller
+   * so the operation can be blocked.
+   */
+  beforeStep(ctx: AgentRunContext): Promise<void>;
 
   /**
    * Called after an agent step completes

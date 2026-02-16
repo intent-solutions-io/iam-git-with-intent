@@ -161,28 +161,51 @@ export class RiskEnforcementHook implements AgentHook {
   }
 
   /**
-   * Validate step completion and check for risk violations
+   * Validate operation risk tier BEFORE the step executes.
+   *
+   * Throws RiskEnforcementError to block operations that exceed
+   * the allowed risk tier, preventing the operation from running.
    */
-  async onAfterStep(ctx: AgentRunContext): Promise<void> {
-    // Extract operation from metadata if available
+  async onBeforeStep(ctx: AgentRunContext): Promise<void> {
     const operation = ctx.metadata?.operation as string | undefined;
+    if (!operation) return;
 
-    if (operation) {
-      const operationRiskTier = OPERATION_RISK_TIERS[operation] || 'R0';
+    const operationRiskTier = OPERATION_RISK_TIERS[operation] || 'R0';
 
-      if (!meetsRiskTier(operationRiskTier, this.config.maxRiskTier)) {
-        const reason = `Operation '${operation}' requires ${operationRiskTier}, but max allowed is ${this.config.maxRiskTier}`;
+    if (!meetsRiskTier(operationRiskTier, this.config.maxRiskTier)) {
+      const reason = `Operation '${operation}' requires ${operationRiskTier}, but max allowed is ${this.config.maxRiskTier}`;
 
-        if (this.config.enforceBlocking) {
-          await this.config.onBlocked?.(ctx, reason);
-          // Log but don't throw - step already completed
-          logger.error('Risk enforcement violation detected', { reason, operation });
-        } else {
-          logger.warn('Risk tier exceeded but enforcement disabled', { reason, operation });
-        }
+      if (this.config.enforceBlocking) {
+        this.blockedOperations.set(ctx.runId, reason);
+        await this.config.onBlocked?.(ctx, reason);
+        throw new RiskEnforcementError(
+          reason,
+          operationRiskTier,
+          this.config.maxRiskTier,
+          operation,
+        );
+      } else {
+        logger.warn('Risk tier exceeded but enforcement disabled', { reason, operation });
       }
     }
 
+    await this.config.onAllowed?.(ctx, operationRiskTier);
+  }
+
+  /**
+   * Audit log after step completion (non-blocking).
+   */
+  async onAfterStep(ctx: AgentRunContext): Promise<void> {
+    const operation = ctx.metadata?.operation as string | undefined;
+    if (!operation) return;
+
+    const operationRiskTier = OPERATION_RISK_TIERS[operation] || 'R0';
+    logger.debug('Operation completed within risk tier', {
+      operation,
+      requiredTier: operationRiskTier,
+      maxTier: this.config.maxRiskTier,
+      runId: ctx.runId,
+    });
   }
 
   /**

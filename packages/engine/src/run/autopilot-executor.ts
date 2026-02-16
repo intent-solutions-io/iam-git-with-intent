@@ -242,6 +242,13 @@ export class AutopilotExecutor {
       }
 
       // Phase 3: Apply patches to isolated workspace
+      // Enforce risk tier BEFORE writing files
+      await this.hookRunner.beforeStep(
+        this.createHookContext('CODER', 'apply-patches', 'pending', undefined, {
+          operation: 'write_file',
+          filesCount: coderOutput.code.files.length,
+        })
+      );
       const applyStart = Date.now();
       const applyResult = await this.applyPatches(coderOutput);
       const applyDuration = Date.now() - applyStart;
@@ -277,6 +284,12 @@ export class AutopilotExecutor {
       // Phase 4: Run tests (optional)
       const testStart = Date.now();
       if (!this.config.skipTests && !this.config.dryRun) {
+        // Enforce risk tier BEFORE executing tests
+        await this.hookRunner.beforeStep(
+          this.createHookContext('VALIDATOR', 'run-tests', 'pending', undefined, {
+            operation: 'run_tests',
+          })
+        );
         const testResult = await this.runTests();
         const testDuration = Date.now() - testStart;
         result.phases.test = {
@@ -316,6 +329,12 @@ export class AutopilotExecutor {
       // Phase 5: Create PR
       const prStart = Date.now();
       if (!this.config.dryRun) {
+        // Enforce risk tier BEFORE opening PR
+        await this.hookRunner.beforeStep(
+          this.createHookContext('FOREMAN', 'create-pr', 'pending', undefined, {
+            operation: 'open_pr',
+          })
+        );
         const prResult = await this.createPR(coderOutput);
         const prDuration = Date.now() - prStart;
         result.phases.pr = {

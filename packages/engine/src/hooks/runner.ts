@@ -124,6 +124,87 @@ export class AgentHookRunner {
   }
 
   /**
+   * Execute onBeforeStep for all hooks that implement it.
+   *
+   * Unlike afterStep, errors from beforeStep hooks are NOT swallowed —
+   * they propagate to the caller so that the operation can be blocked
+   * before it executes (e.g. risk enforcement).
+   *
+   * Hooks run in series to ensure deterministic ordering and so that
+   * an early hook can abort before later hooks run.
+   *
+   * @param ctx - The context of the upcoming step
+   * @returns Results of hook execution
+   * @throws Re-throws errors from hooks (e.g. RiskEnforcementError)
+   */
+  async beforeStep(ctx: AgentRunContext): Promise<HookRunResult> {
+    const startTime = Date.now();
+    const results: HookExecutionResult[] = [];
+
+    const enabledHooks = await this.getEnabledHooks();
+    const hooksWithBeforeStep = enabledHooks.filter((h) => h.onBeforeStep);
+
+    if (hooksWithBeforeStep.length === 0) {
+      return {
+        totalHooks: 0,
+        successfulHooks: 0,
+        failedHooks: 0,
+        results: [],
+        totalDurationMs: 0,
+      };
+    }
+
+    if (this.config.debug) {
+      this.logger.debug(`Running ${hooksWithBeforeStep.length} beforeStep hooks for step ${ctx.stepId}`);
+    }
+
+    // Always run in series — an early hook may block further execution
+    for (const hook of hooksWithBeforeStep) {
+      const hookStart = Date.now();
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`Hook timeout after ${this.config.hookTimeoutMs}ms`));
+          }, this.config.hookTimeoutMs);
+        });
+
+        await Promise.race([hook.onBeforeStep!(ctx), timeoutPromise]);
+
+        results.push({
+          hookName: hook.name,
+          success: true,
+          durationMs: Date.now() - hookStart,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        results.push({
+          hookName: hook.name,
+          success: false,
+          durationMs: Date.now() - hookStart,
+          error: errorMessage,
+        });
+
+        this.logger.error(`Hook ${hook.name}.onBeforeStep blocked operation: ${errorMessage}`, {
+          hookName: hook.name,
+          stepId: ctx.stepId,
+          runId: ctx.runId,
+        });
+
+        // Re-throw to block the operation
+        throw error;
+      }
+    }
+
+    return {
+      totalHooks: hooksWithBeforeStep.length,
+      successfulHooks: results.filter((r) => r.success).length,
+      failedHooks: results.filter((r) => !r.success).length,
+      results,
+      totalDurationMs: Date.now() - startTime,
+    };
+  }
+
+  /**
    * Execute all hooks after a step completes
    *
    * This method will:
@@ -286,7 +367,7 @@ export class AgentHookRunner {
    */
   private async executeHookWithTimeout(
     hook: AgentHook,
-    method: 'onAfterStep' | 'onRunStart' | 'onRunEnd',
+    method: 'onAfterStep' | 'onBeforeStep' | 'onRunStart' | 'onRunEnd',
     ctx: AgentRunContext,
     success?: boolean
   ): Promise<HookExecutionResult> {
@@ -304,6 +385,9 @@ export class AgentHookRunner {
       switch (method) {
         case 'onAfterStep':
           hookPromise = hook.onAfterStep(ctx);
+          break;
+        case 'onBeforeStep':
+          hookPromise = hook.onBeforeStep?.(ctx) ?? Promise.resolve();
           break;
         case 'onRunStart':
           hookPromise = hook.onRunStart?.(ctx) ?? Promise.resolve();
