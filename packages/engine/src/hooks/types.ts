@@ -137,7 +137,7 @@ export interface AgentRunContextWithPR extends AgentRunContext {
 /**
  * Interface for agent lifecycle hooks
  *
- * Hooks are called after each agent step completes. They should:
+ * Hooks are called before and after each agent step. They should:
  * - Execute quickly (async but non-blocking to main flow)
  * - Handle errors gracefully (never crash the main pipeline)
  * - Be idempotent when possible
@@ -156,6 +156,17 @@ export interface AgentHook {
    * @throws Should NOT throw - errors should be caught and logged internally
    */
   onAfterStep(ctx: AgentRunContext): Promise<void>;
+
+  /**
+   * Optional: Called before an agent step executes
+   *
+   * Unlike onAfterStep, onBeforeStep MAY throw to block an operation
+   * before it executes (e.g. risk tier enforcement).
+   *
+   * @param ctx - The context of the upcoming step
+   * @throws May throw to prevent the operation from executing
+   */
+  onBeforeStep?(ctx: AgentRunContext): Promise<void>;
 
   /**
    * Optional: Called when a run starts
@@ -228,6 +239,27 @@ export const DEFAULT_HOOK_CONFIG: HookConfig = {
 // =============================================================================
 
 /**
+ * Result of a single hook execution
+ */
+export interface HookExecutionResult {
+  hookName: string;
+  success: boolean;
+  durationMs: number;
+  error?: string;
+}
+
+/**
+ * Result of running all hooks
+ */
+export interface HookRunResult {
+  totalHooks: number;
+  successfulHooks: number;
+  failedHooks: number;
+  results: HookExecutionResult[];
+  totalDurationMs: number;
+}
+
+/**
  * Interface for the hook runner that manages multiple hooks
  */
 export interface AgentHookRunner {
@@ -237,17 +269,24 @@ export interface AgentHookRunner {
   registerHook(hook: AgentHook): void;
 
   /**
+   * Called before an agent step executes.
+   * Unlike afterStep, errors from beforeStep propagate to the caller
+   * so the operation can be blocked.
+   */
+  beforeStep(ctx: AgentRunContext): Promise<HookRunResult>;
+
+  /**
    * Called after an agent step completes
    */
-  afterStep(ctx: AgentRunContext): Promise<void>;
+  afterStep(ctx: AgentRunContext): Promise<HookRunResult>;
 
   /**
    * Called when a run starts
    */
-  runStart?(ctx: AgentRunContext): Promise<void>;
+  runStart?(ctx: AgentRunContext): Promise<HookRunResult>;
 
   /**
    * Called when a run ends
    */
-  runEnd?(ctx: AgentRunContext, success: boolean): Promise<void>;
+  runEnd?(ctx: AgentRunContext, success: boolean): Promise<HookRunResult>;
 }
