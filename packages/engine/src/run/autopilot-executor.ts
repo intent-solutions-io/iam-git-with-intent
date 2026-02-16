@@ -19,10 +19,6 @@ import {
   CoderAgent,
   type CoderRunInput,
   type CoderRunOutput,
-  analyzeQuality,
-  analyzeLinguistic,
-  hasObviousComments,
-  type SlopAnalysisInput,
 } from '@gwi/agents';
 import {
   type IssueMetadata,
@@ -41,6 +37,11 @@ import { mkdir, writeFile } from 'fs/promises';
 import { buildDefaultHookRunner } from '../hooks/config.js';
 import { AgentHookRunner } from '../hooks/runner.js';
 import type { AgentRunContext, AgentRole } from '../hooks/types.js';
+import {
+  CodeQualityHook,
+  CodeQualityError,
+  DEFAULT_CODE_QUALITY_CONFIG,
+} from '../hooks/code-quality-hook.js';
 
 const logger = getLogger('autopilot-executor');
 
@@ -744,7 +745,8 @@ export class AutopilotExecutor {
 
   /**
    * Phase 2.5: Validate generated code quality before apply/commit.
-   * Runs the same slop analyzers used for external PRs on internal output.
+   * Delegates to CodeQualityHook.assess() — single source of truth for
+   * diff synthesis, slop analysis, and threshold enforcement.
    */
   private validateCodeQuality(coderOutput: CoderRunOutput): void {
     const { files, confidence } = coderOutput.code;
@@ -753,71 +755,30 @@ export class AutopilotExecutor {
       return; // Nothing to validate
     }
 
-    const MIN_CONFIDENCE = 40;
-    if (confidence < MIN_CONFIDENCE) {
-      throw new Error(
-        `Code quality gate: confidence too low (${confidence}%, minimum ${MIN_CONFIDENCE}%)`
-      );
-    }
+    const hook = new CodeQualityHook(DEFAULT_CODE_QUALITY_CONFIG);
+    const assessment = hook.assess(files, confidence);
 
-    // Synthesize a diff from generated files for analyzer input
-    const diffLines: string[] = [];
-    const slopFiles: SlopAnalysisInput['files'] = [];
-
-    for (const file of files) {
-      const contentLines = file.content.split('\n');
-      diffLines.push(`--- /dev/null`);
-      diffLines.push(`+++ b/${file.path}`);
-      diffLines.push(`@@ -0,0 +1,${contentLines.length} @@`);
-      for (const line of contentLines) {
-        diffLines.push(`+${line}`);
-      }
-      slopFiles.push({ path: file.path, additions: contentLines.length, deletions: 0 });
-    }
-
-    const analysisInput: SlopAnalysisInput = {
-      prUrl: 'internal://agent/coder',
-      diff: diffLines.join('\n'),
-      prTitle: 'Agent-generated code',
-      prBody: coderOutput.code.summary,
-      contributor: 'gwi-coder-agent',
-      files: slopFiles,
-    };
-
-    const qualityResult = analyzeQuality(analysisInput);
-    const linguisticResult = analyzeLinguistic(analysisInput);
-    const combinedScore = Math.min(100, qualityResult.totalWeight + linguisticResult.totalWeight);
-
-    // Check for obvious comments in the generated code
-    const allContent = files.map(f => f.content).join('\n');
-    const hasObvious = hasObviousComments(allContent);
-
-    const MAX_SLOP_SCORE = 60;
-    if (combinedScore > MAX_SLOP_SCORE) {
-      const signals = [
-        ...qualityResult.signals.map(s => s.signal),
-        ...linguisticResult.signals.map(s => s.signal),
-      ];
-
+    if (!assessment.passed) {
       logger.warn('Code quality gate blocked code', {
         runId: this.config.runId,
-        combinedScore,
-        confidence,
-        signals,
-        hasObviousComments: hasObvious,
+        combinedSlopScore: assessment.combinedSlopScore,
+        confidence: assessment.confidence,
+        signals: assessment.signals,
+        hasObviousComments: assessment.hasObviousComments,
       });
 
-      throw new Error(
-        `Code quality gate: slop score too high (${combinedScore}, max ${MAX_SLOP_SCORE}). ` +
-        `Signals: ${signals.join(', ')}`
+      throw new CodeQualityError(
+        `Code quality gate failed: confidence=${assessment.confidence}%, ` +
+        `slop=${assessment.combinedSlopScore}. Signals: ${assessment.signals.join(', ')}`,
+        assessment,
       );
     }
 
     logger.info('Code quality gate passed', {
       runId: this.config.runId,
-      combinedScore,
-      confidence,
-      hasObviousComments: hasObvious,
+      combinedSlopScore: assessment.combinedSlopScore,
+      confidence: assessment.confidence,
+      hasObviousComments: assessment.hasObviousComments,
     });
   }
 
