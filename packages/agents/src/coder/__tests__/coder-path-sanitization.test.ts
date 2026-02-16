@@ -6,34 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { CoderAgent } from '../index.js';
 
 /**
- * Extracted sanitizePath logic for unit testing.
- * Mirrors the private method in CoderAgent.
+ * Use the real sanitizePath from CoderAgent (static method)
+ * so tests stay aligned with implementation changes.
  */
-function sanitizePath(filePath: string): string {
-  if (!filePath) return '';
-
-  const sanitized = filePath.replace(/\\/g, '/');
-
-  if (sanitized.startsWith('/') || /^[A-Za-z]:/.test(sanitized)) {
-    throw new Error(`Absolute path rejected in LLM output: ${filePath}`);
-  }
-
-  if (sanitized.includes('..')) {
-    throw new Error(`Path traversal detected in LLM output: ${filePath}`);
-  }
-
-  if (/[;&|`$(){}!#]/.test(sanitized)) {
-    throw new Error(`Shell metacharacters detected in LLM path: ${filePath}`);
-  }
-
-  if (sanitized.includes('\0')) {
-    throw new Error(`Null byte detected in LLM path: ${filePath}`);
-  }
-
-  return sanitized;
-}
+const sanitizePath = CoderAgent.sanitizePath;
 
 describe('CoderAgent Path Sanitization', () => {
   describe('valid paths', () => {
