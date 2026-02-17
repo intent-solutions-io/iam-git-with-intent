@@ -13,7 +13,7 @@ import { join } from 'path';
 import {
   SignedApprovalSchema,
   type SignedApproval,
-  type ApprovalScope,
+  type Phase25ApprovalScope as ApprovalScope,
   getLogger,
 } from '@gwi/core';
 

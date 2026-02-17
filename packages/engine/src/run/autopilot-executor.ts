@@ -32,7 +32,7 @@ import {
   type IsolatedWorkspace,
   getFirestoreJobStore,
   getLogger,
-  type ApprovalScope,
+  type Phase25ApprovalScope as ApprovalScope,
 } from '@gwi/core';
 import { createGitHubClient } from '@gwi/integrations';
 import { DenoSandboxProvider } from '@gwi/sandbox';
