@@ -77,8 +77,8 @@ jobs:
           node apps/cli/dist/index.js eval run \
             --ci \
             --verbose \
-            --rubricsDir rubrics \
-            --tasksDir test/goldens/evaluation
+            --rubrics-dir rubrics \
+            --tasks-dir test/goldens/evaluation
 
       - name: Upload results
         if: always()
@@ -114,5 +114,5 @@ jobs:
           node apps/cli/dist/index.js eval run \
             --tag smoke \
             --ci \
-            --rubricsDir rubrics \
-            --tasksDir test/goldens/evaluation
+            --rubrics-dir rubrics \
+            --tasks-dir test/goldens/evaluation
