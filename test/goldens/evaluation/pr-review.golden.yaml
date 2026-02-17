@@ -38,6 +38,19 @@ tasks:
       requiredKeywords:
         - formatCurrency
         - utils
+      goldenOutput: |
+        ## Summary
+
+        Adds a new `formatCurrency` utility function to `src/utils.ts`.
+
+        ## Changes
+
+        - **src/utils.ts** (line 13-15): New `formatCurrency(amount: number)` function that formats a number as a US dollar string using `toFixed(2)`.
+
+        ## Recommendations
+
+        - Consider adding locale support for international currency formatting (line 14).
+        - Add unit tests covering edge cases (negative values, zero, large numbers).
     tags:
       - smoke
       - pr-review
@@ -75,6 +88,28 @@ tasks:
       forbiddenPatterns:
         - "looks good"
         - "lgtm"
+      goldenOutput: |
+        ## Summary
+
+        Modifies JWT token validation in `src/auth.ts` to use a hardcoded secret instead of an environment variable.
+
+        ## Security
+
+        **Critical**: This PR introduces a hardcoded secret key on line 16, replacing the secure `process.env.JWT_SECRET` pattern. Hardcoded secrets are a severe security risk:
+
+        - The secret value is exposed in source control history.
+        - Rotating the key requires a code change and redeploy.
+        - Anyone with repository access can extract the JWT signing key.
+
+        ## Changes
+
+        - **src/auth.ts** (line 15-16): Replaced `process.env.JWT_SECRET` with a hardcoded string literal `"hardcoded-secret-key"`.
+
+        ## Recommendations
+
+        - Revert to using `process.env.JWT_SECRET` or migrate to a secrets manager (e.g., Vault, AWS Secrets Manager).
+        - Remove the hardcoded value from git history using `git filter-branch` or BFG Repo-Cleaner.
+        - Add a pre-commit hook to detect hardcoded secrets.
     tags:
       - security
       - pr-review
@@ -134,6 +169,22 @@ tasks:
         - comments
         - handler
         - test
+      goldenOutput: |
+        ## Summary
+
+        Adds a new `/comments` API endpoint with handler and test coverage.
+
+        ## Changes
+
+        - **src/api/routes.ts** (line 12): Registers new `/comments` route pointing to `commentsHandler`.
+        - **src/api/handlers/comments.ts** (new file): Implements `commentsHandler` that fetches comments by `postId` from the database.
+        - **test/comments.test.ts** (new file): Adds unit test for the comments handler.
+
+        ## Recommendations
+
+        - Add input validation for `postId` parameter to prevent injection attacks (line 4 of comments.ts).
+        - Add error handling for the `db.comments.findByPost()` call (e.g., post not found).
+        - Consider adding pagination for posts with many comments.
     tags:
       - multifile
       - pr-review

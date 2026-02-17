@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import { writeFileSync } from 'fs';
 import {
   createAuditVerificationService,
-  createInMemoryAuditLogStore,
+  getImmutableAuditLogStore,
   createAuditLogExportService,
   type VerificationReport,
   type IntegrityIssue,
@@ -217,7 +217,7 @@ export async function auditVerifyCommand(options: AuditVerifyOptions): Promise<v
 
   // Create store and verification service
   // In production, this would connect to the actual storage backend
-  const store = createInMemoryAuditLogStore();
+  const store = getImmutableAuditLogStore();
   const service = createAuditVerificationService(store);
 
   // Build verification options
@@ -279,7 +279,7 @@ export async function auditHealthCommand(options: {
   const tenantId = options.tenant ?? 'default';
 
   // Create store and verification service
-  const store = createInMemoryAuditLogStore();
+  const store = getImmutableAuditLogStore();
   const service = createAuditVerificationService(store);
 
   try {
@@ -350,7 +350,7 @@ export async function auditIsValidCommand(options: {
   const tenantId = options.tenant ?? 'default';
 
   // Create store and verification service
-  const store = createInMemoryAuditLogStore();
+  const store = getImmutableAuditLogStore();
   const service = createAuditVerificationService(store);
 
   try {
@@ -442,7 +442,7 @@ export async function auditExportCommand(options: AuditExportOptions): Promise<v
   }
 
   // Create store and export service
-  const store = createInMemoryAuditLogStore();
+  const store = getImmutableAuditLogStore();
   const service = createAuditLogExportService(store);
 
   try {

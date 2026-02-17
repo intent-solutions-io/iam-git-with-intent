@@ -243,8 +243,10 @@ export class GoldenTaskRunner {
       // Load rubric
       const rubric = this.loadRubric(task.rubric);
 
-      // Generate output
-      const actualOutput = await this.config.outputGenerator(task.input, task.workflow);
+      // Use golden output fixture when available, otherwise call the generator.
+      // In CI (mock mode), golden outputs validate rubric calibration without needing a real agent.
+      const actualOutput = task.expectedOutput.goldenOutput
+        ?? await this.config.outputGenerator(task.input, task.workflow);
 
       // Prepare evaluation input
       const evalInput: EvaluationInput = {

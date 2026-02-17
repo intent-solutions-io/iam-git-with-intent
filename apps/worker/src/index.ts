@@ -22,6 +22,7 @@ import {
   getFirestoreCheckpointManager,
   getLogger,
   getFirestoreClient,
+  getTenantStore,
   // Auth
   verifyGcpOidcToken,
   extractBearerToken,
@@ -34,7 +35,11 @@ import {
   shutdownOTel,
   prometheusMiddleware,
 } from '@gwi/core';
-import { getIdempotencyService } from '@gwi/engine';
+import {
+  getIdempotencyService,
+  RecoveryOrchestrator,
+  InMemoryCheckpointStore,
+} from '@gwi/engine';
 import { WorkerProcessor, type WorkerJob, type JobResult } from './processor.js';
 import { createMessageBroker, type MessageBroker, type BrokerMessage } from './pubsub.js';
 import { registerHandlers } from './handlers/index.js';
@@ -403,6 +408,21 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 // =============================================================================
 
 async function start(): Promise<void> {
+  // Recover orphaned runs from previous worker instances
+  try {
+    const recoveryOrchestrator = new RecoveryOrchestrator({
+      store: getTenantStore(),
+      checkpointStore: new InMemoryCheckpointStore(),
+      ownerId: `worker-${process.pid}`,
+    });
+    const recoveryResult = await recoveryOrchestrator.recoverOrphanedRuns();
+    logger.info('Startup recovery complete', { ...recoveryResult });
+  } catch (error) {
+    logger.error('Startup recovery failed (non-fatal)', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   // Create message broker
   broker = createMessageBroker({
     projectId: config.projectId,

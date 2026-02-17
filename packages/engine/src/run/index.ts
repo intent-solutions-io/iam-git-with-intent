@@ -23,3 +23,4 @@ export {
   type RecoveryOptions,
   type RecoveryOrchestratorConfig,
 } from './recovery.js';
+export * from './approval-loader.js';
