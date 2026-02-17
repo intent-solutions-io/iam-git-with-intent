@@ -24,6 +24,7 @@ import {
   type IssueMetadata,
   type ComplexityScore,
   type StepStatus,
+  type StepCheckpoint,
   getRunWorkspaceDir,
   getRunArtifactPaths,
   createIsolatedWorkspace,
@@ -31,6 +32,7 @@ import {
   type IsolatedWorkspace,
   getFirestoreJobStore,
   getLogger,
+  type ApprovalScope,
 } from '@gwi/core';
 import { createGitHubClient } from '@gwi/integrations';
 import { DenoSandboxProvider } from '@gwi/sandbox';
@@ -45,6 +47,12 @@ import {
   CodeQualityError,
   DEFAULT_CODE_QUALITY_CONFIG,
 } from '../hooks/code-quality-hook.js';
+import type { CheckpointStore } from './checkpoint.js';
+import { InMemoryCheckpointStore } from './checkpoint.js';
+import {
+  loadSignedApprovalsForRun,
+  checkApprovalCoverage,
+} from './approval-loader.js';
 
 const logger = getLogger('autopilot-executor');
 
@@ -121,6 +129,10 @@ export interface AutopilotConfig {
   workerId?: string;
   /** Job ID for durable tracking */
   jobId?: string;
+  /** Checkpoint store for durable phase persistence */
+  checkpointStore?: CheckpointStore;
+  /** Require signed approval before destructive operations (commit/push/PR) */
+  requireApproval?: boolean;
 }
 
 /**
@@ -179,12 +191,14 @@ export class AutopilotExecutor {
   private startTime: number = 0;
   private hookRunner: AgentHookRunner | null = null;
   private completedPhases: string[] = [];
+  private checkpointStore: CheckpointStore;
 
   constructor(config: AutopilotConfig) {
     this.config = {
       ...config,
       baseBranch: config.baseBranch || 'main',
     };
+    this.checkpointStore = config.checkpointStore ?? new InMemoryCheckpointStore();
   }
 
   /**
@@ -236,7 +250,7 @@ export class AutopilotExecutor {
         durationMs: analyzeDuration,
         data: { complexity: analysis.complexity, requirements: analysis.requirements.length },
       };
-      this.checkpoint('analyze', { complexity: analysis.complexity });
+      await this.checkpoint('analyze', { complexity: analysis.complexity });
       await this.hookRunner.afterStep(
         this.createHookContext('TRIAGE', 'analyze', 'completed', analyzeDuration, {
           complexity: analysis.complexity,
@@ -259,7 +273,7 @@ export class AutopilotExecutor {
         durationMs: planDuration,
         data: { filesGenerated: coderOutput.code.files.length },
       };
-      this.checkpoint('plan', { filesGenerated: coderOutput.code.files.length });
+      await this.checkpoint('plan', { filesGenerated: coderOutput.code.files.length });
 
       // Fire afterStep with generated files in metadata so CodeQualityHook can assess
       await this.hookRunner.afterStep(
@@ -276,6 +290,8 @@ export class AutopilotExecutor {
       }
 
       // Phase 3: Apply patches to isolated workspace
+      // Verify approval before destructive operations (commit + push)
+      await this.ensureApproval(['commit', 'push']);
       // Enforce risk tier BEFORE writing files
       await this.hookRunner.beforeStep(
         this.createHookContext('CODER', 'apply-patches', 'pending', undefined, {
@@ -303,7 +319,7 @@ export class AutopilotExecutor {
         throw new Error(`Apply phase failed: ${applyResult.error}`);
       }
 
-      this.checkpoint('apply', {
+      await this.checkpoint('apply', {
         filesModified: applyResult.filesModified,
         filesCreated: applyResult.filesCreated,
       });
@@ -332,7 +348,7 @@ export class AutopilotExecutor {
           passed: testResult.passed,
           error: testResult.error,
         };
-        this.checkpoint('test', { passed: testResult.passed });
+        await this.checkpoint('test', { passed: testResult.passed });
         await this.hookRunner.afterStep(
           this.createHookContext('VALIDATOR', 'run-tests', testResult.passed ? 'completed' : 'failed', testDuration, {
             passed: testResult.passed,
@@ -352,7 +368,7 @@ export class AutopilotExecutor {
           durationMs: 0,
           data: { skipped: true },
         };
-        this.checkpoint('test', { skipped: true });
+        await this.checkpoint('test', { skipped: true });
         await this.hookRunner.afterStep(
           this.createHookContext('VALIDATOR', 'run-tests', 'skipped', 0, {
             skipped: true,
@@ -363,6 +379,8 @@ export class AutopilotExecutor {
       // Phase 5: Create PR
       const prStart = Date.now();
       if (!this.config.dryRun) {
+        // Verify approval before opening PR
+        await this.ensureApproval(['open_pr']);
         // Enforce risk tier BEFORE opening PR
         await this.hookRunner.beforeStep(
           this.createHookContext('FOREMAN', 'create-pr', 'pending', undefined, {
@@ -389,7 +407,7 @@ export class AutopilotExecutor {
           throw new Error(`PR creation failed: ${prResult.error}`);
         }
 
-        this.checkpoint('pr', { prNumber: prResult.prNumber });
+        await this.checkpoint('pr', { prNumber: prResult.prNumber });
         await this.hookRunner.afterStep(
           this.createHookContext('FOREMAN', 'create-pr', 'completed', prDuration, {
             prNumber: prResult.prNumber,
@@ -403,7 +421,7 @@ export class AutopilotExecutor {
           durationMs: 0,
           data: { dryRun: true },
         };
-        this.checkpoint('pr', { dryRun: true });
+        await this.checkpoint('pr', { dryRun: true });
         await this.hookRunner.afterStep(
           this.createHookContext('FOREMAN', 'create-pr', 'completed', 0, {
             dryRun: true,
@@ -970,15 +988,53 @@ export class AutopilotExecutor {
 
   /**
    * Record a checkpoint after a successful phase.
-   * Stores phase completion state for resume/replay.
+   * Persists phase completion state for resume/replay via CheckpointStore.
    */
-  private checkpoint(phase: string, data?: Record<string, unknown>): void {
+  private async checkpoint(phase: string, data?: Record<string, unknown>): Promise<void> {
     this.completedPhases.push(phase);
-    logger.info('Checkpoint created', {
+    const stepCheckpoint: StepCheckpoint = {
+      stepId: `${this.config.runId}-${phase}`,
+      agent: phase,
+      status: 'completed',
+      timestamp: new Date(),
+      resumable: true,
+      idempotent: false,
+      output: data,
+    };
+    await this.checkpointStore.saveCheckpoint(this.config.runId, stepCheckpoint);
+    logger.info('Checkpoint persisted', {
       runId: this.config.runId,
       phase,
       completedPhases: this.completedPhases,
       ...data,
+    });
+  }
+
+  /**
+   * Verify that required approval scopes are present before destructive operations.
+   * Loads signed approvals from `.gwi/approvals/` and checks coverage.
+   * Throws with an actionable error message if approval is missing.
+   */
+  private async ensureApproval(requiredScopes: ApprovalScope[]): Promise<void> {
+    if (!this.config.requireApproval) {
+      return;
+    }
+
+    const approvals = await loadSignedApprovalsForRun(this.config.runId);
+    const { covered, missing } = checkApprovalCoverage(approvals, requiredScopes);
+
+    if (!covered) {
+      const scopeList = missing.join(', ');
+      throw new Error(
+        `Approval required for scopes: [${scopeList}]. ` +
+        `Run: gwi approval approve --run ${this.config.runId} --scopes ${missing.join(',')}`
+      );
+    }
+
+    logger.info('Approval verified', {
+      runId: this.config.runId,
+      scopes: requiredScopes,
+      approvalCount: approvals.length,
     });
   }
 

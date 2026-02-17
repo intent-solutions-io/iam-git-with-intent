@@ -63,7 +63,7 @@
     "@gwi/core": "*",
     "@octokit/auth-app": "^7.1.0",
     "@octokit/rest": "^21.0.0",
-    "axios": "^1.7.0",
+    "axios": "^1.13.2",
     "firebase-admin": "12.7.0",
     "google-auth-library": "^9.0.0",
     "googleapis": "^137.0.0",

@@ -13,6 +13,7 @@ import type { WorkerJob, JobContext, JobResult } from '../processor.js';
 import {
   AutopilotExecutor,
   type AutopilotConfig,
+  InMemoryCheckpointStore,
 } from '@gwi/engine';
 import {
   getTenantStore,
@@ -269,6 +270,8 @@ export async function handleAutopilotExecute(
     skipTests: payload.skipTests ?? false,
     workerId,
     jobId: job.id,
+    checkpointStore: new InMemoryCheckpointStore(),
+    requireApproval: payload.automationConfig?.approvalMode !== 'never',
   };
 
   // Get job store for state tracking
