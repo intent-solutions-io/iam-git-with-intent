@@ -12,7 +12,7 @@
     "automation"
   ],
   "author": "Intent Solutions <jeremy@intentsolutions.io>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "BUSL-1.1",
   "engines": {
     "node": ">=20.0.0"
   },

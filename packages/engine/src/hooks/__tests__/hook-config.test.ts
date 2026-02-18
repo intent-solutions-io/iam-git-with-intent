@@ -100,14 +100,19 @@ describe('Hook Configuration', () => {
       expect(hookNames).not.toContain('code-quality');
     });
 
-    it('registers all three hooks when all enabled', async () => {
+    it('registers all hooks when all enabled', async () => {
       process.env.GWI_DECISION_TRACE_ENABLED = 'true';
       const runner = await buildDefaultHookRunner();
       const hookNames = runner.getRegisteredHooks();
       expect(hookNames).toContain('decision-trace');
       expect(hookNames).toContain('risk-enforcement');
       expect(hookNames).toContain('code-quality');
-      expect(hookNames.length).toBe(3);
+      expect(hookNames).toContain('trace-analysis');
+      expect(hookNames).toContain('self-test');
+      expect(hookNames).toContain('environment-onboarding');
+      expect(hookNames).toContain('loop-detection');
+      expect(hookNames).toContain('budget-management');
+      expect(hookNames.length).toBe(8);
     });
   });
 });

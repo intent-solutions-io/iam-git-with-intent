@@ -11,6 +11,11 @@
  * - GWI_DECISION_TRACE_ENABLED: Enable decision trace hook (default: false)
  * - GWI_RISK_ENFORCEMENT_ENABLED: Enable risk enforcement hook (default: true)
  * - GWI_CODE_QUALITY_HOOK_ENABLED: Enable code quality hook (default: true)
+ * - GWI_TRACE_ANALYSIS_ENABLED: Enable trace analysis hook (default: true)
+ * - GWI_SELF_TEST_HOOK_ENABLED: Enable self-test validation hook (default: true)
+ * - GWI_ENVIRONMENT_ONBOARDING_ENABLED: Enable environment onboarding hook (default: true)
+ * - GWI_LOOP_DETECTION_ENABLED: Enable loop detection hook (default: true)
+ * - GWI_BUDGET_MANAGEMENT_ENABLED: Enable budget management hook (default: true)
  *
  * @module @gwi/engine/hooks
  */
@@ -22,6 +27,11 @@ import { AgentHookRunner } from './runner.js';
 import { DecisionTraceHook } from './decision-trace-hook.js';
 import { CodeQualityHook } from './code-quality-hook.js';
 import { RiskEnforcementHook } from './risk-enforcement-hook.js';
+import { TraceAnalysisHook } from './trace-analysis-hook.js';
+import { SelfTestHook } from './self-test-hook.js';
+import { EnvironmentOnboardingHook } from './environment-onboarding-hook.js';
+import { LoopDetectionHook } from './loop-detection-hook.js';
+import { BudgetManagementHook } from './budget-management-hook.js';
 
 const logger = getLogger('hooks');
 
@@ -82,6 +92,24 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
 
     if (config.debug) {
       logger.debug('Code quality hook registered');
+    }
+  }
+
+  // Register harness engineering hooks (all default ON, opt-out via env)
+  const harnessHooks: Array<{ envVar: string; create: () => AgentHook; label: string }> = [
+    { envVar: 'GWI_TRACE_ANALYSIS_ENABLED', create: () => new TraceAnalysisHook(), label: 'Trace analysis' },
+    { envVar: 'GWI_SELF_TEST_HOOK_ENABLED', create: () => new SelfTestHook(), label: 'Self-test' },
+    { envVar: 'GWI_ENVIRONMENT_ONBOARDING_ENABLED', create: () => new EnvironmentOnboardingHook(), label: 'Environment onboarding' },
+    { envVar: 'GWI_LOOP_DETECTION_ENABLED', create: () => new LoopDetectionHook(), label: 'Loop detection' },
+    { envVar: 'GWI_BUDGET_MANAGEMENT_ENABLED', create: () => new BudgetManagementHook(), label: 'Budget management' },
+  ];
+
+  for (const { envVar, create, label } of harnessHooks) {
+    if (process.env[envVar] !== 'false') {
+      runner.register(create());
+      if (config.debug) {
+        logger.debug(`${label} hook registered`);
+      }
     }
   }
 
