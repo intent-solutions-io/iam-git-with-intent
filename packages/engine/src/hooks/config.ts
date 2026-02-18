@@ -11,6 +11,11 @@
  * - GWI_DECISION_TRACE_ENABLED: Enable decision trace hook (default: false)
  * - GWI_RISK_ENFORCEMENT_ENABLED: Enable risk enforcement hook (default: true)
  * - GWI_CODE_QUALITY_HOOK_ENABLED: Enable code quality hook (default: true)
+ * - GWI_TRACE_ANALYSIS_ENABLED: Enable trace analysis hook (default: true)
+ * - GWI_SELF_TEST_HOOK_ENABLED: Enable self-test validation hook (default: true)
+ * - GWI_ENVIRONMENT_ONBOARDING_ENABLED: Enable environment onboarding hook (default: true)
+ * - GWI_LOOP_DETECTION_ENABLED: Enable loop detection hook (default: true)
+ * - GWI_BUDGET_MANAGEMENT_ENABLED: Enable budget management hook (default: true)
  *
  * @module @gwi/engine/hooks
  */
@@ -22,6 +27,11 @@ import { AgentHookRunner } from './runner.js';
 import { DecisionTraceHook } from './decision-trace-hook.js';
 import { CodeQualityHook } from './code-quality-hook.js';
 import { RiskEnforcementHook } from './risk-enforcement-hook.js';
+import { TraceAnalysisHook } from './trace-analysis-hook.js';
+import { SelfTestHook } from './self-test-hook.js';
+import { EnvironmentOnboardingHook } from './environment-onboarding-hook.js';
+import { LoopDetectionHook } from './loop-detection-hook.js';
+import { BudgetManagementHook } from './budget-management-hook.js';
 
 const logger = getLogger('hooks');
 
@@ -82,6 +92,56 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
 
     if (config.debug) {
       logger.debug('Code quality hook registered');
+    }
+  }
+
+  // Register trace analysis hook (enabled by default, opt-out via env)
+  if (process.env.GWI_TRACE_ANALYSIS_ENABLED !== 'false') {
+    const traceAnalysisHook = new TraceAnalysisHook();
+    runner.register(traceAnalysisHook);
+
+    if (config.debug) {
+      logger.debug('Trace analysis hook registered');
+    }
+  }
+
+  // Register self-test hook (enabled by default, opt-out via env)
+  if (process.env.GWI_SELF_TEST_HOOK_ENABLED !== 'false') {
+    const selfTestHook = new SelfTestHook();
+    runner.register(selfTestHook);
+
+    if (config.debug) {
+      logger.debug('Self-test hook registered');
+    }
+  }
+
+  // Register environment onboarding hook (enabled by default, opt-out via env)
+  if (process.env.GWI_ENVIRONMENT_ONBOARDING_ENABLED !== 'false') {
+    const envOnboardingHook = new EnvironmentOnboardingHook();
+    runner.register(envOnboardingHook);
+
+    if (config.debug) {
+      logger.debug('Environment onboarding hook registered');
+    }
+  }
+
+  // Register loop detection hook (enabled by default, opt-out via env)
+  if (process.env.GWI_LOOP_DETECTION_ENABLED !== 'false') {
+    const loopDetectionHook = new LoopDetectionHook();
+    runner.register(loopDetectionHook);
+
+    if (config.debug) {
+      logger.debug('Loop detection hook registered');
+    }
+  }
+
+  // Register budget management hook (enabled by default, opt-out via env)
+  if (process.env.GWI_BUDGET_MANAGEMENT_ENABLED !== 'false') {
+    const budgetHook = new BudgetManagementHook();
+    runner.register(budgetHook);
+
+    if (config.debug) {
+      logger.debug('Budget management hook registered');
     }
   }
 

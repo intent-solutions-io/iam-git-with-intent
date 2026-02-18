@@ -79,3 +79,60 @@ export {
   DEFAULT_CODE_QUALITY_CONFIG,
 } from './code-quality-hook.js';
 export type { CodeQualityConfig, QualityAssessment } from './code-quality-hook.js';
+
+// Trace Analysis Hook (Harness Engineering Pattern 5: Trace Analysis Feedback Loop)
+export {
+  TraceAnalysisHook,
+  createTraceAnalysisHook,
+  DEFAULT_TRACE_ANALYSIS_CONFIG,
+} from './trace-analysis-hook.js';
+export type {
+  TraceAnalysisConfig,
+  TraceAnalysisResult,
+  FailurePattern,
+} from './trace-analysis-hook.js';
+
+// Self-Test Hook (Harness Engineering Pattern 1: Build & Self-Verify)
+export {
+  SelfTestHook,
+  createSelfTestHook,
+  SelfTestError,
+  DEFAULT_SELF_TEST_CONFIG,
+} from './self-test-hook.js';
+export type { SelfTestConfig, SelfTestValidation } from './self-test-hook.js';
+
+// Environment Onboarding Hook (Harness Engineering Pattern 2: Context Engineering)
+export {
+  EnvironmentOnboardingHook,
+  createEnvironmentOnboardingHook,
+  DEFAULT_ENV_ONBOARDING_CONFIG,
+} from './environment-onboarding-hook.js';
+export type {
+  EnvironmentOnboardingConfig,
+  EnvironmentProfile,
+} from './environment-onboarding-hook.js';
+
+// Loop Detection Hook (Harness Engineering Pattern 3: Loop Detection)
+export {
+  LoopDetectionHook,
+  createLoopDetectionHook,
+  LoopDetectionError,
+  DEFAULT_LOOP_DETECTION_CONFIG,
+  calculateSimilarity,
+} from './loop-detection-hook.js';
+export type {
+  LoopDetectionConfig,
+  LoopDetectionResult,
+} from './loop-detection-hook.js';
+
+// Budget Management Hook (Harness Engineering Pattern 6: Time/Token Budgeting)
+export {
+  BudgetManagementHook,
+  createBudgetManagementHook,
+  BudgetExceededError,
+  DEFAULT_BUDGET_CONFIG,
+} from './budget-management-hook.js';
+export type {
+  BudgetManagementConfig,
+  BudgetStatus,
+} from './budget-management-hook.js';
