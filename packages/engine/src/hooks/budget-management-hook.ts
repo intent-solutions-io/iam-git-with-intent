@@ -120,9 +120,12 @@ export class BudgetManagementHook implements AgentHook {
   }
 
   /**
-   * Initialize budget tracking on run start
+   * Initialize budget tracking on run start (idempotent per runId)
    */
   async onRunStart(ctx: AgentRunContext): Promise<void> {
+    // Guard: autopilot calls runStart multiple times per runId
+    if (this.runBudgets.has(ctx.runId)) return;
+
     this.runBudgets.set(ctx.runId, {
       inputTokens: 0,
       outputTokens: 0,

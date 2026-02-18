@@ -95,53 +95,21 @@ export async function buildDefaultHookRunner(): Promise<AgentHookRunner> {
     }
   }
 
-  // Register trace analysis hook (enabled by default, opt-out via env)
-  if (process.env.GWI_TRACE_ANALYSIS_ENABLED !== 'false') {
-    const traceAnalysisHook = new TraceAnalysisHook();
-    runner.register(traceAnalysisHook);
+  // Register harness engineering hooks (all default ON, opt-out via env)
+  const harnessHooks: Array<{ envVar: string; create: () => AgentHook; label: string }> = [
+    { envVar: 'GWI_TRACE_ANALYSIS_ENABLED', create: () => new TraceAnalysisHook(), label: 'Trace analysis' },
+    { envVar: 'GWI_SELF_TEST_HOOK_ENABLED', create: () => new SelfTestHook(), label: 'Self-test' },
+    { envVar: 'GWI_ENVIRONMENT_ONBOARDING_ENABLED', create: () => new EnvironmentOnboardingHook(), label: 'Environment onboarding' },
+    { envVar: 'GWI_LOOP_DETECTION_ENABLED', create: () => new LoopDetectionHook(), label: 'Loop detection' },
+    { envVar: 'GWI_BUDGET_MANAGEMENT_ENABLED', create: () => new BudgetManagementHook(), label: 'Budget management' },
+  ];
 
-    if (config.debug) {
-      logger.debug('Trace analysis hook registered');
-    }
-  }
-
-  // Register self-test hook (enabled by default, opt-out via env)
-  if (process.env.GWI_SELF_TEST_HOOK_ENABLED !== 'false') {
-    const selfTestHook = new SelfTestHook();
-    runner.register(selfTestHook);
-
-    if (config.debug) {
-      logger.debug('Self-test hook registered');
-    }
-  }
-
-  // Register environment onboarding hook (enabled by default, opt-out via env)
-  if (process.env.GWI_ENVIRONMENT_ONBOARDING_ENABLED !== 'false') {
-    const envOnboardingHook = new EnvironmentOnboardingHook();
-    runner.register(envOnboardingHook);
-
-    if (config.debug) {
-      logger.debug('Environment onboarding hook registered');
-    }
-  }
-
-  // Register loop detection hook (enabled by default, opt-out via env)
-  if (process.env.GWI_LOOP_DETECTION_ENABLED !== 'false') {
-    const loopDetectionHook = new LoopDetectionHook();
-    runner.register(loopDetectionHook);
-
-    if (config.debug) {
-      logger.debug('Loop detection hook registered');
-    }
-  }
-
-  // Register budget management hook (enabled by default, opt-out via env)
-  if (process.env.GWI_BUDGET_MANAGEMENT_ENABLED !== 'false') {
-    const budgetHook = new BudgetManagementHook();
-    runner.register(budgetHook);
-
-    if (config.debug) {
-      logger.debug('Budget management hook registered');
+  for (const { envVar, create, label } of harnessHooks) {
+    if (process.env[envVar] !== 'false') {
+      runner.register(create());
+      if (config.debug) {
+        logger.debug(`${label} hook registered`);
+      }
     }
   }
 

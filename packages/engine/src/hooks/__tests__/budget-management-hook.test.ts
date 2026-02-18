@@ -254,6 +254,31 @@ describe('BudgetManagementHook', () => {
     });
   });
 
+  describe('idempotent onRunStart', () => {
+    it('should not reset budget on duplicate onRunStart calls', async () => {
+      const ctx = makeCtx();
+      await hook.onRunStart(ctx);
+
+      // Consume some tokens
+      const step1 = makeCtx({ tokensUsed: { input: 1000, output: 500 } });
+      await hook.onAfterStep(step1);
+
+      // Second onRunStart with same runId should NOT reset
+      await hook.onRunStart(makeCtx());
+
+      const step2 = makeCtx({
+        stepId: 'step-2',
+        tokensUsed: { input: 500, output: 250 },
+      });
+      await hook.onAfterStep(step2);
+
+      const status = step2.metadata?.budgetStatus as any;
+      expect(status.totalInputTokens).toBe(1500);
+      expect(status.totalOutputTokens).toBe(750);
+      expect(status.stepsCompleted).toBe(2);
+    });
+  });
+
   describe('no tokens used', () => {
     it('should handle steps without token info', async () => {
       const ctx = makeCtx();

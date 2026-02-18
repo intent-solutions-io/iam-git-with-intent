@@ -55,7 +55,7 @@ function makeMockStore(traces: AgentDecisionTrace[]): DecisionTraceStore {
   return {
     saveTrace: vi.fn(),
     getTrace: vi.fn(),
-    listTraces: vi.fn(),
+    listTraces: vi.fn().mockResolvedValue(traces),
     getTracesForRun: vi.fn().mockResolvedValue(traces),
     updateOutcome: vi.fn(),
     addFeedback: vi.fn(),
@@ -201,6 +201,35 @@ describe('TraceAnalysisHook', () => {
       const result = hook.analyzeTraces('run-1', traces);
       expect(result.totalTokens).toEqual({ input: 300, output: 150 });
       expect(result.avgDurationMs).toBe(1500);
+    });
+  });
+
+  describe('tenant isolation', () => {
+    it('should use listTraces with tenantId when tenantId is present', async () => {
+      const traces = [makeTrace()];
+      store = makeMockStore(traces);
+      hook = new TraceAnalysisHook({ logResults: false }, store);
+
+      const ctx = makeCtx({ tenantId: 'tenant-123' });
+      await hook.onRunEnd(ctx, true);
+
+      expect(store.listTraces).toHaveBeenCalledWith({
+        runId: 'test-run-1',
+        tenantId: 'tenant-123',
+      });
+      expect(store.getTracesForRun).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to getTracesForRun when no tenantId', async () => {
+      const traces = [makeTrace()];
+      store = makeMockStore(traces);
+      hook = new TraceAnalysisHook({ logResults: false }, store);
+
+      const ctx = makeCtx(); // no tenantId
+      await hook.onRunEnd(ctx, true);
+
+      expect(store.getTracesForRun).toHaveBeenCalledWith('test-run-1');
+      expect(store.listTraces).not.toHaveBeenCalled();
     });
   });
 

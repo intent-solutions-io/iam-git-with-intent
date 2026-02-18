@@ -176,19 +176,14 @@ export class EnvironmentOnboardingHook implements AgentHook {
   }
 
   /**
-   * Inject environment profile into step contexts
+   * No-op — profile injection happens in onBeforeStep only
    */
-  async onAfterStep(ctx: AgentRunContext): Promise<void> {
-    if (!this.config.injectIntoSteps) return;
-
-    const profile = this.runProfiles.get(ctx.runId);
-    if (profile && ctx.metadata) {
-      ctx.metadata.environmentProfile = profile;
-    }
+  async onAfterStep(_ctx: AgentRunContext): Promise<void> {
+    // Profile is injected via onBeforeStep; no post-step action needed
   }
 
   /**
-   * Inject profile before each step too
+   * Inject profile before each step
    */
   async onBeforeStep(ctx: AgentRunContext): Promise<void> {
     if (!this.config.injectIntoSteps) return;
@@ -228,9 +223,13 @@ export class EnvironmentOnboardingHook implements AgentHook {
     const configFiles: string[] = [];
     let isMonorepo = false;
 
-    // Extract file list from metadata (populated by triage or previous steps)
-    const files = (ctx.metadata?.files as string[]) ?? [];
-    const repoRoot = ctx.metadata?.repoRoot as string | undefined;
+    // Extract and validate file list from metadata (populated by triage or previous steps)
+    const rawFiles = ctx.metadata?.files;
+    const files: string[] = Array.isArray(rawFiles)
+      ? rawFiles.filter((f): f is string => typeof f === 'string').slice(0, 10_000)
+      : [];
+    const rawRoot = ctx.metadata?.repoRoot;
+    const repoRoot = typeof rawRoot === 'string' ? rawRoot : undefined;
 
     // Scan file list against known config signals
     for (const filePath of files) {

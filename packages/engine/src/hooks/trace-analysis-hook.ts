@@ -107,7 +107,10 @@ export class TraceAnalysisHook implements AgentHook {
    */
   async onRunEnd(ctx: AgentRunContext, success: boolean): Promise<void> {
     try {
-      const traces = await this.store.getTracesForRun(ctx.runId);
+      // Use tenant-scoped query when tenantId is available (multi-tenant safety)
+      const traces = ctx.tenantId
+        ? await this.store.listTraces({ runId: ctx.runId, tenantId: ctx.tenantId })
+        : await this.store.getTracesForRun(ctx.runId);
 
       if (traces.length === 0) {
         logger.debug('No traces found for run, skipping analysis', { runId: ctx.runId });

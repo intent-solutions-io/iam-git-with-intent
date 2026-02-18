@@ -131,14 +131,18 @@ describe('SelfTestHook', () => {
   });
 
   describe('blocking mode', () => {
-    it('should throw SelfTestError in blocking mode', async () => {
+    it('should throw SelfTestError on next onBeforeStep after failed validation', async () => {
       const blockingHook = new SelfTestHook({
         requireTests: true,
         enforceBlocking: true,
       });
-      const ctx = makeCtx({ metadata: { generatedFiles: SOURCE_FILES } });
+      // onAfterStep stores the failure (does NOT throw — runner swallows afterStep errors)
+      const afterCtx = makeCtx({ metadata: { generatedFiles: SOURCE_FILES } });
+      await blockingHook.onAfterStep(afterCtx);
 
-      await expect(blockingHook.onAfterStep(ctx)).rejects.toThrow(SelfTestError);
+      // onBeforeStep blocks the next step
+      const beforeCtx = makeCtx({ stepId: 'step-2' });
+      await expect(blockingHook.onBeforeStep(beforeCtx)).rejects.toThrow(SelfTestError);
     });
 
     it('should not throw when passing in blocking mode', async () => {
@@ -146,22 +150,51 @@ describe('SelfTestHook', () => {
         requireTests: true,
         enforceBlocking: true,
       });
-      const ctx = makeCtx({ metadata: { generatedFiles: MIXED_FILES } });
+      const afterCtx = makeCtx({ metadata: { generatedFiles: MIXED_FILES } });
+      await blockingHook.onAfterStep(afterCtx);
 
-      await expect(blockingHook.onAfterStep(ctx)).resolves.toBeUndefined();
+      const beforeCtx = makeCtx({ stepId: 'step-2' });
+      await expect(blockingHook.onBeforeStep(beforeCtx)).resolves.toBeUndefined();
     });
 
-    it('should call onBlocked callback', async () => {
+    it('should call onBlocked callback on onBeforeStep', async () => {
       const onBlocked = vi.fn();
       const blockingHook = new SelfTestHook({
         requireTests: true,
         enforceBlocking: true,
         onBlocked,
       });
-      const ctx = makeCtx({ metadata: { generatedFiles: SOURCE_FILES } });
+      const afterCtx = makeCtx({ metadata: { generatedFiles: SOURCE_FILES } });
+      await blockingHook.onAfterStep(afterCtx);
 
-      await expect(blockingHook.onAfterStep(ctx)).rejects.toThrow();
+      const beforeCtx = makeCtx({ stepId: 'step-2' });
+      await expect(blockingHook.onBeforeStep(beforeCtx)).rejects.toThrow();
       expect(onBlocked).toHaveBeenCalledOnce();
+    });
+
+    it('should not block when enforceBlocking is false', async () => {
+      const nonBlockingHook = new SelfTestHook({ requireTests: true });
+      const afterCtx = makeCtx({ metadata: { generatedFiles: SOURCE_FILES } });
+      await nonBlockingHook.onAfterStep(afterCtx);
+
+      const beforeCtx = makeCtx({ stepId: 'step-2' });
+      await expect(nonBlockingHook.onBeforeStep(beforeCtx)).resolves.toBeUndefined();
+    });
+
+    it('should clean up validation state on run end', async () => {
+      const blockingHook = new SelfTestHook({
+        requireTests: true,
+        enforceBlocking: true,
+      });
+      const afterCtx = makeCtx({ metadata: { generatedFiles: SOURCE_FILES } });
+      await blockingHook.onAfterStep(afterCtx);
+
+      // Clean up
+      await blockingHook.onRunEnd(makeCtx(), true);
+
+      // Should not block after cleanup
+      const beforeCtx = makeCtx({ stepId: 'step-3' });
+      await expect(blockingHook.onBeforeStep(beforeCtx)).resolves.toBeUndefined();
     });
   });
 

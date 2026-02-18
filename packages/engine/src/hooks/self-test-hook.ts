@@ -120,12 +120,30 @@ export class SelfTestHook implements AgentHook {
   readonly name = 'self-test';
   private config: SelfTestConfig;
 
+  /** Stored validation results per run for onBeforeStep blocking */
+  private runValidations = new Map<string, SelfTestValidation>();
+
   constructor(config?: Partial<SelfTestConfig>) {
     this.config = { ...DEFAULT_SELF_TEST_CONFIG, ...config };
   }
 
   /**
-   * Validate CODER output for test inclusion
+   * Block the next step if the previous CODER output failed validation
+   * (onBeforeStep errors propagate — this is the correct place to block)
+   */
+  async onBeforeStep(ctx: AgentRunContext): Promise<void> {
+    if (!this.config.enforceBlocking) return;
+
+    const stored = this.runValidations.get(ctx.runId);
+    if (!stored || stored.passed) return;
+
+    const reason = `Self-test validation failed: ${stored.failureReasons.join('; ')}`;
+    await this.config.onBlocked?.(ctx, reason);
+    throw new SelfTestError(reason, stored);
+  }
+
+  /**
+   * Validate CODER output for test inclusion (observational — never throws)
    */
   async onAfterStep(ctx: AgentRunContext): Promise<void> {
     // Only activate for CODER role
@@ -141,6 +159,9 @@ export class SelfTestHook implements AgentHook {
 
     const validation = this.validate(generatedFiles);
 
+    // Store for onBeforeStep blocking
+    this.runValidations.set(ctx.runId, validation);
+
     // Attach validation to metadata for Reviewer consumption
     if (ctx.metadata) {
       ctx.metadata.selfTestValidation = validation;
@@ -155,19 +176,20 @@ export class SelfTestHook implements AgentHook {
       return;
     }
 
-    const reason = `Self-test validation failed: ${validation.failureReasons.join('; ')}`;
-
-    if (this.config.enforceBlocking) {
-      await this.config.onBlocked?.(ctx, reason);
-      throw new SelfTestError(reason, validation);
-    }
-
-    logger.warn('Self-test validation failed (non-blocking)', {
+    logger.warn('Self-test validation failed', {
       runId: ctx.runId,
       reasons: validation.failureReasons,
       testFileCount: validation.testFileCount,
       sourceFileCount: validation.sourceFileCount,
+      enforceBlocking: this.config.enforceBlocking,
     });
+  }
+
+  /**
+   * Clean up stored validation state on run end
+   */
+  async onRunEnd(ctx: AgentRunContext, _success: boolean): Promise<void> {
+    this.runValidations.delete(ctx.runId);
   }
 
   /**
