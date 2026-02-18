@@ -880,3 +880,28 @@ export {
   resetDistributionService,
   initializeDistributionService,
 } from './report-distribution.js';
+
+// =============================================================================
+// Code Factory Pattern 8: Incident-to-Harness Feedback Loop
+// =============================================================================
+
+// Automatic golden task generation from resolved violations
+export {
+  // Types and schemas (prefixed to avoid conflict with evaluation/golden-task.ts)
+  GoldenTaskSchema as IncidentGoldenTaskSchema,
+  type GoldenTask as IncidentGoldenTask,
+  type GenerationResult as IncidentGenerationResult,
+  type HarnessGeneratorConfig,
+
+  // Generator class
+  IncidentHarnessGenerator,
+
+  // Factory functions
+  createHarnessGenerator,
+
+  // Singleton management
+  initializeHarnessGenerator,
+  getHarnessGenerator,
+  setHarnessGenerator,
+  resetHarnessGenerator,
+} from './incident-to-harness.js';
