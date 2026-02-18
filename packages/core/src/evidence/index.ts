@@ -531,3 +531,29 @@ export function calculateRiskScore(
 
 // Types are already exported above with their proper names
 // EvidenceRiskFactor is the canonical name (avoids conflict with storage.RiskFactor)
+
+// =============================================================================
+// Code Factory Pattern 7: Browser Evidence
+// =============================================================================
+
+export {
+  // Schemas
+  BrowserEvidenceItemSchema,
+  BrowserEvidenceManifestSchema,
+
+  // Types
+  type BrowserEvidenceItem,
+  type BrowserEvidenceManifest,
+  type ManifestVerificationResult,
+
+  // Builder
+  EvidenceManifestBuilder,
+
+  // Verification
+  verifyManifest,
+
+  // Factory functions
+  createScreenshotEvidence,
+  createVideoEvidence,
+  resetEvidenceCounter,
+} from './browser-evidence.js';

@@ -8,7 +8,10 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "e2e:evidence": "playwright test --reporter=json",
+    "e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "firebase": "^11.0.0",
