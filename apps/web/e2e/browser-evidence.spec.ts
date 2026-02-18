@@ -163,8 +163,15 @@ test.afterAll(async () => {
       totalItems: collectedEvidence.length,
       totalSizeBytes: collectedEvidence.reduce((s, e) => s + e.sizeBytes, 0),
       flowsCovered: flows,
-      flowsPassed: flows.length,
-      flowsFailed: 0,
+      // Compute pass/fail from visualRegressionPassed field when available
+      flowsPassed: flows.filter((f) => {
+        const items = collectedEvidence.filter((e) => e.flow === f);
+        return items.every((e) => (e as Record<string, unknown>).visualRegressionPassed !== false);
+      }).length,
+      flowsFailed: flows.filter((f) => {
+        const items = collectedEvidence.filter((e) => e.flow === f);
+        return items.some((e) => (e as Record<string, unknown>).visualRegressionPassed === false);
+      }).length,
       captureSessionMs: 0,
     },
     manifestHash,
