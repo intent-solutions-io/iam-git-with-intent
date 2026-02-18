@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-02-17
+
+### Added
+- **Pre-GA Security Hardening** (gwi-ma8): Comprehensive security audit fixes (#83)
+  - Pin all GitHub Actions to SHA digests across 17 workflow files
+  - Add disaster recovery runbook and Firestore backup infrastructure
+  - Wire checkpoint persistence into autopilot executor
+  - Unify approval systems with Phase 25 signed approvals
+  - Fix audit CLI to use configurable store backend
+- **onBeforeStep Hook**: Pre-operation risk enforcement for autopilot (#81)
+- **Sandbox Autopilot Integration**: Wire sandbox into file-write critical path (#82)
+
+### Fixed
+- **P3 Code Review Debt**: Resolve issues from PR #75 security audit (#80)
+- **Engine**: Deduplicate `validateCodeQuality` via `CodeQualityHook.assess()`
+- **Core**: Make default model names configurable via environment variables
+- **Agents**: Validate `CoderAgent.parseResponse()` with Zod schema
+- **Core**: Stop mutating global provider maps in `CustomProviderRegistry`
+- **Sandbox**: Enforce permission checks, deny-by-default network, merge rollback
+- **Core**: Handle colon-in-model-name and undefined envVars in provider LLM layer
+
+### Documentation
+- Add competitive strategy docs and model selection rubric
+
 ## [0.8.0] - 2026-02-12
 
 ### Added
@@ -248,6 +272,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic CLI commands
 - Project template and monorepo structure
 
+[0.9.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.5.0...v0.5.1
