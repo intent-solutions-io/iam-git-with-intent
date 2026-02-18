@@ -2,7 +2,7 @@
 
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
-**Version:** 0.8.0 | **Status:** Active development
+**Version:** 0.9.0 | **Status:** Active development
 
 ---
 
@@ -18,7 +18,7 @@ CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from
 - Need AI governance policies with approval workflows
 
 **Not for teams that:**
-- Need a web dashboard first (CLI-only for now)
+- Want a polished web UI (dashboard exists but CLI is primary interface)
 - Want AI to push directly without approval (intentionally blocked)
 - Need GitLab/Bitbucket support today (GitHub only for now)
 
@@ -89,7 +89,6 @@ flowchart LR
 flowchart TB
     subgraph "Developer Interface"
         CLI[gwi CLI]
-        IDE[IDE Plugins]
         Dashboard[Web Dashboard]
     end
 
@@ -114,7 +113,6 @@ flowchart TB
     end
 
     CLI --> Agents
-    IDE --> Agents
     Dashboard --> Engine
     Agents --> Engine
     Engine --> RAG
@@ -128,7 +126,7 @@ flowchart TB
     Analytics --> Observability
 ```
 
-**Platform capabilities (v0.8.0):**
+**Platform capabilities (v0.9.0):**
 
 | Category | Features |
 |----------|----------|
@@ -294,11 +292,15 @@ flowchart TB
         approval[Approval Gate]
     end
 
-    subgraph Agents["AI Agents"]
+    subgraph Agents["AI Agents (8)"]
+        orchestrator[Orchestrator - Gemini Flash]
+        foreman[Foreman - Workflow Coordinator]
         triage[Triage - Gemini Flash]
-        coder[Coder - Claude Sonnet]
+        coder[Coder - Claude Sonnet/Opus]
         resolver[Resolver - Claude Sonnet/Opus]
-        reviewer[Reviewer - Claude Sonnet]
+        reviewer[Reviewer - Dynamic Model]
+        slop[Slop Detector - Quality Gate]
+        infra_agent[Infra - Infrastructure Agent]
     end
 
     subgraph Storage["Storage"]
@@ -361,6 +363,7 @@ git-with-intent/
 │   ├── api/              # REST API (Cloud Run)
 │   ├── gateway/          # A2A agent coordination
 │   ├── github-webhook/   # Webhook handler
+│   ├── mcp-server/       # MCP tool server (Cloud Run)
 │   ├── webhook-receiver/ # Generic webhook receiver
 │   ├── worker/           # Background jobs
 │   ├── registry/         # Workflow template registry
@@ -372,6 +375,7 @@ git-with-intent/
 │   ├── integrations/     # GitHub/GitLab connectors
 │   ├── connectors/       # Airbyte-style data connectors
 │   ├── forecasting/      # TimeGPT integration
+│   ├── sandbox/          # Secure execution sandbox
 │   └── sdk/              # TypeScript SDK
 └── infra/                # OpenTofu (GCP infrastructure)
 ```
@@ -526,7 +530,7 @@ gwi explain .
 gwi explain HEAD~3
 ```
 
-> **Roadmap:** `gwi simulate` (world model simulation) is planned for Phase 35.
+> **Available:** `gwi simulate` runs world model simulation against a run to predict outcomes before committing.
 
 ---
 
@@ -681,7 +685,7 @@ npm run arv:smoke     # Boot test
 | **Compliance & Analytics** | ✅ Complete | SOC2/SOX tracking (EPIC 021), DORA metrics (EPIC 022) |
 | **Developer Experience** | ✅ Complete | DevEx dashboard (EPIC 009), onboarding automation (EPIC 010) |
 | **Integrations** | ✅ Complete | GitHub, Jira, Linear, Slack connectors |
-| **Knowledge & AI** | ✅ Complete | RAG search (EPIC 023), documentation generation (EPIC 012) |
+| **Knowledge & AI** | 🚧 In Progress | RAG search (EPIC 023 — specification complete), documentation generation (EPIC 012) |
 | **Infrastructure** | ✅ Complete | CI/CD golden paths (EPIC 007), observability (EPIC 014), cost optimization (EPIC 013) |
 
 ```mermaid
@@ -754,6 +758,7 @@ flowchart LR
 - `gwi-gateway` - A2A coordination (Cloud Run)
 - `gwi-webhook` - GitHub webhooks (Cloud Run)
 - `gwi-worker` - Background jobs (Cloud Run)
+- `gwi-mcp-server` - MCP tool server (Cloud Run)
 - Firestore - Operational database
 - Firebase Hosting - Web dashboard
 
@@ -803,6 +808,19 @@ gantt
     section Phase 5: Enterprise
     Knowledge Base/RAG  :active, p5, 2026-02, 2026-04
     Enterprise Features :milestone, p5b, 2026-04, 2026-06
+    section Phase 6: Enterprise Infra
+    Cloud Armor WAF     :p6a, 2026-04, 2026-06
+    External LB         :p6b, 2026-05, 2026-07
+    Memorystore Redis   :p6c, 2026-05, 2026-08
+    API Gateway         :p6d, 2026-06, 2026-09
+    section Phase 7: Analytics & Scale
+    BigQuery Analytics  :p7a, 2026-07, 2026-09
+    CQRS Event Store    :p7b, 2026-08, 2026-10
+    SLO Monitoring      :p7c, 2026-09, 2026-11
+    section Phase 8: Enterprise Identity
+    SCIM 2.0 Provisioning :p8a, 2026-10, 2026-12
+    App Integration     :p8b, 2026-11, 2027-01
+    Advanced RBAC       :p8c, 2026-12, 2027-03
 ```
 
 | Phase | Status | Features |
@@ -812,6 +830,9 @@ gantt
 | 3. Local Development | ✅ Complete | Local review, pre-commit hooks, `gwi gate` |
 | 4. Platform Services | ✅ Complete | Security scanning, AI governance, compliance, analytics |
 | 5. Enterprise | 🚧 In Progress | RAG knowledge base, enterprise auth, advanced reporting |
+| 6. Enterprise Infrastructure | 📋 Planned | Cloud Armor WAF, External LB, Memorystore Redis, API Gateway |
+| 7. Analytics & Scale | 📋 Planned | BigQuery analytics pipeline, CQRS event store, SLO monitoring |
+| 8. Enterprise Identity | 📋 Planned | SCIM 2.0 provisioning, application integration, advanced RBAC |
 
 ---
 
@@ -831,14 +852,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 [Security Policy](SECURITY.md)
 
-- Security audit completed Dec 2025
-- Pre-alpha software - not production-ready
+- Security audit completed Feb 2026
+- Alpha software — approaching GA with readiness gates
 - Security issues: security@intentsolutions.io
 
 ---
 
 ## License
 
-MIT License - Copyright (c) 2025-2026 Intent Solutions LLC
+Business Source License 1.1 - Copyright (c) 2025-2026 Intent Solutions LLC
 
-Open source CLI. Hosted service (when available) is commercial.
+Source-available. Personal and non-commercial use permitted. Production use in a competing SaaS offering requires a commercial license. Converts to Apache License 2.0 on 2030-02-17. See [LICENSE](LICENSE) for details.
