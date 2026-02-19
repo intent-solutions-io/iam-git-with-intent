@@ -1,0 +1,77 @@
+# Dependabot Configuration — Scale & Ops Maturity (gwi-nx0)
+#
+# Agent-first: PRs arrive with `gwi-triage` label so GWI's triage agent
+# auto-scores them and the reviewer agent can auto-merge patch/minor.
+
+version: 2
+
+updates:
+  # npm dependencies (root monorepo)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+      major:
+        update-types: ["major"]
+    labels: ["dependencies", "gwi-triage"]
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 10
+
+  # Docker — apps/api
+  - package-ecosystem: docker
+    directory: "/apps/api"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker", "gwi-triage"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Docker — apps/gateway
+  - package-ecosystem: docker
+    directory: "/apps/gateway"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker", "gwi-triage"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Docker — apps/worker
+  - package-ecosystem: docker
+    directory: "/apps/worker"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker", "gwi-triage"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Docker — apps/github-webhook
+  - package-ecosystem: docker
+    directory: "/apps/github-webhook"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker", "gwi-triage"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Docker — apps/webhook-receiver
+  - package-ecosystem: docker
+    directory: "/apps/webhook-receiver"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "docker", "gwi-triage"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    labels: ["dependencies", "ci", "gwi-triage"]
+    commit-message:
+      prefix: "chore(ci)"

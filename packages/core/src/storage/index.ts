@@ -67,6 +67,8 @@ export {
   InMemorySignalStore,
   InMemoryWorkItemStore,
   InMemoryPRCandidateStore,
+  // gwi-o06: Step subcollection
+  InMemoryStepStore,
 } from './inmemory.js';
 
 // Firestore exports
@@ -105,6 +107,9 @@ export { FirestoreSignalStore } from './firestore-signal.js';
 export { FirestoreWorkItemStore } from './firestore-workitem.js';
 export { FirestorePRCandidateStore } from './firestore-candidate.js';
 
+// gwi-o06: Step subcollection store
+export { FirestoreStepStore } from './firestore-step.js';
+
 // Phase 22: Metering stores
 export {
   FirestoreMeteringStore,
@@ -116,10 +121,10 @@ export {
   type EventQueryOptions,
 } from './firestore-metering.js';
 
-import type { StoreFactory, StorageConfig, TenantStore, RunStore, SignalStore, WorkItemStore, PRCandidateStore, InstanceStore, ScheduleStore } from './interfaces.js';
+import type { StoreFactory, StorageConfig, TenantStore, RunStore, SignalStore, WorkItemStore, PRCandidateStore, InstanceStore, ScheduleStore, StepStore } from './interfaces.js';
 import { getStorageConfig } from './interfaces.js';
 import { SQLiteStoreFactory } from './sqlite.js';
-import { InMemoryTenantStore, InMemoryRunStore, InMemorySignalStore, InMemoryWorkItemStore, InMemoryPRCandidateStore, InMemoryInstanceStore, InMemoryScheduleStore } from './inmemory.js';
+import { InMemoryTenantStore, InMemoryRunStore, InMemorySignalStore, InMemoryWorkItemStore, InMemoryPRCandidateStore, InMemoryInstanceStore, InMemoryScheduleStore, InMemoryStepStore } from './inmemory.js';
 // Import Firestore stores for internal use in getter functions
 import { FirestoreTenantStore } from './firestore-tenant.js';
 import { FirestoreRunStore } from './firestore-run.js';
@@ -128,6 +133,7 @@ import { FirestoreScheduleStore } from './firestore-schedule.js';
 import { FirestoreSignalStore } from './firestore-signal.js';
 import { FirestoreWorkItemStore } from './firestore-workitem.js';
 import { FirestorePRCandidateStore } from './firestore-candidate.js';
+import { FirestoreStepStore } from './firestore-step.js';
 
 /**
  * Create a store factory based on configuration
@@ -278,6 +284,7 @@ export function resetStores(): void {
   signalStoreInstance = null;
   workItemStoreInstance = null;
   prCandidateStoreInstance = null;
+  stepStoreInstance = null;
 }
 
 // =============================================================================
@@ -424,4 +431,33 @@ export function resetPhase14Stores(): void {
   signalStoreInstance = null;
   workItemStoreInstance = null;
   prCandidateStoreInstance = null;
+}
+
+// =============================================================================
+// gwi-o06: Step Store Access
+// =============================================================================
+
+let stepStoreInstance: StepStore | null = null;
+
+/**
+ * Get the StepStore based on environment configuration
+ *
+ * Uses Firestore when GWI_STORE_BACKEND=firestore, otherwise in-memory.
+ *
+ * @returns StepStore instance (singleton)
+ */
+export function getStepStore(): StepStore {
+  if (stepStoreInstance) {
+    return stepStoreInstance;
+  }
+
+  const backend = getStoreBackend();
+
+  if (backend === 'firestore') {
+    stepStoreInstance = new FirestoreStepStore() as StepStore;
+  } else {
+    stepStoreInstance = new InMemoryStepStore();
+  }
+
+  return stepStoreInstance;
 }

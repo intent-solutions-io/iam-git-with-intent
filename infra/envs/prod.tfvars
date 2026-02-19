@@ -66,8 +66,8 @@ labels = {
 # Epic H1: Cloud Run Service Topology
 # =============================================================================
 
-# VPC Networking (disabled for initial deployment - enable after core services deployed)
-enable_vpc_connector        = false
+# VPC Networking (enabled for production — Scale & Ops Maturity gwi-keq)
+enable_vpc_connector        = true
 vpc_connector_cidr          = "10.8.0.0/28"
 vpc_connector_machine_type  = "e2-micro"
 vpc_connector_min_instances = 2
@@ -145,3 +145,11 @@ health_check_config = {
     failure_threshold     = 10
   }
 }
+
+# =============================================================================
+# Budget Alerts (Scale & Ops Maturity gwi-keq)
+# =============================================================================
+enable_budget_alerts   = true
+budget_amount_usd      = 500
+budget_alert_thresholds = [0.5, 0.8, 0.9, 1.0]
+# billing_account_id   = ""  # Set via TF_VAR_billing_account_id or secret

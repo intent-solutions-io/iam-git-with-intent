@@ -114,6 +114,25 @@ export {
 // Internal import for getDefaultModel delegation (used by local getDefaultModel below)
 import { getDefaultModel as getDefaultModelForProvider } from './provider-discovery.js';
 
+// Re-export provider health (gwi-d1k: circuit breaker for LLM calls)
+export {
+  type ProviderHealthStatus,
+  type ProviderHealthReport,
+  getLLMCircuitBreaker,
+  getProviderHealth,
+  isProviderHealthy,
+  tripProvider,
+  resetProvider,
+  recordProviderFailure,
+  resetLLMCircuitBreaker,
+} from './provider-health.js';
+
+// Re-export resilient provider wrapper (gwi-d1k)
+export {
+  wrapWithResilience,
+  type ResilientProviderConfig,
+} from './resilient-provider.js';
+
 // Re-export evaluation hooks
 export {
   type EvaluationHookConfig,
