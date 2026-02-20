@@ -18,6 +18,7 @@ import {
   type ProviderCapabilities,
   type ProviderCostMetadata,
 } from './provider-capabilities.js';
+import { isProviderHealthy } from './provider-health.js';
 
 // =============================================================================
 // Selection Criteria
@@ -329,6 +330,12 @@ export class ProviderSelectionPolicy {
 
     // Check availability
     if (this.availabilityChecker && !this.availabilityChecker(provider, model)) {
+      return null;
+    }
+
+    // Check circuit breaker health (gwi-d1k: skip providers with open circuits)
+    if (!isProviderHealthy(provider)) {
+      reasons.push(`Excluded: circuit breaker OPEN for ${provider}`);
       return null;
     }
 

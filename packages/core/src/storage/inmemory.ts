@@ -14,6 +14,7 @@ import type {
   RunStep,
   RunType,
   RunStatus,
+  StepStatus,
   RunResult,
   RunStore,
   RunCancellation,
@@ -44,6 +45,9 @@ import type {
   PRCandidateStatus,
   PRCandidateStore,
   CandidateApproval,
+  // gwi-o06: Step subcollection
+  StepStore,
+  PaginatedResult,
 } from './interfaces.js';
 import { generateInstanceId, generateScheduleId } from '../templates/index.js';
 
@@ -1058,5 +1062,76 @@ export class InMemoryPRCandidateStore implements PRCandidateStore {
     }
 
     return candidate;
+  }
+}
+
+// =============================================================================
+// In-Memory Step Store (gwi-o06: Run Steps Subcollection)
+// =============================================================================
+
+export class InMemoryStepStore implements StepStore {
+  /** Map of runId → Map of stepId → RunStep */
+  private steps = new Map<string, Map<string, RunStep>>();
+
+  async addStep(runId: string, step: RunStep): Promise<void> {
+    let runSteps = this.steps.get(runId);
+    if (!runSteps) {
+      runSteps = new Map();
+      this.steps.set(runId, runSteps);
+    }
+    runSteps.set(step.id, { ...step });
+  }
+
+  async getStep(runId: string, stepId: string): Promise<RunStep | null> {
+    const runSteps = this.steps.get(runId);
+    if (!runSteps) return null;
+    return runSteps.get(stepId) ?? null;
+  }
+
+  async listSteps(runId: string, opts?: { limit?: number; cursor?: string }): Promise<PaginatedResult<RunStep>> {
+    const runSteps = this.steps.get(runId);
+    if (!runSteps) {
+      return { items: [], hasMore: false };
+    }
+
+    let allSteps = Array.from(runSteps.values());
+
+    // Apply cursor-based pagination
+    if (opts?.cursor) {
+      const cursorIdx = allSteps.findIndex(s => s.id === opts.cursor);
+      if (cursorIdx >= 0) {
+        allSteps = allSteps.slice(cursorIdx + 1);
+      }
+    }
+
+    const limit = opts?.limit ?? 100;
+    const items = allSteps.slice(0, limit);
+    const hasMore = allSteps.length > limit;
+
+    return {
+      items,
+      cursor: hasMore ? items[items.length - 1]?.id : undefined,
+      hasMore,
+    };
+  }
+
+  async updateStepStatus(
+    runId: string,
+    stepId: string,
+    status: StepStatus,
+    update?: Partial<Pick<RunStep, 'output' | 'error' | 'completedAt' | 'durationMs' | 'tokensUsed'>>,
+  ): Promise<void> {
+    const runSteps = this.steps.get(runId);
+    if (!runSteps) {
+      throw new Error(`Run not found: ${runId}`);
+    }
+    const step = runSteps.get(stepId);
+    if (!step) {
+      throw new Error(`Step not found: ${stepId}`);
+    }
+    step.status = status;
+    if (update) {
+      Object.assign(step, update);
+    }
   }
 }

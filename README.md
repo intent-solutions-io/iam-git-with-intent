@@ -1,5 +1,9 @@
 # Git With Intent
 
+[![CI/CD](https://github.com/intent-solutions-io/iam-git-with-intent/actions/workflows/ci.yml/badge.svg)](https://github.com/intent-solutions-io/iam-git-with-intent/actions/workflows/ci.yml)
+[![Tests](https://github.com/intent-solutions-io/iam-git-with-intent/actions/workflows/test.yml/badge.svg)](https://github.com/intent-solutions-io/iam-git-with-intent/actions/workflows/test.yml)
+[![ARV](https://github.com/intent-solutions-io/iam-git-with-intent/actions/workflows/arv.yml/badge.svg)](https://github.com/intent-solutions-io/iam-git-with-intent/actions/workflows/arv.yml)
+
 CLI tool that automates PR workflows. Resolves merge conflicts, creates PRs from issues, reviews code, runs in full autopilot with approval gating.
 
 **Version:** 0.9.0 | **Status:** Active development

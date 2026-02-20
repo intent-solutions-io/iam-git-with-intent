@@ -685,6 +685,25 @@ const healthRouter = createHealthRouter(healthConfig);
 app.use(healthRouter);
 
 /**
+ * GET /health/providers — Circuit breaker state per LLM provider (gwi-d1k)
+ *
+ * Agent-queryable: returns which providers are healthy, degraded, or tripped.
+ * Agents check this before requesting runs to pick a healthy provider.
+ */
+app.get('/health/providers', async (_req, res) => {
+  try {
+    const core = await import('@gwi/core');
+    const report = core.getProviderHealth();
+    res.json(report);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get provider health',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
  * Internal-only middleware for metrics endpoints
  * Requires authenticated user or Cloud Run internal request
  */
@@ -1748,6 +1767,76 @@ app.get('/tenants/:tenantId/runs/:runId', authMiddleware, tenantAuthMiddleware, 
     console.error('Failed to get run:', error);
     res.status(500).json({
       error: 'Failed to get run',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// =============================================================================
+// Routes: Run Steps Subcollection (gwi-o06)
+// =============================================================================
+
+/**
+ * GET /tenants/:tenantId/runs/:runId/steps - List steps for a run (VIEWER+)
+ *
+ * Agent-first: Agents can query individual steps without loading the full
+ * run document. Supports cursor-based pagination.
+ */
+app.get('/tenants/:tenantId/runs/:runId/steps', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId, runId } = req.params;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const cursor = req.query.cursor as string | undefined;
+
+  try {
+    // Verify run belongs to tenant
+    const eng = await getEngine();
+    const run = await eng.getRun(tenantId, runId);
+    if (!run) {
+      return res.status(404).json({ error: 'Run not found', runId });
+    }
+
+    // Use step store (Firestore subcollection in prod, in-memory in dev)
+    const { getStepStore } = await import('@gwi/core');
+    const stepStore = getStepStore();
+    const result = await stepStore.listSteps(runId, { limit, cursor });
+
+    res.json({ ...result, source: 'subcollection' });
+  } catch (error) {
+    console.error('Failed to list steps:', error);
+    res.status(500).json({
+      error: 'Failed to list steps',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /tenants/:tenantId/runs/:runId/steps/:stepId - Get single step (VIEWER+)
+ */
+app.get('/tenants/:tenantId/runs/:runId/steps/:stepId', authMiddleware, tenantAuthMiddleware, requirePermission('run:read'), async (req, res) => {
+  const { tenantId, runId, stepId } = req.params;
+
+  try {
+    // Verify run belongs to tenant
+    const eng = await getEngine();
+    const run = await eng.getRun(tenantId, runId);
+    if (!run) {
+      return res.status(404).json({ error: 'Run not found', runId });
+    }
+
+    const { getStepStore } = await import('@gwi/core');
+    const stepStore = getStepStore();
+    const step = await stepStore.getStep(runId, stepId);
+
+    if (!step) {
+      return res.status(404).json({ error: 'Step not found', stepId });
+    }
+
+    res.json(step);
+  } catch (error) {
+    console.error('Failed to get step:', error);
+    res.status(500).json({
+      error: 'Failed to get step',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

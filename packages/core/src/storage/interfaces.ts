@@ -1433,6 +1433,41 @@ export interface PRCandidateStore {
 }
 
 // =============================================================================
+// Step Store (gwi-o06: Run Steps → Subcollection)
+// =============================================================================
+
+/**
+ * Paginated result wrapper
+ */
+export interface PaginatedResult<T> {
+  items: T[];
+  cursor?: string;
+  hasMore: boolean;
+}
+
+/**
+ * Store for run steps as subcollection (gwi-o06)
+ *
+ * Agent-first: Agents can query individual steps without loading the full
+ * run document. Enables streaming step results, pagination, and step-level retry.
+ *
+ * Firestore path: gwi_runs/{runId}/steps/{stepId}
+ */
+export interface StepStore {
+  /** Add a step to a run's subcollection */
+  addStep(runId: string, step: RunStep): Promise<void>;
+
+  /** Get a single step by ID */
+  getStep(runId: string, stepId: string): Promise<RunStep | null>;
+
+  /** List steps for a run with optional pagination */
+  listSteps(runId: string, opts?: { limit?: number; cursor?: string }): Promise<PaginatedResult<RunStep>>;
+
+  /** Update step status (and optional output/error) */
+  updateStepStatus(runId: string, stepId: string, status: StepStatus, update?: Partial<Pick<RunStep, 'output' | 'error' | 'completedAt' | 'durationMs' | 'tokensUsed'>>): Promise<void>;
+}
+
+// =============================================================================
 // Store Factory
 // =============================================================================
 
@@ -1486,6 +1521,11 @@ export interface StoreFactory {
    * Create a schedule store (Phase 13: Workflow Catalog)
    */
   createScheduleStore?(): ScheduleStore;
+
+  /**
+   * Create a step store (gwi-o06: Run Steps Subcollection)
+   */
+  createStepStore?(): StepStore;
 
   /**
    * Close all connections and cleanup
