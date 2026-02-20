@@ -1,6 +1,6 @@
 {
   "name": "@gwi/sandbox",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "description": "Sandbox execution layer for Git With Intent: Docker, KVM, and Deno isolates",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@gwi/forecasting",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "description": "Time series forecasting for Git With Intent using TimeGPT",
   "type": "module",
   "main": "./dist/index.js",

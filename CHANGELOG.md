@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-02-19
+
+### Added
+- **Scale & Ops Maturity Epic** (gwi-7ki): Agent-first infrastructure (#86)
+  - Dependabot config with grouped updates and `gwi-triage` labels for agent auto-scoring
+  - SBOM generation (CycloneDX format) via `anchore/sbom-action` on release
+  - VPC connector enabled in production environment
+  - GCP billing budget alerts with Pub/Sub notification channel
+  - Agent-queryable `GET /tenants/:tenantId/budget` endpoint with cost-aware recommendations
+  - Circuit breaker for LLM providers with existing `CircuitBreaker` + `ExponentialBackoffRetryHandler`
+  - Provider health registry singleton for monitoring circuit breaker state
+  - Selection policy automatically skips providers with open circuits
+  - `GET /health/providers` endpoint for circuit breaker state visibility
+  - `StepStore` interface with Firestore and InMemory implementations
+  - Run steps migrated to Firestore subcollection with cursor-based pagination
+  - `GET /tenants/:tenantId/runs/:runId/steps` and `.../steps/:stepId` API endpoints
+  - Agent-queryable `GET /tenants/:tenantId/quota` with per-action rate limit status
+- **Harness Engineering Hooks** (#85)
+  - Budget management hook for cost control
+  - Environment onboarding hook for new instances
+  - Loop detection hook to prevent infinite agent cycles
+  - Self-test hook for agent health verification
+  - Trace analysis hook for debugging agent behavior
+- **Code Factory Gap Closure** (#84)
+  - Incident-to-harness feedback loop: `ViolationDetector` → golden task generation
+  - Browser evidence capture with Playwright for `apps/web/` dashboard
+  - SHA-256 integrity verification via evidence manifests
+- **Enterprise Roadmap** (Phases 6-8) in Mermaid Gantt + status table (#85)
+- **PRD Document**: 240-PP-RMAP enterprise architecture roadmap
+
+### Changed
+- **License**: MIT → BSL 1.1 (change date 2030-02-17, converts to Apache 2.0) (#85)
+- **README**: Updated to v0.9.0, 8 agents in diagram, mcp-server + sandbox in monorepo tree
+
 ## [0.9.0] - 2026-02-17
 
 ### Added
@@ -272,6 +306,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic CLI commands
 - Project template and monorepo structure
 
+[0.10.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/intent-solutions-io/iam-git-with-intent/compare/v0.6.0...v0.7.0

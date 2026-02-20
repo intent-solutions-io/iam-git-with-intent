@@ -1,6 +1,6 @@
 {
   "name": "@gwi/registry",
-  "version": "0.8.0",
+  "version": "0.10.0",
   "description": "GWI Connector Registry Server",
   "type": "module",
   "main": "dist/index.js",
