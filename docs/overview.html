@@ -57,7 +57,7 @@
   }
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);background-image:radial-gradient(ellipse at 30% 0%,var(--accent-dim) 0%,transparent 50%),radial-gradient(ellipse at 70% 100%,var(--violet-dim) 0%,transparent 40%);color:var(--text);font-family:var(--font-body);padding:40px;min-height:100vh;overflow-wrap:break-word}
+body{background:var(--bg);background-image:radial-gradient(ellipse at 30% 0%,var(--accent-dim) 0%,transparent 50%),radial-gradient(ellipse at 70% 100%,var(--violet-dim) 0%,transparent 40%),radial-gradient(circle,var(--border) 0.5px,transparent 0.5px);background-size:100% 100%,100% 100%,20px 20px;color:var(--text);font-family:var(--font-body);padding:40px;min-height:100vh;overflow-wrap:break-word}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeScale{from{opacity:0;transform:scale(0.92)}to{opacity:1;transform:scale(1)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
@@ -72,10 +72,10 @@ body{background:var(--bg);background-image:radial-gradient(ellipse at 30% 0%,var
 h1{font-size:42px;font-weight:700;letter-spacing:-1.5px;margin-bottom:6px;text-wrap:balance}
 h1 span{color:var(--accent)}
 .subtitle{color:var(--text-dim);font-size:14px;margin-bottom:32px;font-family:var(--font-mono)}
-.sec-head{font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:8px;margin:40px 0 16px;padding-top:8px}
+.sec-head{font-family:var(--font-mono);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;display:flex;align-items:center;gap:8px;margin:40px 0 16px;padding-top:8px}
 .sec-head .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 24px;animation:fadeUp .4s ease-out both;animation-delay:calc(var(--i,0)*.06s)}
-.section--hero{background:var(--surface-elevated);border-color:color-mix(in srgb,var(--border) 50%,var(--accent) 50%);box-shadow:0 4px 20px rgba(0,0,0,.15);padding:28px 32px}
+.section--hero{background:color-mix(in srgb,var(--surface-elevated) 85%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-color:color-mix(in srgb,var(--border) 50%,var(--accent) 50%);box-shadow:0 4px 24px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.05);padding:28px 32px}
 .section p{font-size:14px;line-height:1.7;color:var(--text-dim)}
 .section p strong{color:var(--text)}
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:8px}
@@ -127,20 +127,42 @@ h1 span{color:var(--accent)}
 .callout code{font-family:var(--font-mono);font-size:11px;background:var(--accent-dim);color:var(--accent);padding:1px 5px;border-radius:3px}
 @media(max-width:1000px){.wrap{grid-template-columns:1fr;padding-top:0}body{padding-top:0}.toc{position:sticky;top:0;z-index:200;max-height:none;display:flex;gap:4px;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--bg);border-bottom:1px solid var(--border);padding:10px 0;margin:0 -40px;padding-left:40px;padding-right:40px;grid-row:auto}.toc::-webkit-scrollbar{display:none}.toc-title{display:none}.toc a{white-space:nowrap;flex-shrink:0;border-left:none;border-bottom:2px solid transparent;border-radius:4px 4px 0 0;padding:6px 10px;font-size:10px}.toc a.active{border-left:none;border-bottom-color:var(--accent);background:var(--surface)}.main{padding-top:20px}.sec-head{scroll-margin-top:52px}}
 @media(max-width:768px){body{padding:20px}.inner-grid{grid-template-columns:1fr}.three-col{grid-template-columns:1fr}}
+.cta-btn{display:inline-block;text-align:center;font-family:var(--font-mono);font-size:12px;font-weight:600;padding:10px 20px;border-radius:8px;text-decoration:none;transition:all .15s}
+.cta-btn--primary{background:var(--accent);color:#0b1120}
+.cta-btn--primary:hover{filter:brightness(1.15)}
+.cta-btn--secondary{background:var(--surface-elevated);color:var(--text);border:1px solid var(--border-bright)}
+.cta-btn--secondary:hover{background:var(--border)}
+.footer{border-top:1px solid var(--border);margin-top:40px;padding:32px 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:24px;font-size:12px;color:var(--text-dim)}
+.footer a{color:var(--accent);text-decoration:none}
+.footer a:hover{text-decoration:underline}
+.footer-links{display:flex;flex-wrap:wrap;gap:8px 16px;list-style:none}
+.collapsible{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.collapsible summary{padding:14px 20px;cursor:pointer;font-family:var(--font-mono);font-size:12px;font-weight:600;color:var(--text-dim);list-style:none;display:flex;align-items:center;gap:8px}
+.collapsible summary::-webkit-details-marker{display:none}
+.collapsible summary::before{content:'\25B6';font-size:10px;transition:transform .2s}
+.collapsible[open] summary::before{transform:rotate(90deg)}
+.collapsible .three-col{padding:0 20px 20px}
+.skip-link{position:absolute;top:-40px;left:0;background:var(--accent);color:#0b1120;padding:8px 16px;z-index:300;font-size:12px;font-family:var(--font-mono);text-decoration:none;border-radius:0 0 8px 0}
+.skip-link:focus{top:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media(max-width:768px){.footer{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
+<a href="#s1" class="skip-link">Skip to content</a>
 <div class="wrap">
 <nav class="toc" id="toc">
   <div class="toc-title">Overview</div>
   <a href="#s1">1. At a Glance</a>
   <a href="#s2">2. Why</a>
-  <a href="#s3">3. Architecture</a>
-  <a href="#s4">4. Agents</a>
-  <a href="#s5">5. Commands</a>
-  <a href="#s6">6. Security</a>
-  <a href="#s7">7. Deployment</a>
-  <a href="#s8">8. Monorepo</a>
+  <a href="#s2b">3. Comparison</a>
+  <a href="#s3">4. Architecture</a>
+  <a href="#s4">5. Agents</a>
+  <a href="#s5">6. Commands</a>
+  <a href="#s6">7. Security</a>
+  <a href="#s7">8. Deployment</a>
+  <a href="#s8">9. Monorepo</a>
+  <a href="#s9">10. Get Started</a>
 </nav>
 
 <div class="main">
@@ -163,8 +185,21 @@ h1 span{color:var(--accent)}
   <p><strong>GWI automates the boring parts of pull requests.</strong> Merge conflict resolution, code review, issue-to-code generation, complexity scoring &mdash; with approval gating so nothing ships without your explicit say-so. Every destructive operation is hash-bound: if the patch changes after you approve, the approval is invalidated.</p>
 </div>
 
+<div class="inner-grid" style="margin-top:16px">
+  <div class="inner-card" style="border-left:3px solid var(--accent)">
+    <div class="title">Quick Start</div>
+    <code style="display:block;margin-top:8px">npm install &amp;&amp; npm run build</code>
+    <code style="display:block;margin-top:4px">export ANTHROPIC_API_KEY="..."</code>
+    <code style="display:block;margin-top:4px">gwi autopilot &lt;pr-url&gt;</code>
+  </div>
+  <div class="inner-card" style="border-left:3px solid var(--green);display:flex;flex-direction:column;gap:10px;justify-content:center">
+    <a class="cta-btn cta-btn--primary" href="https://github.com/intent-solutions-io/iam-git-with-intent">View on GitHub</a>
+    <a class="cta-btn cta-btn--secondary" href="https://github.com/intent-solutions-io/iam-git-with-intent#readme">Read Docs</a>
+  </div>
+</div>
+
 <!-- Section 2: Why -->
-<div id="s2" class="sec-head" style="color:var(--rose)"><span class="dot" style="background:var(--rose)"></span> 2 &mdash; Why</div>
+<div id="s2" class="sec-head" style="color:var(--rose)"><span class="dot" style="background:var(--rose)"></span> 2 &mdash; Why GWI</div>
 
 <div class="section" style="--i:6;border-left:3px solid var(--rose)">
   <p>Every team has the same bottlenecks. Merge conflicts that take an hour to untangle. PRs sitting in review queues. GitHub issues that could be a working PR in minutes if someone would just write the code.</p>
@@ -172,14 +207,32 @@ h1 span{color:var(--accent)}
   <p style="margin-top:12px">Local review (<code>gwi review --local</code>) works without any API key &mdash; it's deterministic static analysis. No cost, no latency, no secrets required.</p>
 </div>
 
-<!-- Section 3: Architecture (Mermaid) -->
-<div id="s3" class="sec-head" style="color:var(--accent)"><span class="dot" style="background:var(--accent)"></span> 3 &mdash; Architecture</div>
+<!-- Section 2.5: How It's Different -->
+<div id="s2b" class="sec-head" style="color:var(--violet)"><span class="dot" style="background:var(--violet)"></span> 3 &mdash; How It&rsquo;s Different</div>
 
-<div class="mermaid-wrap" style="--i:7">
+<div class="table-wrap" style="--i:7">
+  <div class="table-scroll">
+    <table class="data-table">
+      <thead><tr><th>Tool</th><th>What It Does</th><th>GWI Difference</th></tr></thead>
+      <tbody>
+        <tr><td><strong>GitHub Copilot</strong></td><td>Suggests code in editor</td><td>Generates PRs from issues, resolves conflicts at repo level</td></tr>
+        <tr><td><strong>Cursor / Windsurf</strong></td><td>AI coding assistants</td><td>Repo-level automation, not editor plugins</td></tr>
+        <tr><td><strong>Linear / Jira</strong></td><td>Project management</td><td>Actually writes the code from issue descriptions</td></tr>
+        <tr><td><strong>SonarQube</strong></td><td>Static analysis</td><td>Fixes issues, not just reports them</td></tr>
+        <tr><td><strong>Dependabot</strong></td><td>Dependency updates</td><td>Full semantic conflict resolution, not just bumps</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Section 4: Architecture (Mermaid) -->
+<div id="s3" class="sec-head" style="color:var(--accent)"><span class="dot" style="background:var(--accent)"></span> 4 &mdash; Architecture</div>
+
+<div class="mermaid-wrap" style="--i:8" aria-label="Architecture diagram showing data flow from inputs through CLI, engine, agents, and storage" role="img">
   <div class="zoom-controls">
-    <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
-    <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
-    <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+    <button aria-label="Zoom in" onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+    <button aria-label="Zoom out" onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+    <button aria-label="Reset zoom" onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
   </div>
   <pre class="mermaid">
 graph TD
@@ -249,7 +302,7 @@ graph TD
 </div>
 
 <!-- Section 4: Agents -->
-<div id="s4" class="sec-head" style="color:var(--violet)"><span class="dot" style="background:var(--violet)"></span> 4 &mdash; Agent Routing</div>
+<div id="s4" class="sec-head" style="color:var(--violet)"><span class="dot" style="background:var(--violet)"></span> 5 &mdash; Agent Routing</div>
 
 <div class="section" style="--i:8;margin-bottom:16px">
   <p>Simple tasks route to fast/cheap models. Complex tasks escalate to powerful ones. A PR scoring 3/10 uses Gemini Flash. One scoring 8/10 gets Claude Opus.</p>
@@ -260,52 +313,52 @@ graph TD
     <table class="data-table">
       <thead><tr><th>Agent</th><th>Model</th><th>Purpose</th><th>Complexity</th></tr></thead>
       <tbody>
-        <tr><td><strong>Orchestrator</strong></td><td><code>Gemini Flash</code></td><td>Workflow coordination</td><td><span class="status status--accent">1-10</span></td></tr>
-        <tr><td><strong>Triage</strong></td><td><code>Gemini Flash</code></td><td>Fast complexity scoring</td><td><span class="status status--green">1-3</span></td></tr>
-        <tr><td><strong>Coder</strong></td><td><code>Claude Sonnet/Opus</code></td><td>Code generation</td><td><span class="status status--amber">4-10</span></td></tr>
-        <tr><td><strong>Resolver</strong></td><td><code>Claude Sonnet/Opus</code></td><td>Conflict resolution</td><td><span class="status status--amber">4-10</span></td></tr>
-        <tr><td><strong>Reviewer</strong></td><td><code>Claude Sonnet</code></td><td>Review summaries</td><td><span class="status status--teal">3-7</span></td></tr>
-        <tr><td><strong>Foreman</strong></td><td>Coordinator</td><td>Workflow management</td><td><span class="status status--accent">all</span></td></tr>
-        <tr><td><strong>Slop Detector</strong></td><td>Quality gate</td><td>Catches low-quality output</td><td><span class="status status--rose">all</span></td></tr>
-        <tr><td><strong>Infra</strong></td><td>Infrastructure</td><td>Deployment operations</td><td><span class="status status--violet">all</span></td></tr>
+        <tr><td><strong>Orchestrator</strong></td><td><code>Gemini Flash</code></td><td>Workflow coordination</td><td><span class="status status--accent">&#9675; 1-10</span></td></tr>
+        <tr><td><strong>Triage</strong></td><td><code>Gemini Flash</code></td><td>Fast complexity scoring</td><td><span class="status status--green">&#9679; 1-3</span></td></tr>
+        <tr><td><strong>Coder</strong></td><td><code>Claude Sonnet/Opus</code></td><td>Code generation</td><td><span class="status status--amber">&#9670; 4-10</span></td></tr>
+        <tr><td><strong>Resolver</strong></td><td><code>Claude Sonnet/Opus</code></td><td>Conflict resolution</td><td><span class="status status--amber">&#9670; 4-10</span></td></tr>
+        <tr><td><strong>Reviewer</strong></td><td><code>Claude Sonnet</code></td><td>Review summaries</td><td><span class="status status--teal">&#9670; 3-7</span></td></tr>
+        <tr><td><strong>Foreman</strong></td><td>Coordinator</td><td>Workflow management</td><td><span class="status status--accent">&#9675; all</span></td></tr>
+        <tr><td><strong>Slop Detector</strong></td><td>Quality gate</td><td>Catches low-quality output</td><td><span class="status status--rose">&#9670; all</span></td></tr>
+        <tr><td><strong>Infra</strong></td><td>Infrastructure</td><td>Deployment operations</td><td><span class="status status--violet">&#9670; all</span></td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <!-- Section 5: Commands -->
-<div id="s5" class="sec-head" style="color:var(--teal)"><span class="dot" style="background:var(--teal)"></span> 5 &mdash; CLI Commands</div>
+<div id="s5" class="sec-head" style="color:var(--teal)"><span class="dot" style="background:var(--teal)"></span> 6 &mdash; CLI Commands</div>
 
 <div class="table-wrap" style="--i:10">
   <div class="table-scroll">
     <table class="data-table">
       <thead><tr><th>Command</th><th>What It Does</th><th>Needs API Key?</th></tr></thead>
       <tbody>
-        <tr><td><code>gwi triage &lt;url&gt;</code></td><td>Score PR complexity 1-10</td><td><span class="status status--green">Yes</span></td></tr>
-        <tr><td><code>gwi resolve &lt;url&gt;</code></td><td>Resolve merge conflicts semantically</td><td><span class="status status--green">Yes</span></td></tr>
-        <tr><td><code>gwi review &lt;url&gt;</code></td><td>Generate review summary</td><td><span class="status status--green">Yes</span></td></tr>
-        <tr><td><code>gwi review --local</code></td><td>Deterministic local review</td><td><span class="status status--accent">No</span></td></tr>
-        <tr><td><code>gwi review --local --ai</code></td><td>AI-powered local review</td><td><span class="status status--green">Yes</span></td></tr>
-        <tr><td><code>gwi issue-to-code &lt;url&gt;</code></td><td>Create a PR from a GitHub issue</td><td><span class="status status--green">Yes</span></td></tr>
-        <tr><td><code>gwi autopilot &lt;url&gt;</code></td><td>Full pipeline: triage, resolve, review, approve</td><td><span class="status status--green">Yes</span></td></tr>
-        <tr><td><code>gwi gate</code></td><td>Pre-commit approval gate</td><td><span class="status status--accent">No</span></td></tr>
-        <tr><td><code>gwi triage --diff HEAD~3</code></td><td>Score complexity of recent commits</td><td><span class="status status--accent">No</span></td></tr>
-        <tr><td><code>gwi explain &lt;id&gt;</code></td><td>Explain AI decisions for a run</td><td><span class="status status--accent">No</span></td></tr>
-        <tr><td><code>gwi run list</code></td><td>List recent runs</td><td><span class="status status--accent">No</span></td></tr>
-        <tr><td><code>gwi run approve &lt;id&gt;</code></td><td>Approve pending changes</td><td><span class="status status--accent">No</span></td></tr>
+        <tr><td><code>gwi triage &lt;url&gt;</code></td><td>Score PR complexity 1-10</td><td><span class="status status--green">&#9679; Yes</span></td></tr>
+        <tr><td><code>gwi resolve &lt;url&gt;</code></td><td>Resolve merge conflicts semantically</td><td><span class="status status--green">&#9679; Yes</span></td></tr>
+        <tr><td><code>gwi review &lt;url&gt;</code></td><td>Generate review summary</td><td><span class="status status--green">&#9679; Yes</span></td></tr>
+        <tr><td><code>gwi review --local</code></td><td>Deterministic local review</td><td><span class="status status--accent">&#9675; No</span></td></tr>
+        <tr><td><code>gwi review --local --ai</code></td><td>AI-powered local review</td><td><span class="status status--green">&#9679; Yes</span></td></tr>
+        <tr><td><code>gwi issue-to-code &lt;url&gt;</code></td><td>Create a PR from a GitHub issue</td><td><span class="status status--green">&#9679; Yes</span></td></tr>
+        <tr><td><code>gwi autopilot &lt;url&gt;</code></td><td>Full pipeline: triage, resolve, review, approve</td><td><span class="status status--green">&#9679; Yes</span></td></tr>
+        <tr><td><code>gwi gate</code></td><td>Pre-commit approval gate</td><td><span class="status status--accent">&#9675; No</span></td></tr>
+        <tr><td><code>gwi triage --diff HEAD~3</code></td><td>Score complexity of recent commits</td><td><span class="status status--accent">&#9675; No</span></td></tr>
+        <tr><td><code>gwi explain &lt;id&gt;</code></td><td>Explain AI decisions for a run</td><td><span class="status status--accent">&#9675; No</span></td></tr>
+        <tr><td><code>gwi run list</code></td><td>List recent runs</td><td><span class="status status--accent">&#9675; No</span></td></tr>
+        <tr><td><code>gwi run approve &lt;id&gt;</code></td><td>Approve pending changes</td><td><span class="status status--accent">&#9675; No</span></td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <!-- Section 6: Security -->
-<div id="s6" class="sec-head" style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span> 6 &mdash; Approval &amp; Security</div>
+<div id="s6" class="sec-head" style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span> 7 &mdash; Approval &amp; Security</div>
 
-<div class="mermaid-wrap" style="--i:11">
+<div class="mermaid-wrap" style="--i:12" aria-label="State diagram showing approval workflow from pending through running, awaiting approval, to committed or rejected" role="img">
   <div class="zoom-controls">
-    <button onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
-    <button onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
-    <button onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
+    <button aria-label="Zoom in" onclick="zoomDiagram(this, 1.2)" title="Zoom in">+</button>
+    <button aria-label="Zoom out" onclick="zoomDiagram(this, 0.8)" title="Zoom out">&minus;</button>
+    <button aria-label="Reset zoom" onclick="resetZoom(this)" title="Reset zoom">&#8634;</button>
   </div>
   <pre class="mermaid">
 stateDiagram-v2
@@ -348,7 +401,7 @@ stateDiagram-v2
 </div>
 
 <!-- Section 7: Deployment -->
-<div id="s7" class="sec-head" style="color:var(--green)"><span class="dot" style="background:var(--green)"></span> 7 &mdash; Deployment</div>
+<div id="s7" class="sec-head" style="color:var(--green)"><span class="dot" style="background:var(--green)"></span> 8 &mdash; Deployment</div>
 
 <div class="section" style="--i:14;margin-bottom:16px">
   <p>Five Cloud Run services, all <strong>scale-to-zero</strong> (no traffic = no cost). Infrastructure managed by OpenTofu. Deploys via GitHub Actions only.</p>
@@ -359,63 +412,83 @@ stateDiagram-v2
     <table class="data-table">
       <thead><tr><th>Service</th><th>Purpose</th><th>Runtime</th></tr></thead>
       <tbody>
-        <tr><td><code>gwi-api</code></td><td>REST API</td><td><span class="status status--accent">Cloud Run</span></td></tr>
-        <tr><td><code>gwi-gateway</code></td><td>Agent-to-agent coordination</td><td><span class="status status--accent">Cloud Run</span></td></tr>
-        <tr><td><code>gwi-webhook</code></td><td>GitHub webhook handler</td><td><span class="status status--accent">Cloud Run</span></td></tr>
-        <tr><td><code>gwi-worker</code></td><td>Background jobs</td><td><span class="status status--accent">Cloud Run</span></td></tr>
-        <tr><td><code>gwi-mcp-server</code></td><td>MCP tool server</td><td><span class="status status--accent">Cloud Run</span></td></tr>
-        <tr><td>Firestore</td><td>Operational database</td><td><span class="status status--amber">Managed</span></td></tr>
-        <tr><td>Firebase Hosting</td><td>Web dashboard</td><td><span class="status status--amber">Managed</span></td></tr>
+        <tr><td><code>gwi-api</code></td><td>REST API</td><td><span class="status status--accent">&#9675; Cloud Run</span></td></tr>
+        <tr><td><code>gwi-gateway</code></td><td>Agent-to-agent coordination</td><td><span class="status status--accent">&#9675; Cloud Run</span></td></tr>
+        <tr><td><code>gwi-webhook</code></td><td>GitHub webhook handler</td><td><span class="status status--accent">&#9675; Cloud Run</span></td></tr>
+        <tr><td><code>gwi-worker</code></td><td>Background jobs</td><td><span class="status status--accent">&#9675; Cloud Run</span></td></tr>
+        <tr><td><code>gwi-mcp-server</code></td><td>MCP tool server</td><td><span class="status status--accent">&#9675; Cloud Run</span></td></tr>
+        <tr><td>Firestore</td><td>Operational database</td><td><span class="status status--amber">&#9670; Managed</span></td></tr>
+        <tr><td>Firebase Hosting</td><td>Web dashboard</td><td><span class="status status--amber">&#9670; Managed</span></td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <!-- Section 8: Monorepo -->
-<div id="s8" class="sec-head" style="color:var(--teal)"><span class="dot" style="background:var(--teal)"></span> 8 &mdash; Monorepo Structure</div>
+<div id="s8" class="sec-head" style="color:var(--teal)"><span class="dot" style="background:var(--teal)"></span> 9 &mdash; Monorepo Structure</div>
 
-<div class="three-col">
-  <div class="section" style="--i:16;border-left:3px solid var(--accent)">
-    <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);margin-bottom:12px">Apps (9)</div>
-    <ul class="node-list">
-      <li><code>cli</code> gwi command</li>
-      <li><code>api</code> REST API</li>
-      <li><code>gateway</code> A2A coordination</li>
-      <li><code>github-webhook</code> webhook handler</li>
-      <li><code>mcp-server</code> MCP tools</li>
-      <li><code>webhook-receiver</code> generic webhooks</li>
-      <li><code>worker</code> background jobs</li>
-      <li><code>registry</code> workflow templates</li>
-      <li><code>web</code> React dashboard</li>
-    </ul>
+<details class="collapsible" open>
+  <summary>View full monorepo structure</summary>
+  <div class="three-col" style="margin-top:12px">
+    <div class="section" style="--i:16;border-left:3px solid var(--accent)">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);margin-bottom:12px">Apps (9)</div>
+      <ul class="node-list">
+        <li><code>cli</code> gwi command</li>
+        <li><code>api</code> REST API</li>
+        <li><code>gateway</code> A2A coordination</li>
+        <li><code>github-webhook</code> webhook handler</li>
+        <li><code>mcp-server</code> MCP tools</li>
+        <li><code>webhook-receiver</code> generic webhooks</li>
+        <li><code>worker</code> background jobs</li>
+        <li><code>registry</code> workflow templates</li>
+        <li><code>web</code> React dashboard</li>
+      </ul>
+    </div>
+    <div class="section" style="--i:17;border-left:3px solid var(--teal)">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--teal);margin-bottom:12px">Packages (8)</div>
+      <ul class="node-list">
+        <li><code>core</code> storage, billing, security</li>
+        <li><code>agents</code> AI implementations</li>
+        <li><code>engine</code> workflow orchestration</li>
+        <li><code>integrations</code> GitHub connector</li>
+        <li><code>connectors</code> data connectors</li>
+        <li><code>forecasting</code> TimeGPT</li>
+        <li><code>sandbox</code> secure execution</li>
+        <li><code>sdk</code> TypeScript SDK</li>
+      </ul>
+    </div>
+    <div class="section" style="--i:18;border-left:3px solid var(--violet)">
+      <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--violet);margin-bottom:12px">Infrastructure</div>
+      <ul class="node-list">
+        <li><code>infra/</code> OpenTofu (22 .tf files)</li>
+        <li><code>.github/</code> CI/CD workflows</li>
+        <li><code>scripts/arv/</code> 20 readiness gates</li>
+        <li><code>test/</code> contracts, goldens, e2e</li>
+        <li><code>000-docs/</code> internal documentation</li>
+      </ul>
+    </div>
   </div>
-  <div class="section" style="--i:17;border-left:3px solid var(--teal)">
-    <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--teal);margin-bottom:12px">Packages (8)</div>
-    <ul class="node-list">
-      <li><code>core</code> storage, billing, security</li>
-      <li><code>agents</code> AI implementations</li>
-      <li><code>engine</code> workflow orchestration</li>
-      <li><code>integrations</code> GitHub connector</li>
-      <li><code>connectors</code> data connectors</li>
-      <li><code>forecasting</code> TimeGPT</li>
-      <li><code>sandbox</code> secure execution</li>
-      <li><code>sdk</code> TypeScript SDK</li>
-    </ul>
-  </div>
-  <div class="section" style="--i:18;border-left:3px solid var(--violet)">
-    <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--violet);margin-bottom:12px">Infrastructure</div>
-    <ul class="node-list">
-      <li><code>infra/</code> OpenTofu (22 .tf files)</li>
-      <li><code>.github/</code> CI/CD workflows</li>
-      <li><code>scripts/arv/</code> 20 readiness gates</li>
-      <li><code>test/</code> contracts, goldens, e2e</li>
-      <li><code>000-docs/</code> internal documentation</li>
-    </ul>
-  </div>
-</div>
+</details>
 
-<div class="callout" style="margin-top:16px">
-  <strong>BSL 1.1</strong> &mdash; Source-available. Personal and non-commercial use permitted. Converts to Apache 2.0 on 2030-02-17.
+<!-- Section 10: Footer / Get Started -->
+<div id="s9" class="sec-head" style="color:var(--green)"><span class="dot" style="background:var(--green)"></span> 10 &mdash; Get Started</div>
+
+<div class="footer">
+  <div>
+    <div style="font-weight:600;color:var(--text);margin-bottom:8px">License</div>
+    <p><strong style="color:var(--text)">BSL 1.1</strong> &mdash; Source-available. Personal and non-commercial use permitted. Converts to Apache 2.0 on 2030-02-17. Commercial licensing available upon request.</p>
+    <p style="margin-top:12px">&copy; 2025&ndash;2026 Intent Solutions LLC</p>
+    <p style="margin-top:4px"><a href="mailto:jeremy@intentsolutions.io">jeremy@intentsolutions.io</a></p>
+  </div>
+  <div>
+    <div style="font-weight:600;color:var(--text);margin-bottom:8px">Links</div>
+    <ul class="footer-links">
+      <li><a href="https://github.com/intent-solutions-io/iam-git-with-intent">GitHub</a></li>
+      <li><a href="https://github.com/intent-solutions-io/iam-git-with-intent#readme">Documentation</a></li>
+      <li><a href="https://github.com/intent-solutions-io/iam-git-with-intent/blob/main/SECURITY.md">Security Policy</a></li>
+      <li><a href="https://github.com/intent-solutions-io/iam-git-with-intent/blob/main/CHANGELOG.md">Changelog</a></li>
+    </ul>
+  </div>
 </div>
 
 </div><!-- /main -->
