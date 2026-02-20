@@ -3,7 +3,7 @@
 # Hard Mode R3: Gateway Separation
 # This is a REST proxy only - does NOT run agent Runners locally
 
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 WORKDIR /app
 
 # Install dependencies only when needed

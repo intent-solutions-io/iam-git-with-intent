@@ -13,7 +13,7 @@
 #     -v $(pwd):/workspace \
 #     gwi-cli triage https://github.com/owner/repo/pull/123
 
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache python3 make g++
@@ -37,7 +37,7 @@ COPY packages ./packages
 RUN npm run build --workspace=apps/cli
 
 # Production stage
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Security: Run as non-root user
 RUN addgroup -g 1001 -S gwi && \

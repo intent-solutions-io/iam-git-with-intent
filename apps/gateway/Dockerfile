@@ -2,7 +2,7 @@
 # R3: Cloud Run as gateway only (proxy to Agent Engine via REST)
 
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -44,7 +44,7 @@ RUN npm run build --workspace=@gwi/engine
 RUN npm run build --workspace=@gwi/gateway
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
