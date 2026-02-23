@@ -33,5 +33,3 @@ export * from './slack/index.js';
 export * from './gitlab/index.js';
 export * from './jira/index.js';
 export * from './linear/index.js';
-export * from './vertex-ai/index.js';
-export * from './fivetran/index.js';
