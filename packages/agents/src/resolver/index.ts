@@ -1,6 +1,8 @@
 /**
  * Resolver Agent for Git With Intent
  *
+ * SPIFFE ID: spiffe://intent.solutions/agent/resolver
+ *
  * [Task: git-with-intent-buy]
  *
  * Resolves merge conflicts using Claude Sonnet/Opus.

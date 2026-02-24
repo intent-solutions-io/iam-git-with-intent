@@ -1,6 +1,8 @@
 /**
  * Coder Agent for Git With Intent
  *
+ * SPIFFE ID: spiffe://intent.solutions/agent/coder
+ *
  * Phase 4/13: Code generation agent for Issue-to-Code workflow.
  *
  * Generates code from issue descriptions:

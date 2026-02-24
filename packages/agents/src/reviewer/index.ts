@@ -1,6 +1,8 @@
 /**
  * Reviewer Agent for Git With Intent
  *
+ * SPIFFE ID: spiffe://intent.solutions/agent/reviewer
+ *
  * [Task: git-with-intent-7lx]
  *
  * Validates resolutions from Resolver Agent.

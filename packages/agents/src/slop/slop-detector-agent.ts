@@ -1,6 +1,8 @@
 /**
  * Slop Detector Agent
  *
+ * SPIFFE ID: spiffe://intent.solutions/agent/slop-detector
+ *
  * Analyzes PRs for AI-generated low-quality patterns ("AI slop")
  * and assigns a slop score (0-100). Integrates with triage flow
  * to auto-flag or auto-close suspicious PRs.

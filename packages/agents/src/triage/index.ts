@@ -1,6 +1,8 @@
 /**
  * Triage Agent for Git With Intent
  *
+ * SPIFFE ID: spiffe://intent.solutions/agent/triage
+ *
  * Classifies incoming PRs and merge conflicts by complexity.
  * Routes to appropriate handler: auto-resolve, agent-resolve, or human-required.
  *

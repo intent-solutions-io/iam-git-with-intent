@@ -1,6 +1,8 @@
 /**
  * Infrastructure Agent for Git With Intent
  *
+ * SPIFFE ID: spiffe://intent.solutions/agent/infra
+ *
  * AI-powered infrastructure automation with sandbox execution.
  * Inspired by fluid.sh's approach to safe production access.
  *
