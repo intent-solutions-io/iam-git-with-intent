@@ -5,6 +5,8 @@ node_modules/
 # Build outputs
 dist/
 *.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 
 # Exception: Allow connector dist files (pre-built connectors)
 !connectors/*/dist/
