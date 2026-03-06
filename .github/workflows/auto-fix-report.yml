@@ -1,9 +1,10 @@
 name: Auto-Fix Performance Report
 
 on:
-  schedule:
-    # Run weekly on Monday at 9am UTC
-    - cron: '0 9 * * 1'
+  # schedule disabled — burns Actions minutes
+  # schedule:
+  #   # Run weekly on Monday at 9am UTC
+  #   - cron: '0 9 * * 1'
   workflow_dispatch:
     inputs:
       week_offset:
