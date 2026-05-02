@@ -261,3 +261,14 @@ feat(cli): add --local flag for local review
 fix(resolver): handle three-way merge edge case
 docs(readme): update installation instructions
 ```
+## Testing baseline (2026-05-01 — Intent Solutions Testing SOP)
+
+This repo participates in the **Intent Solutions Testing SOP** per `~/.claude/CLAUDE.md` § "Intent Solutions Testing SOP" and the VPS-as-the-home program (`OPS-5nm`, Priority 6).
+
+**Installed**: `@intentsolutions/audit-harness v0.1.0` vendored at `.audit-harness/` with wrapper at `scripts/audit-harness`.
+
+**Commands**: `scripts/audit-harness {verify, init, list, escape-scan --staged}`.
+
+**Next step**: run `/audit-tests` to produce `TEST_AUDIT.md`. See `000-docs/677-OD-SOPS-audit-harness-baseline-2026-05-01.md`.
+
+**Upgrade**: `AUDIT_HARNESS_VERSION=vX.Y.Z curl -sSL https://raw.githubusercontent.com/jeremylongshore/audit-harness/main/install.sh | bash`. Or run `/sync-testing-harness` from any session.
